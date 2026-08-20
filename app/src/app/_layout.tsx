@@ -5,6 +5,7 @@ import {
   LibreFranklin_600SemiBold,
   useFonts,
 } from '@expo-google-fonts/libre-franklin';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
@@ -62,6 +63,9 @@ export default function RootLayout() {
     LibreFranklin_400Regular,
     LibreFranklin_500Medium,
     LibreFranklin_600SemiBold,
+    // Explicitly load the icon font: on static web it otherwise renders
+    // placeholder triangles until (never) fetched (v3.1 correction).
+    ...Ionicons.font,
   });
   const fontsReady = fontsLoaded || !!fontError;
 
