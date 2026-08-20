@@ -4,6 +4,15 @@ import { StyleSheet } from 'react-native';
 
 import { fonts, useTheme } from '@/lib/theme';
 
+type IconName = keyof typeof Ionicons.glyphMap;
+
+/** v3 tab icon: outline when inactive → filled when active (NYT pattern). */
+function tabIcon(outline: IconName, filled: IconName) {
+  return function TabIcon({ color, size, focused }: { color: string; size: number; focused: boolean }) {
+    return <Ionicons name={focused ? filled : outline} color={color} size={size} />;
+  };
+}
+
 export default function TabsLayout() {
   const { colors, dark } = useTheme();
 
@@ -11,7 +20,7 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        // Monochrome tab bar: active = text color, NOT red (design.md §Chrome).
+        // Monochrome tab bar: active = text color, NOT red (design.md v3).
         tabBarActiveTintColor: colors.text,
         tabBarInactiveTintColor: colors.textMuted,
         tabBarStyle: {
@@ -26,36 +35,25 @@ export default function TabsLayout() {
     >
       <Tabs.Screen
         name="library"
-        options={{
-          title: 'Recipes',
-          tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" color={color} size={size} />,
-        }}
+        options={{ title: 'Home', tabBarIcon: tabIcon('home-outline', 'home') }}
+      />
+      <Tabs.Screen
+        name="search"
+        options={{ title: 'Search', tabBarIcon: tabIcon('search-outline', 'search') }}
       />
       <Tabs.Screen
         name="plan"
-        options={{
-          title: 'Week',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="calendar-clear-outline" color={color} size={size} />
-          ),
-        }}
+        options={{ title: 'Week', tabBarIcon: tabIcon('calendar-outline', 'calendar') }}
       />
       <Tabs.Screen
         name="groceries"
-        options={{
-          title: 'Groceries',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="basket-outline" color={color} size={size} />
-          ),
-        }}
+        options={{ title: 'Groceries', tabBarIcon: tabIcon('basket-outline', 'basket') }}
       />
       <Tabs.Screen
         name="settings"
         options={{
           title: 'Settings',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-circle-outline" color={color} size={size} />
-          ),
+          tabBarIcon: tabIcon('person-circle-outline', 'person-circle'),
         }}
       />
     </Tabs>

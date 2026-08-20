@@ -1,315 +1,37 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useMemo, useRef, useState } from 'react';
-import { Animated, FlatList, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { AddToWeekSheet } from '@/components/add-to-week';
 import {
-  Bookmark,
-  CategoryDot,
-  EmptyState,
-  Field,
-  Hairline,
-  Muted,
-  SectionHeader,
-} from '@/components/ui';
+  AddToWeekSheet,
+  confirmRemoveFromWeek,
+  removeRecipeFromCurrentWeek,
+} from '@/components/add-to-week';
+import {
+  CarouselCard,
+  Hero,
+  ThisWeekCard,
+  type RecipeListItem,
+  type WeekStripItem,
+} from '@/components/recipe-cards';
+import { EmptyState, Hairline, SectionHeader } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
-import { CATEGORY_LABELS, deriveCategory } from '@/lib/category';
-import { useImageUrl } from '@/lib/media';
-import { SEARCH_EXPAND_MS, useReducedMotion } from '@/lib/motion';
 import { weekStart } from '@/lib/plan';
 import { supabase } from '@/lib/supabase';
-import { fonts, fontSize, minTapTarget, radius, screenPadding, useTheme } from '@/lib/theme';
+import { fonts, fontSize, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
 
-interface RecipeListItem {
-  id: string;
-  title: string;
-  tags: string[];
-  needs_review: boolean;
-  cover_image_path: string | null;
-  servings: number | null;
-  prep_minutes: number | null;
-  cook_minutes: number | null;
-}
-
-function totalMinutes(recipe: RecipeListItem): number | null {
-  const total = (recipe.prep_minutes ?? 0) + (recipe.cook_minutes ?? 0);
-  return total > 0 ? total : null;
-}
-
-/** "35 min · Fish · 4 servings" meta line with the category dot inline. */
-function MetaLine({
-  recipe,
-  showServings = false,
-  showBadge = false,
-}: {
-  recipe: RecipeListItem;
-  showServings?: boolean;
-  showBadge?: boolean;
-}) {
-  const { colors } = useTheme();
-  const category = deriveCategory(recipe.tags);
-  const minutes = totalMinutes(recipe);
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-      {minutes ? <Muted>{minutes} min</Muted> : null}
-      {minutes && category ? <Muted>·</Muted> : null}
-      {category ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-          <CategoryDot category={category} />
-          <Muted>{CATEGORY_LABELS[category]}</Muted>
-        </View>
-      ) : null}
-      {showServings && recipe.servings ? (
-        <>
-          {minutes || category ? <Muted>·</Muted> : null}
-          <Muted>{recipe.servings} servings</Muted>
-        </>
-      ) : null}
-      {showBadge && recipe.needs_review ? (
-        <Text style={{ color: colors.saffron, fontSize: fontSize.meta, fontFamily: fonts.uiSemi }}>
-          needs review
-        </Text>
-      ) : null}
-    </View>
-  );
-}
-
-function RecipeImage({
-  path,
-  style,
-  iconSize = 28,
-}: {
-  path: string | null;
-  style: object;
-  iconSize?: number;
-}) {
-  const { colors } = useTheme();
-  const url = useImageUrl(path);
-  return (
-    <View
-      style={[
-        { backgroundColor: colors.cardPressed, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-        style,
-      ]}
-    >
-      {url ? (
-        <Image source={{ uri: url }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
-      ) : (
-        <Ionicons name="restaurant-outline" size={iconSize} color={colors.textMuted} />
-      )}
-    </View>
-  );
-}
-
-function Hero({
-  recipe,
-  planned,
-  onPress,
-  onBookmark,
-}: {
-  recipe: RecipeListItem;
-  planned: boolean;
-  onPress: () => void;
-  onBookmark: () => void;
-}) {
-  const { colors } = useTheme();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Open recipe ${recipe.title}`}
-      onPress={onPress}
-      style={({ pressed }) => ({
-        marginHorizontal: -screenPadding,
-        backgroundColor: pressed ? colors.cardPressed : 'transparent',
-      })}
-    >
-      <View>
-        <RecipeImage path={recipe.cover_image_path} style={{ width: '100%', aspectRatio: 4 / 3 }} iconSize={48} />
-        <View
-          style={{
-            position: 'absolute',
-            top: 12,
-            right: 12,
-            width: 36,
-            height: 36,
-            borderRadius: 18,
-            backgroundColor: colors.bg,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Bookmark saved={planned} onPress={onBookmark} />
-        </View>
-      </View>
-      <View style={{ paddingHorizontal: screenPadding, paddingTop: 12, paddingBottom: 16, gap: 6 }}>
-        <Text
-          style={{
-            color: colors.text,
-            fontSize: fontSize.heroTitle,
-            lineHeight: Math.round(fontSize.heroTitle * 1.15),
-            letterSpacing: -0.3,
-            fontFamily: fonts.display,
-          }}
-        >
-          {recipe.title}
-        </Text>
-        <MetaLine recipe={recipe} showServings />
-      </View>
-      <Hairline style={{ marginHorizontal: screenPadding }} />
-    </Pressable>
-  );
-}
-
-function SuggestionCard({
-  recipe,
-  planned,
-  onPress,
-  onBookmark,
-}: {
-  recipe: RecipeListItem;
-  planned: boolean;
-  onPress: () => void;
-  onBookmark: () => void;
-}) {
-  const { colors } = useTheme();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Open recipe ${recipe.title}`}
-      onPress={onPress}
-      style={({ pressed }) => ({ width: 150, opacity: pressed ? 0.7 : 1 })}
-    >
-      <View>
-        <RecipeImage
-          path={recipe.cover_image_path}
-          style={{ width: 150, height: 110, borderRadius: radius.card }}
-        />
-        <View
-          style={{
-            position: 'absolute',
-            top: 6,
-            right: 6,
-            width: 30,
-            height: 30,
-            borderRadius: 15,
-            backgroundColor: colors.bg,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Bookmark saved={planned} onPress={onBookmark} size={17} />
-        </View>
-      </View>
-      <View style={{ paddingTop: 8, gap: 4 }}>
-        <Text
-          numberOfLines={2}
-          style={{
-            color: colors.text,
-            fontSize: fontSize.cardTitle,
-            lineHeight: 21,
-            fontFamily: fonts.displaySemi,
-          }}
-        >
-          {recipe.title}
-        </Text>
-        <MetaLine recipe={recipe} />
-      </View>
-    </Pressable>
-  );
-}
-
-/** One "This week" item: a recipe or a free-text meal (no image, no dot). */
-interface WeekStripItem {
-  key: string;
-  title: string;
-  path: string | null;
-}
-
-function ThisWeekCard({ item, onPress }: { item: WeekStripItem; onPress: () => void }) {
-  const { colors } = useTheme();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Open the week — ${item.title}`}
-      onPress={onPress}
-      style={({ pressed }) => ({ width: 110, opacity: pressed ? 0.7 : 1 })}
-    >
-      <RecipeImage
-        path={item.path}
-        style={{ width: 110, height: 82, borderRadius: radius.card }}
-        iconSize={22}
-      />
-      <Text
-        numberOfLines={2}
-        style={{
-          color: colors.text,
-          fontSize: fontSize.small,
-          lineHeight: 19,
-          fontFamily: fonts.uiMedium,
-          paddingTop: 6,
-        }}
-      >
-        {item.title}
-      </Text>
-    </Pressable>
-  );
-}
-
-function RecipeRow({ recipe, onPress }: { recipe: RecipeListItem; onPress: () => void }) {
-  const { colors } = useTheme();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Open recipe ${recipe.title}`}
-      onPress={onPress}
-      style={({ pressed }) => ({
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 14,
-        paddingVertical: 12,
-        backgroundColor: pressed ? colors.cardPressed : 'transparent',
-      })}
-    >
-      <RecipeImage
-        path={recipe.cover_image_path}
-        style={{ width: 96, height: 72, borderRadius: radius.thumb }}
-        iconSize={24}
-      />
-      <View style={{ flex: 1, gap: 4 }}>
-        <Text
-          numberOfLines={2}
-          style={{
-            color: colors.text,
-            fontSize: fontSize.cardTitle,
-            lineHeight: 21,
-            fontFamily: fonts.displaySemi,
-          }}
-        >
-          {recipe.title}
-        </Text>
-        <MetaLine recipe={recipe} showBadge />
-      </View>
-    </Pressable>
-  );
-}
-
-export default function LibraryScreen() {
+export default function HomeScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const { householdId } = useHousehold();
-  const reduced = useReducedMotion();
 
   const [recipes, setRecipes] = useState<RecipeListItem[]>([]);
   const [plannedEverIds, setPlannedEverIds] = useState<Set<string>>(new Set());
   const [weekEntries, setWeekEntries] = useState<
     { id: string; recipe_id: string | null; custom_title: string | null }[]
   >([]);
-  const [search, setSearch] = useState('');
-  const [searchOpen, setSearchOpen] = useState(false);
-  const searchProgress = useRef(new Animated.Value(0)).current;
   const [sheetRecipe, setSheetRecipe] = useState<RecipeListItem | null>(null);
 
   const load = useCallback(async () => {
@@ -360,28 +82,16 @@ export default function LibraryScreen() {
     }, [load])
   );
 
-  const toggleSearch = () => {
-    const open = !searchOpen;
-    setSearchOpen(open);
-    if (!open) setSearch('');
-    if (reduced) {
-      searchProgress.setValue(open ? 1 : 0);
-      return;
-    }
-    Animated.timing(searchProgress, {
-      toValue: open ? 1 : 0,
-      duration: SEARCH_EXPAND_MS,
-      useNativeDriver: false, // height interpolation
-    }).start();
-  };
-
-  // Same rule as v1: never-planned recipes, newest first, max 6; hero = first.
+  // Same rule as v1/v2: never-planned recipes, newest first, max 6; hero = first.
   const suggestions = useMemo(
     () => recipes.filter((r) => !plannedEverIds.has(r.id)).slice(0, 6),
     [recipes, plannedEverIds]
   );
   const hero = suggestions[0];
   const carousel = suggestions.slice(1);
+
+  /** Last 10 by created_at (recipes arrive newest-first). */
+  const recentlyAdded = useMemo(() => recipes.slice(0, 10), [recipes]);
 
   // Recipe entries dedupe by recipe; custom meals appear once per entry.
   const thisWeek = useMemo<WeekStripItem[]>(() => {
@@ -394,186 +104,176 @@ export default function LibraryScreen() {
         seen.add(entry.recipe_id);
         const recipe = byId.get(entry.recipe_id);
         if (recipe) {
-          items.push({ key: `r-${recipe.id}`, title: recipe.title, path: recipe.cover_image_path });
+          items.push({
+            key: `r-${recipe.id}`,
+            title: recipe.title,
+            path: recipe.cover_image_path,
+            recipeId: recipe.id,
+          });
         }
       } else if (entry.custom_title) {
-        items.push({ key: `c-${entry.id}`, title: entry.custom_title, path: null });
+        items.push({ key: `c-${entry.id}`, title: entry.custom_title, path: null, recipeId: null });
       }
     }
     return items;
   }, [recipes, weekEntries]);
   const thisWeekSet = useMemo(
     () =>
-      new Set(
-        weekEntries.map((e) => e.recipe_id).filter((id): id is string => id !== null)
-      ),
+      new Set(weekEntries.map((e) => e.recipe_id).filter((id): id is string => id !== null)),
     [weekEntries]
-  );
-
-  const query = search.trim().toLowerCase();
-  const searching = query.length > 0;
-  const filtered = useMemo(
-    () => (query ? recipes.filter((r) => r.title.toLowerCase().includes(query)) : recipes),
-    [recipes, query]
   );
 
   const openRecipe = (id: string) => router.push(`/library/${id}`);
 
-  const header = (
-    <View>
-      {/* Wordmark + search / add icons */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}>
-        <Text
-          accessibilityRole="header"
-          style={{
-            flex: 1,
-            color: colors.text,
-            fontSize: fontSize.wordmark,
-            letterSpacing: -0.3,
-            fontFamily: fonts.display,
-          }}
-        >
-          Mealy
-        </Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={searchOpen ? 'Close search' : 'Search recipes'}
-          accessibilityState={{ expanded: searchOpen }}
-          onPress={toggleSearch}
-          style={({ pressed }) => ({
-            width: minTapTarget,
-            height: minTapTarget,
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderRadius: minTapTarget / 2,
-            backgroundColor: pressed ? colors.cardPressed : 'transparent',
-          })}
-        >
-          <Ionicons name={searchOpen ? 'close' : 'search-outline'} size={24} color={colors.text} />
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Add a recipe"
-          onPress={() => router.push('/capture')}
-          style={({ pressed }) => ({
-            width: minTapTarget,
-            height: minTapTarget,
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderRadius: minTapTarget / 2,
-            backgroundColor: pressed ? colors.cardPressed : 'transparent',
-          })}
-        >
-          <Ionicons name="add" size={28} color={colors.text} />
-        </Pressable>
-      </View>
+  /** Bookmark tap: plan it, or confirm-remove when already in this week (v3). */
+  const onBookmark = (recipe: { id: string; title: string }) => {
+    if (thisWeekSet.has(recipe.id)) {
+      confirmRemoveFromWeek(recipe.title, () => {
+        void removeRecipeFromCurrentWeek(householdId, recipe.id).then(load);
+      });
+    } else {
+      const full = recipes.find((r) => r.id === recipe.id);
+      if (full) setSheetRecipe(full);
+    }
+  };
 
-      {/* Collapsible search field */}
-      <Animated.View
-        style={{
-          overflow: 'hidden',
-          height: searchProgress.interpolate({ inputRange: [0, 1], outputRange: [0, 60] }),
-          opacity: searchProgress,
-        }}
-      >
-        <View style={{ paddingBottom: 12 }}>
-          <Field
-            icon="search-outline"
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Search recipes"
-            autoCapitalize="none"
-            autoFocus={searchOpen && Platform.OS !== 'web'}
-          />
-        </View>
-      </Animated.View>
-
-      {!searching ? (
-        <View>
-          {hero ? (
-            <Hero
-              recipe={hero}
-              planned={thisWeekSet.has(hero.id)}
-              onPress={() => openRecipe(hero.id)}
-              onBookmark={() => setSheetRecipe(hero)}
-            />
-          ) : null}
-
-          {carousel.length > 0 ? (
-            <View style={{ paddingTop: 16, gap: 12 }}>
-              <SectionHeader title="Suggested for you" />
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ gap: 14, paddingHorizontal: screenPadding }}
-                style={{ marginHorizontal: -screenPadding }}
-              >
-                {carousel.map((recipe) => (
-                  <SuggestionCard
-                    key={recipe.id}
-                    recipe={recipe}
-                    planned={thisWeekSet.has(recipe.id)}
-                    onPress={() => openRecipe(recipe.id)}
-                    onBookmark={() => setSheetRecipe(recipe)}
-                  />
-                ))}
-              </ScrollView>
-              <Hairline />
-            </View>
-          ) : null}
-
-          {thisWeek.length > 0 ? (
-            <View style={{ paddingTop: 16, gap: 12 }}>
-              <SectionHeader
-                title="This week"
-                linkLabel="See all"
-                onLinkPress={() => router.navigate('/plan')}
-              />
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ gap: 14, paddingHorizontal: screenPadding }}
-                style={{ marginHorizontal: -screenPadding }}
-              >
-                {thisWeek.map((item) => (
-                  <ThisWeekCard key={item.key} item={item} onPress={() => router.navigate('/plan')} />
-                ))}
-              </ScrollView>
-              <Hairline />
-            </View>
-          ) : null}
-
-          {recipes.length > 0 ? (
-            <SectionHeader title="All recipes" style={{ paddingTop: 16, paddingBottom: 4 }} />
-          ) : null}
-        </View>
-      ) : null}
-    </View>
-  );
+  const carouselStyle = {
+    marginHorizontal: -screenPadding,
+  } as const;
+  const carouselContent = { gap: 14, paddingHorizontal: screenPadding } as const;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
-      <FlatList
-        data={filtered}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <RecipeRow recipe={item} onPress={() => openRecipe(item.id)} />}
-        ItemSeparatorComponent={Hairline}
-        ListHeaderComponent={header}
-        ListEmptyComponent={
-          recipes.length === 0 ? (
-            <EmptyState
-              message="Your cooking notebook starts here."
-              actionLabel="Add your first recipe"
-              onAction={() => router.push('/capture')}
-            />
-          ) : (
-            <View style={{ paddingVertical: 24 }}>
-              <Muted>No recipes match your search.</Muted>
-            </View>
-          )
-        }
-        contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 24 }}
-      />
+      <ScrollView contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 24 }}>
+        {/* Wordmark + capture icon — discovery only, no search here (v3) */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}>
+          <Text
+            accessibilityRole="header"
+            style={{
+              flex: 1,
+              color: colors.text,
+              fontSize: fontSize.wordmark,
+              letterSpacing: -0.3,
+              fontFamily: fonts.display,
+            }}
+          >
+            Mealy
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Add a recipe"
+            onPress={() => router.push('/capture')}
+            style={({ pressed }) => ({
+              width: minTapTarget,
+              height: minTapTarget,
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: minTapTarget / 2,
+              backgroundColor: pressed ? colors.cardPressed : 'transparent',
+            })}
+          >
+            <Ionicons name="add" size={28} color={colors.text} />
+          </Pressable>
+        </View>
+
+        {recipes.length === 0 ? (
+          <EmptyState
+            message="Your cooking notebook starts here."
+            actionLabel="Add your first recipe"
+            onAction={() => router.push('/capture')}
+          />
+        ) : (
+          <View>
+            {hero ? (
+              <Hero
+                recipe={hero}
+                planned={thisWeekSet.has(hero.id)}
+                onPress={() => openRecipe(hero.id)}
+                onBookmark={() => onBookmark(hero)}
+              />
+            ) : null}
+
+            {carousel.length > 0 ? (
+              <View style={{ paddingTop: 16, gap: 12 }}>
+                <SectionHeader title="Suggested for you" />
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={carouselContent}
+                  style={carouselStyle}
+                >
+                  {carousel.map((recipe) => (
+                    <CarouselCard
+                      key={recipe.id}
+                      recipe={recipe}
+                      planned={thisWeekSet.has(recipe.id)}
+                      onPress={() => openRecipe(recipe.id)}
+                      onBookmark={() => onBookmark(recipe)}
+                    />
+                  ))}
+                </ScrollView>
+                <Hairline />
+              </View>
+            ) : null}
+
+            {thisWeek.length > 0 ? (
+              <View style={{ paddingTop: 16, gap: 12 }}>
+                <SectionHeader
+                  title="This week"
+                  linkLabel="See all"
+                  onLinkPress={() => router.navigate('/plan')}
+                />
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={carouselContent}
+                  style={carouselStyle}
+                >
+                  {thisWeek.map((item) => (
+                    <ThisWeekCard
+                      key={item.key}
+                      item={item}
+                      onPress={() => router.navigate('/plan')}
+                      onBookmark={
+                        item.recipeId
+                          ? () => onBookmark({ id: item.recipeId!, title: item.title })
+                          : undefined
+                      }
+                    />
+                  ))}
+                </ScrollView>
+                <Hairline />
+              </View>
+            ) : null}
+
+            {recentlyAdded.length > 0 ? (
+              <View style={{ paddingTop: 16, gap: 12 }}>
+                <SectionHeader
+                  title="Recently added"
+                  linkLabel="See all"
+                  onLinkPress={() => router.navigate('/search')}
+                />
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={carouselContent}
+                  style={carouselStyle}
+                >
+                  {recentlyAdded.map((recipe) => (
+                    <CarouselCard
+                      key={recipe.id}
+                      recipe={recipe}
+                      planned={thisWeekSet.has(recipe.id)}
+                      onPress={() => openRecipe(recipe.id)}
+                      onBookmark={() => onBookmark(recipe)}
+                    />
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null}
+          </View>
+        )}
+      </ScrollView>
 
       {sheetRecipe ? (
         <AddToWeekSheet
