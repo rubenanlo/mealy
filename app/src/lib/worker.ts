@@ -1,0 +1,323 @@
+import { supabase } from '@/lib/supabase';
+
+// ---------------------------------------------------------------------------
+// Types mirrored from the worker's IngestResult (worker Task 3 models).
+// ---------------------------------------------------------------------------
+
+export type SourceKind = 'url' | 'reel' | 'photo' | 'pdf' | 'paste';
+
+export interface IngredientRow {
+  raw: string;
+  quantity: number | null;
+  unit: string | null;
+  name: string;
+  group: string | null;
+  fodmap: string | null;
+}
+
+export interface CanonicalRecipe {
+  title: string;
+  language: string;
+  servings: number | null;
+  prep_minutes: number | null;
+  cook_minutes: number | null;
+  dish_type: string | null;
+  tags: string[];
+  ingredients: IngredientRow[];
+  steps: string[];
+  nutrition: Record<string, unknown> | null;
+  confidence: number;
+}
+
+export interface Verbatim {
+  kind: SourceKind;
+  url: string | null;
+  json_ld: Record<string, unknown> | null;
+  page_text: string | null;
+  caption: string | null;
+  transcript: string | null;
+  overlay_text: string | null;
+  ocr_text: string | null;
+  pasted: string | null;
+}
+
+export interface IngestResult {
+  verbatim: Verbatim;
+  canonical: CanonicalRecipe | null;
+  needs_review: boolean;
+  image_urls: string[];
+}
+
+export interface MediaAsset {
+  uri: string;
+  mimeType?: string | null;
+  fileName?: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Pure helpers (unit-tested).
+// ---------------------------------------------------------------------------
+
+export type CaptureKind = 'url' | 'social' | 'text';
+
+const SOCIAL_HOSTS = ['instagram.com', 'tiktok.com'];
+
+/** Auto-detect what a pasted string is: a social URL, a plain URL, or recipe text. */
+export function detectCaptureKind(input: string): CaptureKind {
+  const trimmed = input.trim();
+  if (!/^https?:\/\/\S+$/i.test(trimmed)) return 'text';
+  try {
+    const host = new URL(trimmed).hostname.toLowerCase();
+    if (SOCIAL_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))) return 'social';
+  } catch {
+    return 'text';
+  }
+  return 'url';
+}
+
+export interface RecipeRowsContext {
+  householdId: string;
+  userId: string;
+}
+
+export interface RecipeRows {
+  recipe: {
+    household_id: string;
+    title: string;
+    language: string;
+    servings: number | null;
+    prep_minutes: number | null;
+    cook_minutes: number | null;
+    dish_type: string | null;
+    tags: string[];
+    ingredients: IngredientRow[];
+    steps: string[];
+    nutrition: Record<string, unknown> | null;
+    cover_image_path: string | null;
+    needs_review: boolean;
+    created_by: string;
+  };
+  /** recipe_id is filled in after the recipe insert. */
+  source: {
+    kind: SourceKind;
+    url: string | null;
+    verbatim: Verbatim;
+    media_paths: string[];
+  };
+}
+
+/**
+ * Build the `recipes` + `recipe_sources` insert payloads from an IngestResult.
+ * The verbatim layer passes through BYTE-IDENTICAL (spec §3.1): the exact
+ * object received from the worker is used, never copied field-by-field or
+ * re-serialised.
+ */
+export function buildRecipeRows(result: IngestResult, ctx: RecipeRowsContext): RecipeRows {
+  const canonical = result.canonical;
+  if (!canonical) {
+    throw new Error('buildRecipeRows requires a canonical recipe (needs_review flow handles null)');
+  }
+  const remoteCover = result.image_urls.find((u) => u.startsWith('https://')) ?? null;
+  return {
+    recipe: {
+      household_id: ctx.householdId,
+      title: canonical.title,
+      language: canonical.language,
+      servings: canonical.servings,
+      prep_minutes: canonical.prep_minutes,
+      cook_minutes: canonical.cook_minutes,
+      dish_type: canonical.dish_type,
+      tags: canonical.tags,
+      ingredients: canonical.ingredients,
+      steps: canonical.steps,
+      nutrition: canonical.nutrition,
+      cover_image_path: remoteCover,
+      needs_review: result.needs_review,
+      created_by: ctx.userId,
+    },
+    source: {
+      kind: result.verbatim.kind,
+      url: result.verbatim.url,
+      verbatim: result.verbatim,
+      media_paths: [],
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Worker HTTP client.
+// ---------------------------------------------------------------------------
+
+const WORKER_URL = process.env.EXPO_PUBLIC_WORKER_URL;
+
+async function accessToken(): Promise<string> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) throw new Error('Session expirée — reconnectez-vous.');
+  return token;
+}
+
+async function postWorker(path: string, body: FormData | Record<string, unknown>): Promise<IngestResult> {
+  if (!WORKER_URL) throw new Error('EXPO_PUBLIC_WORKER_URL manquant — vérifiez app/.env');
+  const token = await accessToken();
+  const isForm = body instanceof FormData;
+  const response = await fetch(`${WORKER_URL}${path}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(isForm ? {} : { 'Content-Type': 'application/json' }),
+    },
+    body: isForm ? body : JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new Error(`Le service d'import a répondu ${response.status}.`);
+  }
+  return (await response.json()) as IngestResult;
+}
+
+function assetFormPart(asset: MediaAsset, index: number): { uri: string; name: string; type: string } {
+  return {
+    uri: asset.uri,
+    name: asset.fileName ?? `media-${index}`,
+    type: asset.mimeType ?? 'application/octet-stream',
+  };
+}
+
+export async function ingestUrl(url: string): Promise<IngestResult> {
+  return postWorker('/ingest/url', { url });
+}
+
+export async function ingestSocial(url: string): Promise<IngestResult> {
+  return postWorker('/ingest/social', { url });
+}
+
+export async function ingestText(text: string): Promise<IngestResult> {
+  return postWorker('/ingest/text', { text });
+}
+
+export async function ingestImages(assets: MediaAsset[]): Promise<IngestResult> {
+  const form = new FormData();
+  assets.forEach((asset, i) => {
+    form.append('files', assetFormPart(asset, i) as unknown as Blob);
+  });
+  return postWorker('/ingest/images', form);
+}
+
+export async function ingestPdf(asset: MediaAsset): Promise<IngestResult> {
+  const form = new FormData();
+  form.append('file', assetFormPart(asset, 0) as unknown as Blob);
+  return postWorker('/ingest/pdf', form);
+}
+
+// ---------------------------------------------------------------------------
+// Persistence: IngestResult -> Supabase rows (+ media upload).
+// ---------------------------------------------------------------------------
+
+export interface CaptureOutcome {
+  /** null when the worker could not extract a recipe (offer the paste fallback). */
+  recipeId: string | null;
+  result: IngestResult;
+}
+
+async function uploadAsset(path: string, asset: MediaAsset): Promise<void> {
+  const data = await fetch(asset.uri).then((r) => r.arrayBuffer());
+  const { error } = await supabase.storage.from('recipe-media').upload(path, data, {
+    contentType: asset.mimeType ?? 'application/octet-stream',
+    upsert: true,
+  });
+  if (error) throw new Error(`Échec de l'envoi du média : ${error.message}`);
+}
+
+/** Persist an IngestResult: recipes + recipe_sources + recipe_images (+ Storage). */
+export async function persistIngestResult(
+  result: IngestResult,
+  ctx: RecipeRowsContext,
+  localAssets: MediaAsset[] = []
+): Promise<string> {
+  const rows = buildRecipeRows(result, ctx);
+
+  const { data: recipe, error: recipeError } = await supabase
+    .from('recipes')
+    .insert(rows.recipe)
+    .select('id')
+    .single();
+  if (recipeError || !recipe) {
+    throw new Error(`Échec de l'enregistrement de la recette : ${recipeError?.message}`);
+  }
+  const recipeId = recipe.id as string;
+
+  const mediaPaths: string[] = [];
+  for (let i = 0; i < localAssets.length; i++) {
+    const path = `${ctx.householdId}/${recipeId}/${i}`;
+    await uploadAsset(path, localAssets[i]);
+    mediaPaths.push(path);
+  }
+
+  const { error: sourceError } = await supabase.from('recipe_sources').insert({
+    ...rows.source,
+    recipe_id: recipeId,
+    media_paths: mediaPaths,
+  });
+  if (sourceError) {
+    throw new Error(`Échec de l'enregistrement de la source : ${sourceError.message}`);
+  }
+
+  const galleryPaths = [
+    ...mediaPaths,
+    ...result.image_urls.filter((u) => u.startsWith('https://')),
+  ];
+  if (galleryPaths.length > 0) {
+    await supabase.from('recipe_images').insert(
+      galleryPaths.map((path, i) => ({
+        recipe_id: recipeId,
+        storage_path: path,
+        position: i,
+        is_cover: i === 0,
+      }))
+    );
+  }
+
+  if (!rows.recipe.cover_image_path && mediaPaths.length > 0) {
+    await supabase.from('recipes').update({ cover_image_path: mediaPaths[0] }).eq('id', recipeId);
+  }
+
+  return recipeId;
+}
+
+// ---------------------------------------------------------------------------
+// Capture entry points used by the capture screen.
+// ---------------------------------------------------------------------------
+
+async function captureCommon(
+  result: IngestResult,
+  ctx: RecipeRowsContext,
+  localAssets: MediaAsset[] = []
+): Promise<CaptureOutcome> {
+  if (!result.canonical) return { recipeId: null, result };
+  const recipeId = await persistIngestResult(result, ctx, localAssets);
+  return { recipeId, result };
+}
+
+export async function captureFromUrl(url: string, ctx: RecipeRowsContext): Promise<CaptureOutcome> {
+  const kind = detectCaptureKind(url);
+  const result = kind === 'social' ? await ingestSocial(url.trim()) : await ingestUrl(url.trim());
+  return captureCommon(result, ctx);
+}
+
+export async function captureFromText(text: string, ctx: RecipeRowsContext): Promise<CaptureOutcome> {
+  const result = await ingestText(text);
+  return captureCommon(result, ctx);
+}
+
+export async function captureFromImages(
+  assets: MediaAsset[],
+  ctx: RecipeRowsContext
+): Promise<CaptureOutcome> {
+  const result = await ingestImages(assets);
+  return captureCommon(result, ctx, assets);
+}
+
+export async function captureFromPdf(asset: MediaAsset, ctx: RecipeRowsContext): Promise<CaptureOutcome> {
+  const result = await ingestPdf(asset);
+  return captureCommon(result, ctx, [asset]);
+}
