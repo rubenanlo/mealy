@@ -427,7 +427,6 @@ export default function PlanScreen() {
                           label="+ Add"
                           accessibilityLabel={`Add a dish — ${dayLabel} ${SLOT_LABELS[slot]}`}
                           onPress={() => openPicker(day, slot)}
-                          style={{ minHeight: 36 }}
                           textStyle={{ fontSize: fontSize.small }}
                         />
                       </View>
@@ -437,7 +436,12 @@ export default function PlanScreen() {
                         return (
                           <View
                             key={entry.id}
-                            style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 12,
+                              minHeight: 56, // v3: glanceable tap floor for Week rows
+                            }}
                           >
                             <EntryThumb path={recipe?.cover_image_path ?? null} />
                             <View style={{ flex: 1, gap: 3 }}>

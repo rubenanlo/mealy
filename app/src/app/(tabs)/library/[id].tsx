@@ -2,15 +2,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AddToWeekSheet } from '@/components/add-to-week';
+import {
+  AddToWeekSheet,
+  confirmRemoveFromWeek,
+  removeRecipeFromCurrentWeek,
+} from '@/components/add-to-week';
 import { FixMatchSheet } from '@/components/fix-match';
 import { IngredientRow } from '@/components/ingredient-row';
 import {
   Body,
-  Bookmark,
+  BookmarkChip,
   Button,
   Card,
   CategoryDot,
@@ -70,7 +74,17 @@ const KIND_LABELS: Record<SourceKind, string> = {
   paste: 'Pasted text',
 };
 
-function Hero({ path, onBack }: { path: string | null; onBack: () => void }) {
+function Hero({
+  path,
+  onBack,
+  saved,
+  onBookmark,
+}: {
+  path: string | null;
+  onBack: () => void;
+  saved: boolean;
+  onBookmark: () => void;
+}) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const url = useImageUrl(path);
@@ -83,6 +97,9 @@ function Hero({ path, onBack }: { path: string | null; onBack: () => void }) {
       }}
     >
       {url ? <Image source={{ uri: url }} style={{ flex: 1 }} contentFit="cover" /> : null}
+      {path ? (
+        <BookmarkChip saved={saved} onPress={onBookmark} style={{ top: insets.top + 8, right: 12 }} />
+      ) : null}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Back to recipes"
@@ -190,6 +207,7 @@ export default function RecipeDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { colors } = useTheme();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { householdId } = useHousehold();
   const [recipe, setRecipe] = useState<RecipeDetail | null>(null);
   const [sources, setSources] = useState<SourceRow[]>([]);
@@ -323,6 +341,18 @@ export default function RecipeDetailScreen() {
     void load();
   };
 
+  /** Bookmark chip: plan it, or confirm-remove when already in this week (v3). */
+  const onBookmark = () => {
+    if (!recipe) return;
+    if (inThisWeek) {
+      confirmRemoveFromWeek(recipe.title, () => {
+        void removeRecipeFromCurrentWeek(householdId, recipe.id).then(load);
+      });
+    } else {
+      setSheetOpen(true);
+    }
+  };
+
   if (!recipe) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -352,7 +382,12 @@ export default function RecipeDetailScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView contentContainerStyle={{ paddingBottom: 48 }}>
-        <Hero path={heroPath} onBack={() => router.back()} />
+        <Hero
+          path={heroPath}
+          onBack={() => router.back()}
+          saved={inThisWeek}
+          onBookmark={onBookmark}
+        />
 
         <View style={{ padding: screenPadding, gap: 14 }}>
           <Text
@@ -389,17 +424,6 @@ export default function RecipeDetailScreen() {
             onPress={() => setView(view === 'recipe' ? 'source' : 'recipe')}
             style={{ minHeight: 36 }}
           />
-
-          {view === 'recipe' && !editing ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-              <Button
-                label={inThisWeek ? 'Add again this week' : 'Add to this week'}
-                onPress={() => setSheetOpen(true)}
-                style={{ flex: 1 }}
-              />
-              <Bookmark saved={inThisWeek} onPress={() => setSheetOpen(true)} size={26} />
-            </View>
-          ) : null}
 
           {recipe.needs_review && view === 'recipe' && !editing ? (
             <Button label="Mark as reviewed" kind="secondary" onPress={() => void markReviewed()} />
@@ -545,6 +569,25 @@ export default function RecipeDetailScreen() {
           )}
         </View>
       </ScrollView>
+
+      {/* v3: sticky bottom action bar (bg + top hairline + safe area) */}
+      {view === 'recipe' && !editing ? (
+        <View
+          style={{
+            backgroundColor: colors.bg,
+            borderTopWidth: StyleSheet.hairlineWidth,
+            borderTopColor: colors.border,
+            paddingHorizontal: screenPadding,
+            paddingTop: 10,
+            paddingBottom: insets.bottom + 10,
+          }}
+        >
+          <Button
+            label={inThisWeek ? 'Add again this week' : 'Add to this week'}
+            onPress={() => setSheetOpen(true)}
+          />
+        </View>
+      ) : null}
 
       <AddToWeekSheet
         visible={sheetOpen}
