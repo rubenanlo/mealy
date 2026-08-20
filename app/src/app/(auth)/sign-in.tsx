@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Body, Button, Card, Eyebrow, Field, Muted, Title } from '@/components/ui';
+import { Body, Button, Eyebrow, Field, Muted } from '@/components/ui';
 import { supabase } from '@/lib/supabase';
-import { fontSize, screenPadding, useTheme } from '@/lib/theme';
+import { fonts, fontSize, screenPadding, useTheme } from '@/lib/theme';
 
 export default function SignInScreen() {
   const { colors } = useTheme();
@@ -62,30 +62,38 @@ export default function SignInScreen() {
         style={{ flex: 1, justifyContent: 'center', padding: screenPadding, gap: 16 }}
       >
         <View style={{ gap: 6, marginBottom: 8 }}>
-          <Title style={{ fontSize: fontSize.wordmark }}>Mealy</Title>
+          <Text
+            accessibilityRole="header"
+            style={{
+              color: colors.text,
+              fontSize: fontSize.wordmark,
+              letterSpacing: -0.3,
+              fontFamily: fonts.display,
+            }}
+          >
+            Mealy
+          </Text>
           <Eyebrow>The family cooking notebook</Eyebrow>
         </View>
 
         {step === 'email' ? (
           <View style={{ gap: 12 }}>
-            <Card style={{ gap: 16 }}>
-              <Field
-                value={email}
-                onChangeText={setEmail}
-                placeholder="Email address"
-                autoCapitalize="none"
-                autoComplete="email"
-                keyboardType="email-address"
-                autoFocus
-                onSubmitEditing={sendCode}
-              />
-              <Button
-                label="Send a code"
-                onPress={sendCode}
-                loading={busy}
-                disabled={!email.includes('@')}
-              />
-            </Card>
+            <Field
+              value={email}
+              onChangeText={setEmail}
+              placeholder="Email address"
+              autoCapitalize="none"
+              autoComplete="email"
+              keyboardType="email-address"
+              autoFocus
+              onSubmitEditing={sendCode}
+            />
+            <Button
+              label="Send a code"
+              onPress={sendCode}
+              loading={busy}
+              disabled={!email.includes('@')}
+            />
             <Button
               label="Use a password"
               kind="secondary"
@@ -95,46 +103,42 @@ export default function SignInScreen() {
           </View>
         ) : step === 'password' ? (
           <View style={{ gap: 12 }}>
-            <Card style={{ gap: 16 }}>
-              <Muted>Signing in with a password as {email.trim()}.</Muted>
-              <Field
-                value={password}
-                onChangeText={setPassword}
-                placeholder="Password"
-                secureTextEntry
-                autoCapitalize="none"
-                autoFocus
-                onSubmitEditing={signInWithPassword}
-              />
-              <Button
-                label="Sign in"
-                onPress={signInWithPassword}
-                loading={busy}
-                disabled={password.length < 8}
-              />
-            </Card>
+            <Muted>Signing in with a password as {email.trim()}.</Muted>
+            <Field
+              value={password}
+              onChangeText={setPassword}
+              placeholder="Password"
+              secureTextEntry
+              autoCapitalize="none"
+              autoFocus
+              onSubmitEditing={signInWithPassword}
+            />
+            <Button
+              label="Sign in"
+              onPress={signInWithPassword}
+              loading={busy}
+              disabled={password.length < 8}
+            />
             <Button label="Use a different email" kind="secondary" onPress={() => setStep('email')} />
           </View>
         ) : (
           <View style={{ gap: 12 }}>
-            <Card style={{ gap: 16 }}>
-              <Muted>A 6-digit code was sent to {email.trim()}.</Muted>
-              <Field
-                value={code}
-                onChangeText={setCode}
-                placeholder="6-digit code"
-                keyboardType="number-pad"
-                maxLength={6}
-                autoFocus
-                onSubmitEditing={verifyCode}
-              />
-              <Button
-                label="Sign in"
-                onPress={verifyCode}
-                loading={busy}
-                disabled={code.trim().length < 6}
-              />
-            </Card>
+            <Muted>A 6-digit code was sent to {email.trim()}.</Muted>
+            <Field
+              value={code}
+              onChangeText={setCode}
+              placeholder="6-digit code"
+              keyboardType="number-pad"
+              maxLength={6}
+              autoFocus
+              onSubmitEditing={verifyCode}
+            />
+            <Button
+              label="Sign in"
+              onPress={verifyCode}
+              loading={busy}
+              disabled={code.trim().length < 6}
+            />
             <Button label="Use a different email" kind="secondary" onPress={() => setStep('email')} />
           </View>
         )}

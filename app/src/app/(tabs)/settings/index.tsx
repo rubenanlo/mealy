@@ -4,12 +4,13 @@ import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Body, Button, Card, Eyebrow, Field, Muted, Title } from '@/components/ui';
+import { Body, Button, Eyebrow, Field, Hairline, Muted, Title } from '@/components/ui';
 import { useAuth, useHousehold } from '@/lib/auth';
 import { normalizeDietProfile, QUOTA_CATEGORIES, type DietProfile } from '@/lib/diet';
 import { supabase } from '@/lib/supabase';
 import {
   controlHeight,
+  fonts,
   fontSize,
   minTapTarget,
   radius,
@@ -49,14 +50,14 @@ function Stepper({
     else onChange(value + 1);
   };
   const buttonStyle = (pressed: boolean) => ({
-    width: minTapTarget,
-    height: minTapTarget,
-    borderRadius: radius.control,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: pressed ? colors.cardPressed : colors.bg,
+    backgroundColor: pressed ? colors.cardPressed : 'transparent',
   });
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -64,15 +65,16 @@ function Stepper({
         accessibilityRole="button"
         accessibilityLabel={`Decrease ${label}`}
         onPress={dec}
+        hitSlop={6}
         style={({ pressed }) => buttonStyle(pressed)}
       >
-        <Ionicons name="remove" size={20} color={colors.accent} />
+        <Ionicons name="remove" size={18} color={colors.text} />
       </Pressable>
       <Text
         style={{
           color: colors.text,
           fontSize: fontSize.base,
-          fontWeight: '700',
+          fontFamily: fonts.uiSemi,
           fontVariant: ['tabular-nums'],
           minWidth: 26,
           textAlign: 'center',
@@ -84,9 +86,10 @@ function Stepper({
         accessibilityRole="button"
         accessibilityLabel={`Increase ${label}`}
         onPress={inc}
+        hitSlop={6}
         style={({ pressed }) => buttonStyle(pressed)}
       >
-        <Ionicons name="add" size={20} color={colors.accent} />
+        <Ionicons name="add" size={18} color={colors.text} />
       </Pressable>
     </View>
   );
@@ -165,47 +168,33 @@ export default function SettingsScreen() {
         {/* Household */}
         <View style={{ gap: 10 }}>
           <Eyebrow>Household</Eyebrow>
-          <Card style={{ paddingVertical: 4 }}>
-            {persons.map((person) => (
-              <Pressable
-                key={person.id}
-                accessibilityRole="button"
-                accessibilityLabel={`Edit ${person.name}`}
-                onPress={() => router.push(`/settings/person/${person.id}`)}
-                style={({ pressed }) => ({
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  minHeight: controlHeight,
-                  gap: 10,
-                  marginHorizontal: -12,
-                  paddingHorizontal: 12,
-                  borderRadius: 10,
-                  backgroundColor: pressed ? colors.cardPressed : 'transparent',
-                })}
-              >
-                <Body style={{ flex: 1 }}>{person.name}</Body>
-                {person.is_employee ? (
-                  <View
-                    style={{
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      borderRadius: 999,
-                      paddingHorizontal: 8,
-                      paddingVertical: 3,
-                    }}
-                  >
-                    <Text style={{ color: colors.textMuted, fontSize: fontSize.eyebrow, fontWeight: '600' }}>
-                      employee
-                    </Text>
-                  </View>
-                ) : null}
-                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-              </Pressable>
+          <View>
+            {persons.map((person, index) => (
+              <View key={person.id}>
+                {index > 0 ? <Hairline /> : null}
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Edit ${person.name}`}
+                  onPress={() => router.push(`/settings/person/${person.id}`)}
+                  style={({ pressed }) => ({
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    minHeight: controlHeight + 4,
+                    gap: 10,
+                    backgroundColor: pressed ? colors.cardPressed : 'transparent',
+                  })}
+                >
+                  <Body style={{ flex: 1 }}>{person.name}</Body>
+                  {person.is_employee ? <Muted>employee</Muted> : null}
+                  <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                </Pressable>
+              </View>
             ))}
             {persons.length === 0 ? (
               <Muted style={{ paddingVertical: 12 }}>No people yet. Add the household below.</Muted>
             ) : null}
-          </Card>
+            <Hairline />
+          </View>
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <Field
               value={newPersonName}
@@ -227,34 +216,50 @@ export default function SettingsScreen() {
             .map((person) => {
               const profile = normalizeDietProfile(person.diet_profile);
               return (
-                <Card key={person.id} style={{ gap: 10 }}>
-                  <Body style={{ fontWeight: '700' }}>{person.name}</Body>
-                  {QUOTA_CATEGORIES.map(({ category, label }) => {
+                <View key={person.id} style={{ gap: 8, paddingTop: 6 }}>
+                  <Text
+                    style={{
+                      color: colors.text,
+                      fontSize: fontSize.cardTitle,
+                      fontFamily: fonts.displaySemi,
+                    }}
+                  >
+                    {person.name}
+                  </Text>
+                  {QUOTA_CATEGORIES.map(({ category, label }, index) => {
                     const target = profile.proteinQuotas.targets.find(
                       (t) => t.category === category
                     )!;
                     return (
-                      <View
-                        key={category}
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
-                      >
-                        <Body style={{ flex: 1 }}>{label}</Body>
-                        <Stepper
-                          value={target.min}
-                          label={`minimum ${label}`}
-                          onChange={(v) => void updateQuota(person, category, 'min', v)}
-                        />
-                        <Muted>–</Muted>
-                        <Stepper
-                          value={target.max}
-                          allowNull
-                          label={`maximum ${label}`}
-                          onChange={(v) => void updateQuota(person, category, 'max', v)}
-                        />
+                      <View key={category}>
+                        {index > 0 ? <Hairline /> : null}
+                        <View
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 8,
+                            paddingVertical: 6,
+                          }}
+                        >
+                          <Body style={{ flex: 1 }}>{label}</Body>
+                          <Stepper
+                            value={target.min}
+                            label={`minimum ${label}`}
+                            onChange={(v) => void updateQuota(person, category, 'min', v)}
+                          />
+                          <Muted>–</Muted>
+                          <Stepper
+                            value={target.max}
+                            allowNull
+                            label={`maximum ${label}`}
+                            onChange={(v) => void updateQuota(person, category, 'max', v)}
+                          />
+                        </View>
                       </View>
                     );
                   })}
-                </Card>
+                  <Hairline />
+                </View>
               );
             })}
         </View>
@@ -301,20 +306,20 @@ export default function SettingsScreen() {
                     borderRadius: radius.control,
                     alignItems: 'center',
                     justifyContent: 'center',
-                    borderWidth: 1,
-                    borderColor: selected ? colors.accent : colors.border,
                     backgroundColor: selected
-                      ? colors.accent
+                      ? colors.text
                       : pressed
                         ? colors.cardPressed
-                        : colors.card,
+                        : 'transparent',
+                    borderWidth: selected ? 0 : 1,
+                    borderColor: colors.border,
                   })}
                 >
                   <Text
                     style={{
-                      color: selected ? colors.accentText : colors.text,
+                      color: selected ? colors.bg : colors.text,
                       fontSize: fontSize.base,
-                      fontWeight: '600',
+                      fontFamily: fonts.uiMedium,
                     }}
                   >
                     {label}

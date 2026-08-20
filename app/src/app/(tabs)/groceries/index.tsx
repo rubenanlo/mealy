@@ -5,12 +5,12 @@ import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Card, EmptyState, Eyebrow, FadeRise, Title } from '@/components/ui';
+import { EmptyState, Eyebrow, Hairline, Title } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
 import { dayDate, weekStart } from '@/lib/plan';
 import { collectWeekIngredients, type ShoppingGroup } from '@/lib/shopping';
 import { supabase } from '@/lib/supabase';
-import { fontSize, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
+import { fonts, fontSize, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
 import type { IngredientRow } from '@/lib/worker';
 
 const CHECKED_KEY_PREFIX = 'mealy.groceries.checked.';
@@ -50,28 +50,30 @@ function ChecklistRow({
         alignItems: 'center',
         gap: 12,
         minHeight: minTapTarget,
-        opacity: pressed ? 0.7 : 1,
+        backgroundColor: pressed ? colors.cardPressed : 'transparent',
       })}
     >
+      {/* 26px round checkbox: red fill + white check when done */}
       <View
         style={{
-          width: 28,
-          height: 28,
-          borderRadius: 8,
-          borderWidth: 2,
-          borderColor: checked ? colors.accent : colors.border,
+          width: 26,
+          height: 26,
+          borderRadius: 13,
+          borderWidth: checked ? 0 : 1.5,
+          borderColor: colors.textMuted,
           backgroundColor: checked ? colors.accent : 'transparent',
           alignItems: 'center',
           justifyContent: 'center',
         }}
       >
-        {checked ? <Ionicons name="checkmark" size={18} color={colors.accentText} /> : null}
+        {checked ? <Ionicons name="checkmark" size={16} color={colors.accentText} /> : null}
       </View>
       <Text
         style={{
           flex: 1,
           color: textColor,
           fontSize: fontSize.base,
+          fontFamily: fonts.ui,
           textDecorationLine: checked ? 'line-through' : 'none',
         }}
       >
@@ -82,6 +84,7 @@ function ChecklistRow({
           style={{
             color: textColor,
             fontSize: fontSize.base,
+            fontFamily: fonts.ui,
             fontVariant: ['tabular-nums'],
             textAlign: 'right',
             textDecorationLine: checked ? 'line-through' : 'none',
@@ -186,34 +189,49 @@ export default function GroceriesScreen() {
         />
       ) : (
         <ScrollView
-          contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 32, gap: 12 }}
+          contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 32 }}
         >
           {groups.map((group, groupIndex) => (
-            <FadeRise key={`${group.recipeId}-${groupIndex}`} index={groupIndex}>
-              <View style={{ gap: 8 }}>
-                <Eyebrow>{group.recipeTitle}</Eyebrow>
-                <Card style={{ paddingVertical: 6 }}>
-                  {group.items.map((item, itemIndex) => {
-                    const key = `${groupIndex}:${itemIndex}`;
-                    return (
-                      <ChecklistRow
-                        key={key}
-                        name={item.name}
-                        quantity={item.quantity}
-                        unit={item.unit}
-                        checked={checked.has(key)}
-                        onToggle={() => toggle(key)}
-                      />
-                    );
-                  })}
-                  {group.items.length === 0 ? (
-                    <Text style={{ color: colors.textMuted, fontSize: fontSize.small, paddingVertical: 8 }}>
-                      No ingredients extracted for this recipe.
-                    </Text>
-                  ) : null}
-                </Card>
-              </View>
-            </FadeRise>
+            <View key={`${group.recipeId}-${groupIndex}`} style={{ paddingTop: groupIndex === 0 ? 4 : 20 }}>
+              <Text
+                style={{
+                  color: colors.text,
+                  fontSize: fontSize.dayName,
+                  letterSpacing: -0.2,
+                  fontFamily: fonts.displaySemi,
+                  paddingBottom: 6,
+                }}
+              >
+                {group.recipeTitle}
+              </Text>
+              {group.items.map((item, itemIndex) => {
+                const key = `${groupIndex}:${itemIndex}`;
+                return (
+                  <View key={key}>
+                    {itemIndex > 0 ? <Hairline /> : null}
+                    <ChecklistRow
+                      name={item.name}
+                      quantity={item.quantity}
+                      unit={item.unit}
+                      checked={checked.has(key)}
+                      onToggle={() => toggle(key)}
+                    />
+                  </View>
+                );
+              })}
+              {group.items.length === 0 ? (
+                <Text
+                  style={{
+                    color: colors.textMuted,
+                    fontSize: fontSize.meta,
+                    fontFamily: fonts.uiMedium,
+                    paddingVertical: 8,
+                  }}
+                >
+                  No ingredients extracted for this recipe.
+                </Text>
+              ) : null}
+            </View>
           ))}
         </ScrollView>
       )}

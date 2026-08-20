@@ -1,7 +1,7 @@
 import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Body, Button, Card, Title } from '@/components/ui';
+import { Body, Button, Title } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { screenPadding, useTheme } from '@/lib/theme';
 
@@ -13,12 +13,10 @@ export default function NoAccessScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       <View style={{ flex: 1, justifyContent: 'center', padding: screenPadding, gap: 16 }}>
         <Title>Invitation only</Title>
-        <Card style={{ gap: 12 }}>
-          <Body>
-            This account is not part of any household. Ask the household owner for an
-            invitation, then sign in again with the invited email address.
-          </Body>
-        </Card>
+        <Body>
+          This account is not part of any household. Ask the household owner for an
+          invitation, then sign in again with the invited email address.
+        </Body>
         <Button label="Sign out" kind="secondary" onPress={() => void signOut()} />
       </View>
     </SafeAreaView>

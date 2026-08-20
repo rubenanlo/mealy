@@ -4,10 +4,10 @@ import { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Body, Button, Card, Eyebrow, Field, Muted, Title } from '@/components/ui';
+import { Body, Button, Eyebrow, Field, Hairline, Muted, Title } from '@/components/ui';
 import { FODMAP_MODES, normalizeDietProfile, type DietProfile } from '@/lib/diet';
 import { supabase } from '@/lib/supabase';
-import { fontSize, minTapTarget, radius, screenPadding, useTheme } from '@/lib/theme';
+import { fonts, fontSize, minTapTarget, radius, screenPadding, useTheme } from '@/lib/theme';
 
 function TagEditor({
   label,
@@ -42,7 +42,7 @@ function TagEditor({
               flexDirection: 'row',
               alignItems: 'center',
               gap: 6,
-              backgroundColor: pressed ? colors.cardPressed : colors.card,
+              backgroundColor: pressed ? colors.cardPressed : 'transparent',
               borderWidth: 1,
               borderColor: colors.border,
               borderRadius: 999,
@@ -50,7 +50,9 @@ function TagEditor({
               minHeight: 40,
             })}
           >
-            <Text style={{ color: colors.text, fontSize: fontSize.small }}>{value}</Text>
+            <Text style={{ color: colors.text, fontSize: fontSize.small, fontFamily: fonts.ui }}>
+              {value}
+            </Text>
             <Ionicons name="close" size={16} color={colors.textMuted} />
           </Pressable>
         ))}
@@ -157,8 +159,8 @@ export default function PersonScreen() {
             opacity: pressed ? 0.7 : 1,
           })}
         >
-          <Ionicons name="chevron-back" size={20} color={colors.accent} />
-          <Body style={{ color: colors.accent, fontWeight: '600' }}>Settings</Body>
+          <Ionicons name="chevron-back" size={20} color={colors.text} />
+          <Body style={{ fontFamily: fonts.uiSemi }}>Settings</Body>
         </Pressable>
         <Title>{name || 'Person'}</Title>
 
@@ -167,16 +169,25 @@ export default function PersonScreen() {
           <Field value={name} onChangeText={setName} placeholder="Name" />
         </View>
 
-        <Card
-          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
-        >
-          <Body>Household employee</Body>
-          <Switch
-            value={isEmployee}
-            onValueChange={setIsEmployee}
-            trackColor={{ true: colors.accent }}
-          />
-        </Card>
+        <View>
+          <Hairline />
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              minHeight: 52,
+            }}
+          >
+            <Body>Household employee</Body>
+            <Switch
+              value={isEmployee}
+              onValueChange={setIsEmployee}
+              trackColor={{ true: colors.accent }}
+            />
+          </View>
+          <Hairline />
+        </View>
 
         <View style={{ gap: 10 }}>
           <Eyebrow>FODMAP</Eyebrow>
@@ -197,20 +208,20 @@ export default function PersonScreen() {
                     paddingHorizontal: 16,
                     alignItems: 'center',
                     justifyContent: 'center',
-                    borderWidth: 1,
-                    borderColor: selected ? colors.accent : colors.border,
+                    borderWidth: selected ? 0 : 1,
+                    borderColor: colors.border,
                     backgroundColor: selected
-                      ? colors.accent
+                      ? colors.text
                       : pressed
                         ? colors.cardPressed
-                        : colors.card,
+                        : 'transparent',
                   })}
                 >
                   <Text
                     style={{
-                      color: selected ? colors.accentText : colors.text,
+                      color: selected ? colors.bg : colors.text,
                       fontSize: fontSize.base,
-                      fontWeight: '600',
+                      fontFamily: fonts.uiMedium,
                     }}
                   >
                     {label}

@@ -3,13 +3,13 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Body, Button, Field, Muted, PressCard, Title } from '@/components/ui';
+import { Body, Button, Field, Muted, Title } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
-import { fontSize, screenPadding, useTheme } from '@/lib/theme';
+import { controlHeight, fonts, fontSize, radius, screenPadding, useTheme } from '@/lib/theme';
 import {
   captureFromImages,
   captureFromPdf,
@@ -125,28 +125,38 @@ export default function CaptureScreen() {
             disabled={input.trim().length === 0}
           />
           <View style={{ flexDirection: 'row', gap: 12 }}>
-            <PressCard
-              onPress={() => void pickPhotos()}
-              disabled={busy}
-              accessibilityLabel="Import from photos"
-              style={{ flex: 1, alignItems: 'center', gap: 8, paddingVertical: 20 }}
-            >
-              <Ionicons name="images-outline" size={26} color={colors.accent} />
-              <Text style={{ color: colors.text, fontSize: fontSize.base, fontWeight: '600' }}>
-                Photos
-              </Text>
-            </PressCard>
-            <PressCard
-              onPress={() => void pickPdf()}
-              disabled={busy}
-              accessibilityLabel="Import a PDF"
-              style={{ flex: 1, alignItems: 'center', gap: 8, paddingVertical: 20 }}
-            >
-              <Ionicons name="document-outline" size={26} color={colors.accent} />
-              <Text style={{ color: colors.text, fontSize: fontSize.base, fontWeight: '600' }}>
-                PDF
-              </Text>
-            </PressCard>
+            {(
+              [
+                ['Photos', 'images-outline', () => void pickPhotos(), 'Import from photos'],
+                ['PDF', 'document-outline', () => void pickPdf(), 'Import a PDF'],
+              ] as const
+            ).map(([label, icon, onPress, a11y]) => (
+              <Pressable
+                key={label}
+                accessibilityRole="button"
+                accessibilityLabel={a11y}
+                onPress={onPress}
+                disabled={busy}
+                style={({ pressed }) => ({
+                  flex: 1,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  minHeight: controlHeight,
+                  borderRadius: radius.control,
+                  borderWidth: 1,
+                  borderColor: colors.text,
+                  backgroundColor: pressed ? colors.cardPressed : 'transparent',
+                  opacity: busy ? 0.45 : 1,
+                })}
+              >
+                <Ionicons name={icon} size={20} color={colors.text} />
+                <Text style={{ color: colors.text, fontSize: fontSize.base, fontFamily: fonts.uiSemi }}>
+                  {label}
+                </Text>
+              </Pressable>
+            ))}
           </View>
           {busy ? <Muted>Analyzing…</Muted> : null}
           <Button label="Cancel" kind="secondary" onPress={() => router.back()} disabled={busy} />
