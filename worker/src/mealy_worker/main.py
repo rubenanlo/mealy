@@ -15,6 +15,7 @@ from .auth import verify_token
 from .ingest.media import ingest_images, ingest_pdf
 from .ingest.social import ingest_social
 from .ingest.url import ingest_url
+from .matching import IngredientMatch, match_ingredients
 from .models import IngestResult, Verbatim
 from .structure import structure_text
 
@@ -27,6 +28,15 @@ class UrlBody(BaseModel):
 
 class TextBody(BaseModel):
     text: str
+
+
+class MatchBody(BaseModel):
+    lines: list[str]
+    candidates: list[str]
+
+
+class MatchResponse(BaseModel):
+    matches: list[IngredientMatch]
 
 
 @app.get("/health")
@@ -48,6 +58,14 @@ async def ingest_text_route(body: TextBody, _claims: dict = Depends(verify_token
         canonical=canonical,
         needs_review=canonical.confidence < 0.6,
     )
+
+
+@app.post("/match/ingredients", response_model=MatchResponse)
+async def match_ingredients_route(
+    body: MatchBody, _claims: dict = Depends(verify_token)
+) -> MatchResponse:
+    """LLM fallback matcher: raw lines → candidate slug or null (Phase 2 §4)."""
+    return MatchResponse(matches=await match_ingredients(body.lines, body.candidates))
 
 
 @app.post("/ingest/social", response_model=IngestResult)
