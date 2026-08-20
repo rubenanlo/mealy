@@ -18,6 +18,7 @@ dependencies = [
     "pypdf",
     "pypdfium2",
     "pillow",
+    "osxphotos>=0.76.1",
 ]
 
 [dependency-groups]
