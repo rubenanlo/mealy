@@ -105,3 +105,13 @@ Home header: the Mealy brand icon (assets/images/brand-icon-source.png, transpar
 
 # Web icon reliability
 Ionicons must render on web (current bug: triangle placeholders): load the icon font explicitly via expo-font in the root layout (`useFonts({ ...Ionicons.font })` style) alongside the text fonts, and keep the splash until loaded.
+
+---
+
+# v3.2 — recipe page interactions
+
+## Bottom-sheet recipe presentation
+Tapping a recipe anywhere presents the detail as a card from the bottom: covers 95% of the screen (top 5% shows the dimmed screen behind), top corners radius 16 (top only), slide-up 280ms ease-out (reduced-motion: fade). Implementation: move the detail route OUT of the tab group to a root modal route (`src/app/recipe/[id].tsx`); iOS native uses stack `presentation: 'modal'` (pageSheet gives the peek + rounded top natively); Android/web use slide_from_bottom + a 5%-top-inset rounded container over a dimmed backdrop; swipe-down (iOS) and backdrop-tap/close chevron dismiss. All entry points (home hero/carousels, search rows, week entries, groceries parts, This-week strip) navigate to the new route. The sticky "Add to this week" bar stays inside the sheet, above its bottom edge.
+
+## Pinned ingredients while reading steps
+When the STEPS section header scrolls past the top of the sheet, a pinned bar appears (bg, bottom hairline, 44px): "Ingredients" + chevron. Tap → 200ms expand of a panel (max-height 60% of sheet, internally scrollable) listing ingredients name-left / quantity-right (tabular), raw line omitted here for density; tap the bar again or any step to collapse. Panel and bar disappear when scrolled back above the steps. Reduced-motion: instant toggle. The bar must not overlap the close affordance.
