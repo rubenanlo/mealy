@@ -10,7 +10,8 @@ export default function SignInScreen() {
   const { colors } = useTheme();
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
-  const [step, setStep] = useState<'email' | 'code'>('email');
+  const [password, setPassword] = useState('');
+  const [step, setStep] = useState<'email' | 'code' | 'password'>('email');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,6 +42,19 @@ export default function SignInScreen() {
     // On success the auth listener re-routes to the tabs.
   };
 
+  const signInWithPassword = async () => {
+    setBusy(true);
+    setError(null);
+    const { error: err } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+    setBusy(false);
+    if (err) {
+      setError('E-mail ou mot de passe incorrect.');
+    }
+  };
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       <KeyboardAvoidingView
@@ -67,6 +81,32 @@ export default function SignInScreen() {
               loading={busy}
               disabled={!email.includes('@')}
             />
+            <Button
+              label="Utiliser un mot de passe"
+              kind="secondary"
+              onPress={() => setStep('password')}
+              disabled={!email.includes('@')}
+            />
+          </View>
+        ) : step === 'password' ? (
+          <View style={{ gap: 16 }}>
+            <Muted>Connexion avec mot de passe pour {email.trim()}.</Muted>
+            <Field
+              value={password}
+              onChangeText={setPassword}
+              placeholder="Mot de passe"
+              secureTextEntry
+              autoCapitalize="none"
+              autoFocus
+              onSubmitEditing={signInWithPassword}
+            />
+            <Button
+              label="Se connecter"
+              onPress={signInWithPassword}
+              loading={busy}
+              disabled={password.length < 8}
+            />
+            <Button label="Changer d'adresse" kind="secondary" onPress={() => setStep('email')} />
           </View>
         ) : (
           <View style={{ gap: 16 }}>
