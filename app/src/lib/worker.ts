@@ -285,7 +285,9 @@ async function uploadAsset(path: string, asset: MediaAsset): Promise<void> {
 export async function persistIngestResult(
   result: IngestResult,
   ctx: RecipeRowsContext,
-  localAssets: MediaAsset[] = []
+  localAssets: MediaAsset[] = [],
+  /** User-entered capture URL — kept even if the worker's verbatim drops it. */
+  sourceUrl: string | null = null
 ): Promise<string> {
   const rows = buildRecipeRows(result, ctx);
 
@@ -308,6 +310,7 @@ export async function persistIngestResult(
 
   const { error: sourceError } = await supabase.from('recipe_sources').insert({
     ...rows.source,
+    url: rows.source.url ?? sourceUrl,
     recipe_id: recipeId,
     media_paths: mediaPaths,
   });
@@ -344,17 +347,18 @@ export async function persistIngestResult(
 async function captureCommon(
   result: IngestResult,
   ctx: RecipeRowsContext,
-  localAssets: MediaAsset[] = []
+  localAssets: MediaAsset[] = [],
+  sourceUrl: string | null = null
 ): Promise<CaptureOutcome> {
   if (!result.canonical) return { recipeId: null, result };
-  const recipeId = await persistIngestResult(result, ctx, localAssets);
+  const recipeId = await persistIngestResult(result, ctx, localAssets, sourceUrl);
   return { recipeId, result };
 }
 
 export async function captureFromUrl(url: string, ctx: RecipeRowsContext): Promise<CaptureOutcome> {
   const kind = detectCaptureKind(url);
   const result = kind === 'social' ? await ingestSocial(url.trim()) : await ingestUrl(url.trim());
-  return captureCommon(result, ctx);
+  return captureCommon(result, ctx, [], url.trim());
 }
 
 export async function captureFromText(text: string, ctx: RecipeRowsContext): Promise<CaptureOutcome> {

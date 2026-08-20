@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import {
   Animated,
   Easing,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -208,12 +209,38 @@ function VerbatimBlock({ label, text }: { label: string; text: string | null }) 
 }
 
 function SourceView({ sources }: { sources: SourceRow[] }) {
+  const { colors } = useTheme();
+  // URL and reel captures store the original link; photo/paste/PDF are null.
+  const sourceUrl = sources.find((s) => s.url)?.url ?? null;
   return (
     <View style={{ gap: 20 }}>
+      {sourceUrl ? (
+        <View style={{ gap: 4 }}>
+          <Eyebrow>Source</Eyebrow>
+          <Pressable
+            accessibilityRole="link"
+            accessibilityLabel={`Open the original source, ${sourceUrl}`}
+            onPress={() => Linking.openURL(sourceUrl).catch(() => {})}
+            style={({ pressed }) => ({
+              minHeight: minTapTarget,
+              justifyContent: 'center',
+              opacity: pressed ? 0.6 : 1,
+            })}
+          >
+            <Text
+              numberOfLines={1}
+              ellipsizeMode="middle"
+              style={{ color: colors.accent, fontSize: fontSize.base, fontFamily: fonts.uiSemi }}
+            >
+              {sourceUrl}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
       {sources.map((source) => (
         <View key={source.id} style={{ gap: 12 }}>
           <Body style={{ fontFamily: fonts.uiSemi }}>{KIND_LABELS[source.kind] ?? source.kind}</Body>
-          {source.url ? <Muted>{source.url}</Muted> : null}
+          {source.url && source.url !== sourceUrl ? <Muted>{source.url}</Muted> : null}
           <VerbatimBlock label="Pasted text" text={source.verbatim.pasted} />
           <VerbatimBlock label="Page text" text={source.verbatim.page_text} />
           <VerbatimBlock label="Caption" text={source.verbatim.caption} />
