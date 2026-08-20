@@ -135,7 +135,7 @@ export default function SearchScreen() {
         data={filtered}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <RecipeRow recipe={item} onPress={() => router.push(`/library/${item.id}`)} />
+          <RecipeRow recipe={item} onPress={() => router.push(`/recipe/${item.id}`)} />
         )}
         ItemSeparatorComponent={Hairline}
         ListEmptyComponent={

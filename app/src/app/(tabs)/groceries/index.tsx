@@ -63,7 +63,7 @@ function CheckRow({
   expandable?: boolean;
   expanded?: boolean;
   onExpand?: () => void;
-  sub?: string[];
+  sub?: { text: string; onPress?: () => void }[];
 }) {
   const { colors } = useTheme();
   const textColor = checked ? colors.textMuted : colors.text;
@@ -173,9 +173,21 @@ function CheckRow({
       </View>
       {expanded && sub && sub.length > 0 ? (
         <View style={{ paddingLeft: 38, paddingBottom: 8, gap: 2 }}>
-          {sub.map((lineText, i) => (
-            <Muted key={i}>{lineText}</Muted>
-          ))}
+          {sub.map((part, i) =>
+            part.onPress ? (
+              <Pressable
+                key={i}
+                accessibilityRole="button"
+                accessibilityLabel={`Open recipe — ${part.text}`}
+                onPress={part.onPress}
+                style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, minHeight: 28, justifyContent: 'center' })}
+              >
+                <Muted>{part.text}</Muted>
+              </Pressable>
+            ) : (
+              <Muted key={i}>{part.text}</Muted>
+            )
+          )}
         </View>
       ) : null}
     </View>
@@ -251,6 +263,7 @@ export default function GroceriesScreen() {
           quantity: item.quantity,
           unit: item.unit,
           recipeTitle: group.recipeTitle,
+          recipeId: group.recipeId,
         }))
       );
       setHasEntries(entries.length > 0);
@@ -467,7 +480,13 @@ export default function GroceriesScreen() {
                     expandable={item.parts.length > 1}
                     expanded={expandedKeys.has(item.key)}
                     onExpand={() => toggleExpanded(item.key)}
-                    sub={item.parts.map((part) => `${part.qty} — ${part.recipeTitle}`)}
+                    sub={item.parts.map((part) => ({
+                      text: `${part.qty} — ${part.recipeTitle}`,
+                      // v3.2: part rows deep-link to the recipe sheet.
+                      onPress: part.recipeId
+                        ? () => router.push(`/recipe/${part.recipeId}`)
+                        : undefined,
+                    }))}
                   />
                 </View>
               ))}

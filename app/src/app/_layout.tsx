@@ -9,7 +9,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, Platform, View } from 'react-native';
 
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { ThemeProvider, useTheme } from '@/lib/theme';
@@ -52,6 +52,18 @@ function RootStack() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="settings" />
         <Stack.Screen name="capture" options={{ presentation: 'modal' }} />
+        {/* v3.2 bottom-sheet recipe page. iOS: native pageSheet (peek +
+            rounded top + swipe-down). Android/web: transparent modal — the
+            screen draws its own dimmed backdrop, 95%-height rounded
+            container and slide-up animation (reduced-motion → fade). */}
+        <Stack.Screen
+          name="recipe/[id]"
+          options={
+            Platform.OS === 'ios'
+              ? { presentation: 'modal' }
+              : { presentation: 'transparentModal', animation: 'none' }
+          }
+        />
       </Stack.Protected>
     </Stack>
   );

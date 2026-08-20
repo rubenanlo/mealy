@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { FlatList, Modal, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -142,6 +142,7 @@ export default function PlanScreen() {
   const { colors } = useTheme();
   const { householdId } = useHousehold();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
 
   const [weekIso, setWeekIso] = useState(() => weekStart(new Date()));
   const [plan, setPlan] = useState<MealPlanRow | null>(null);
@@ -459,6 +460,21 @@ export default function PlanScreen() {
                               minHeight: 56, // v3: glanceable tap floor for Week rows
                             }}
                           >
+                            {/* v3.2: tapping a planned recipe opens the sheet */}
+                            <Pressable
+                              accessibilityRole="button"
+                              accessibilityLabel={`Open ${entry.custom_title ?? recipe?.title ?? 'recipe'}`}
+                              disabled={!recipe}
+                              onPress={() => recipe && router.push(`/recipe/${recipe.id}`)}
+                              style={({ pressed }) => ({
+                                flex: 1,
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 12,
+                                borderRadius: radius.thumb,
+                                backgroundColor: pressed && recipe ? colors.cardPressed : 'transparent',
+                              })}
+                            >
                             <EntryThumb path={recipe?.cover_image_path ?? null} />
                             <View style={{ flex: 1, gap: 3 }}>
                               <Text
@@ -486,6 +502,7 @@ export default function PlanScreen() {
                                 )}
                               </View>
                             </View>
+                            </Pressable>
                             <Pressable
                               accessibilityRole="button"
                               accessibilityLabel="Remove this dish"

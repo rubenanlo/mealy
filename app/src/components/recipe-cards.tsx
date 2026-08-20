@@ -209,7 +209,7 @@ export function ThisWeekCard({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Open the week — ${item.title}`}
+      accessibilityLabel={`Open ${item.title}`}
       onPress={onPress}
       style={({ pressed }) => ({ width: 110, opacity: pressed ? 0.7 : 1 })}
     >

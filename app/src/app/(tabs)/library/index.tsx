@@ -123,7 +123,7 @@ export default function HomeScreen() {
     [weekEntries]
   );
 
-  const openRecipe = (id: string) => router.push(`/library/${id}`);
+  const openRecipe = (id: string) => router.push(`/recipe/${id}`);
 
   /** Bookmark tap: plan it, or confirm-remove when already in this week (v3). */
   const onBookmark = (recipe: { id: string; title: string }) => {
@@ -149,7 +149,8 @@ export default function HomeScreen() {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 }}>
           <Image
             source={require('../../../../assets/images/brand-icon-source.png')}
-            style={{ width: 28, height: 28 }}
+            // ~wordmark cap height (Bitter 700/30); nudged for optical balance.
+            style={{ width: 40, height: 40, marginTop: -2 }}
             accessibilityIgnoresInvertColors
           />
           <Text
@@ -178,6 +179,22 @@ export default function HomeScreen() {
             })}
           >
             <Ionicons name="add" size={28} color={colors.text} />
+          </Pressable>
+          {/* v3.1b: Settings left the tab bar — NYT top-right gear, icon only */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Settings"
+            onPress={() => router.push('/settings')}
+            style={({ pressed }) => ({
+              width: minTapTarget,
+              height: minTapTarget,
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: minTapTarget / 2,
+              backgroundColor: pressed ? colors.cardPressed : 'transparent',
+            })}
+          >
+            <Ionicons name="settings-outline" size={24} color={colors.text} />
           </Pressable>
         </View>
 
@@ -238,7 +255,10 @@ export default function HomeScreen() {
                     <ThisWeekCard
                       key={item.key}
                       item={item}
-                      onPress={() => router.navigate('/plan')}
+                      // v3.2: recipe entries open the sheet; custom meals open the week.
+                      onPress={() =>
+                        item.recipeId ? openRecipe(item.recipeId) : router.navigate('/plan')
+                      }
                       onBookmark={
                         item.recipeId
                           ? () => onBookmark({ id: item.recipeId!, title: item.title })

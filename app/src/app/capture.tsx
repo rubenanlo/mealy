@@ -33,7 +33,7 @@ export default function CaptureScreen() {
 
   const finish = (outcome: CaptureOutcome) => {
     if (outcome.recipeId) {
-      router.replace(`/library/${outcome.recipeId}`);
+      router.replace(`/recipe/${outcome.recipeId}`);
     } else {
       setNeedsPaste(true);
     }

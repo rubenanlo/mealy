@@ -13,11 +13,15 @@ export interface AggregateLine {
   quantity: number | null;
   unit: string | null;
   recipeTitle: string;
+  /** Source recipe id, when known — lets part rows deep-link (v3.2). */
+  recipeId?: string;
 }
 
 export interface AggregatedPart {
   recipeTitle: string;
   qty: string;
+  /** Source recipe id, when known. */
+  recipeId?: string;
 }
 
 export interface AggregatedItem {
@@ -195,7 +199,11 @@ export function aggregate(
       canonical,
       grams: hasGrams && unconverted === 0 ? round(grams) : null,
       displayQty: displayParts.join(' + '),
-      parts: bucketLines.map((line) => ({ recipeTitle: line.recipeTitle, qty: partQty(line) })),
+      parts: bucketLines.map((line) => ({
+        recipeTitle: line.recipeTitle,
+        qty: partQty(line),
+        recipeId: line.recipeId,
+      })),
       mixed,
     });
   }
