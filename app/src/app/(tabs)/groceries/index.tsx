@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Share, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EmptyState, Eyebrow, Hairline, Muted, Title } from '@/components/ui';
 import {
@@ -197,6 +197,7 @@ function CheckRow({
 export default function GroceriesScreen() {
   const { colors } = useTheme();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { householdId } = useHousehold();
   const { session } = useAuth();
   const userId = session?.user.id ?? null;
@@ -453,7 +454,12 @@ export default function GroceriesScreen() {
           onAction={() => router.navigate('/plan')}
         />
       ) : (
-        <ScrollView contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: tabBarClearance }}>
+        <ScrollView
+          contentContainerStyle={{
+            paddingHorizontal: screenPadding,
+            paddingBottom: insets.bottom + tabBarClearance,
+          }}
+        >
           {aisles.map((group, groupIndex) => (
             <View key={group.aisle} style={{ paddingTop: groupIndex === 0 ? 4 : 20 }}>
               <Text

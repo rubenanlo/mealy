@@ -33,11 +33,13 @@ function CapsuleTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          justifyContent: 'space-evenly',
+          // Items breathe inside the capsule's rounded ends: the active blob
+          // must never touch the capsule edge (checked at 390pt width).
+          justifyContent: 'space-between',
           height: 64,
           borderRadius: 999,
           backgroundColor: colors.card,
-          paddingHorizontal: 6,
+          paddingHorizontal: 20,
           ...Platform.select({
             ios: {
               shadowColor: '#000000',
@@ -76,7 +78,7 @@ function CapsuleTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
               accessibilityState={{ selected: focused }}
               accessibilityLabel={options.tabBarAccessibilityLabel ?? label}
               onPress={onPress}
-              style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+              style={{ alignItems: 'center', justifyContent: 'center' }}
             >
               <View
                 style={{

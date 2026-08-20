@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   AddToWeekSheet,
@@ -25,6 +25,7 @@ import { fonts, fontSize, minTapTarget, screenPadding, tabBarClearance, useTheme
 export default function HomeScreen() {
   const { colors } = useTheme();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { householdId } = useHousehold();
 
   const [recipes, setRecipes] = useState<RecipeListItem[]>([]);
@@ -154,7 +155,12 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: tabBarClearance }}>
+      <ScrollView
+        contentContainerStyle={{
+          paddingHorizontal: screenPadding,
+          paddingBottom: insets.bottom + tabBarClearance,
+        }}
+      >
         {/* Brand lockup + capture icon — discovery only, no search here (v3) */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 }}>
           <Image

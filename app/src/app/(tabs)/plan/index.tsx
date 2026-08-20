@@ -399,7 +399,7 @@ export default function PlanScreen() {
         contentContainerStyle={{
           paddingHorizontal: screenPadding,
           // Clear the capsule bar, plus the floating approve button when shown.
-          paddingBottom: showApprove ? tabBarClearance + 72 : tabBarClearance,
+          paddingBottom: insets.bottom + (showApprove ? tabBarClearance + 72 : tabBarClearance),
         }}
       >
         {DAY_LABELS.map((dayLabel, day) => {

@@ -1,7 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, ScrollView, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RecipeRow, type RecipeListItem } from '@/components/recipe-cards';
 import { EmptyState, Field, Hairline, LinkButton, Muted, Title } from '@/components/ui';
@@ -62,6 +62,7 @@ function FilterChip({
 export default function SearchScreen() {
   const { colors } = useTheme();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { householdId } = useHousehold();
 
   const [recipes, setRecipes] = useState<RecipeListItem[]>([]);
@@ -158,7 +159,10 @@ export default function SearchScreen() {
             </View>
           )
         }
-        contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: tabBarClearance }}
+        contentContainerStyle={{
+          paddingHorizontal: screenPadding,
+          paddingBottom: insets.bottom + tabBarClearance,
+        }}
       />
     </SafeAreaView>
   );

@@ -114,10 +114,12 @@ export const screenPadding = 20;
 export const minTapTarget = 48;
 
 /**
- * v3.1 floating capsule tab bar: scroll content needs this much bottom
- * padding to clear it (64 bar + 8 gap + breathing room).
+ * v3.1 floating capsule tab bar: scroll content needs
+ * `insets.bottom + tabBarClearance` bottom padding to clear it
+ * (64 bar + 8 gap + ~28 breathing room; the safe-area inset is added by
+ * each screen since the capsule floats above it).
  */
-export const tabBarClearance = 96;
+export const tabBarClearance = 100;
 /** Bottom offset (above safe area) for actions floating above the capsule. */
 export const floatingActionOffset = 84; // 8 gap + 64 bar + 12 spacing
 
