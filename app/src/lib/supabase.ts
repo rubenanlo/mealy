@@ -12,11 +12,14 @@ if (!supabaseUrl || !supabaseAnonKey) {
   );
 }
 
+// AsyncStorage needs `window`; expo-router's static web rendering runs in Node
+const isServerRender = typeof window === 'undefined';
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    storage: AsyncStorage,
-    autoRefreshToken: true,
-    persistSession: true,
+    ...(isServerRender ? {} : { storage: AsyncStorage }),
+    autoRefreshToken: !isServerRender,
+    persistSession: !isServerRender,
     detectSessionInUrl: false,
   },
 });
