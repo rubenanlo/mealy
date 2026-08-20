@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AddToWeekSheet } from '@/components/add-to-week';
+import { FixMatchSheet } from '@/components/fix-match';
 import { IngredientRow } from '@/components/ingredient-row';
 import {
   Body,
@@ -21,7 +22,11 @@ import {
   Title,
 } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
+import type { CanonicalIngredient, FodmapTier } from '@/lib/canonical';
 import { CATEGORY_LABELS, deriveCategory } from '@/lib/category';
+import { normalizeDietProfile } from '@/lib/diet';
+import { computeRecipeFodmap, FODMAP_DISCLAIMER, type RecipeFodmap } from '@/lib/fodmap';
+import { resolveMatches } from '@/lib/matching';
 import { useImageUrl } from '@/lib/media';
 import { weekStart } from '@/lib/plan';
 import { supabase } from '@/lib/supabase';
@@ -112,6 +117,26 @@ function GalleryImage({ path }: { path: string }) {
   );
 }
 
+/** FODMAP tier dot: high = red, moderate = badge, check = hollow, low = none. */
+function TierDot({ tier }: { tier: FodmapTier }) {
+  const { colors } = useTheme();
+  if (tier === 'low') return null;
+  const filled = tier === 'high' ? colors.danger : tier === 'moderate' ? colors.saffron : null;
+  return (
+    <View
+      accessibilityLabel={`FODMAP ${tier}`}
+      style={{
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+        backgroundColor: filled ?? 'transparent',
+        borderWidth: filled ? 0 : 1.5,
+        borderColor: colors.saffron,
+      }}
+    />
+  );
+}
+
 function VerbatimBlock({ label, text }: { label: string; text: string | null }) {
   const { colors } = useTheme();
   if (!text) return null;
@@ -175,6 +200,11 @@ export default function RecipeDetailScreen() {
   const [saving, setSaving] = useState(false);
   const [inThisWeek, setInThisWeek] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  // FODMAP flags + match corrections (Phase 2 Task 7)
+  const [matches, setMatches] = useState<Map<string, CanonicalIngredient | null>>(new Map());
+  const [fodmapPersons, setFodmapPersons] = useState<string[]>([]);
+  const [expandedRaw, setExpandedRaw] = useState<string | null>(null);
+  const [fixRaw, setFixRaw] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -207,6 +237,51 @@ export default function RecipeDetailScreen() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Resolve ingredient→canonical matches + who has a FODMAP mode enabled.
+  const loadMatches = useCallback(async () => {
+    if (!recipe || recipe.ingredients.length === 0) return;
+    try {
+      const [resolved, { data: personRows }] = await Promise.all([
+        resolveMatches(recipe.ingredients.map((ing) => ing.raw || ing.name)),
+        supabase
+          .from('persons')
+          .select('name, is_employee, diet_profile')
+          .eq('household_id', householdId),
+      ]);
+      setMatches(new Map([...resolved.entries()].map(([raw, m]) => [raw, m.ingredient])));
+      setFodmapPersons(
+        ((personRows as { name: string; is_employee: boolean; diet_profile: unknown }[]) ?? [])
+          .filter((p) => !p.is_employee && normalizeDietProfile(p.diet_profile).fodmap.mode !== 'off')
+          .map((p) => p.name)
+      );
+    } catch {
+      // Reference table unreachable — skip flags this session.
+    }
+  }, [recipe, householdId]);
+
+  useEffect(() => {
+    void loadMatches();
+  }, [loadMatches]);
+
+  const fodmap: RecipeFodmap | null = useMemo(() => {
+    if (!recipe || recipe.ingredients.length === 0 || matches.size === 0) return null;
+    return computeRecipeFodmap(
+      recipe.ingredients.map((ing) => ({
+        raw: ing.raw || ing.name,
+        name: ing.name,
+        quantity: ing.quantity,
+        unit: ing.unit,
+      })),
+      recipe.servings,
+      (line) => matches.get(line.raw) ?? null
+    );
+  }, [recipe, matches]);
+
+  const flagByRaw = useMemo(
+    () => new Map((fodmap?.flags ?? []).map((flag) => [flag.raw, flag])),
+    [fodmap]
+  );
 
   const startEditing = () => {
     if (!recipe) return;
@@ -374,13 +449,83 @@ export default function RecipeDetailScreen() {
               ) : null}
 
               <Title>Ingredients</Title>
+
+              {/* FODMAP summary per FODMAP-mode person (spec §4) */}
+              {fodmap && fodmapPersons.length > 0 && fodmap.hasWarnings ? (
+                <View style={{ gap: 6 }}>
+                  {fodmapPersons.map((personName) => {
+                    const high = fodmap.flags.filter((f) => f.tier === 'high').map((f) => f.name);
+                    const check = fodmap.flags.filter((f) => f.tier === 'check').map((f) => f.name);
+                    const moderate = fodmap.flags
+                      .filter((f) => f.tier === 'moderate')
+                      .map((f) => f.name);
+                    const partsList = [
+                      high.length > 0 ? `High for ${personName}: ${high.join(', ')}` : null,
+                      moderate.length > 0 ? `Moderate: ${moderate.join(', ')}` : null,
+                      check.length > 0 ? `Check: ${check.join(', ')}` : null,
+                    ].filter(Boolean);
+                    return partsList.length > 0 ? (
+                      <Body key={personName} style={{ fontSize: fontSize.small }}>
+                        {partsList.join(' · ')}
+                      </Body>
+                    ) : null;
+                  })}
+                  {fodmap.stacking.map((warning) => (
+                    <Muted key={warning.group}>
+                      {`Stacking: ${warning.ingredients.join(' + ')} share ${warning.group} — check the combined amount.`}
+                    </Muted>
+                  ))}
+                  <Muted style={{ fontStyle: 'italic' }}>{FODMAP_DISCLAIMER}</Muted>
+                </View>
+              ) : null}
+
               <View>
-                {recipe.ingredients.map((ing, i) => (
-                  <View key={`${ing.raw}-${i}`}>
-                    {i > 0 ? <Hairline /> : null}
-                    <IngredientRow ingredient={ing} />
-                  </View>
-                ))}
+                {recipe.ingredients.map((ing, i) => {
+                  const rawKey = ing.raw || ing.name;
+                  const flag = flagByRaw.get(rawKey);
+                  const canonical = matches.get(rawKey) ?? null;
+                  const isExpanded = expandedRaw === rawKey;
+                  return (
+                    <View key={`${rawKey}-${i}`}>
+                      {i > 0 ? <Hairline /> : null}
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Details for ${ing.name}`}
+                        accessibilityState={{ expanded: isExpanded }}
+                        onPress={() => setExpandedRaw(isExpanded ? null : rawKey)}
+                        style={({ pressed }) => ({
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 10,
+                          backgroundColor: pressed ? colors.cardPressed : 'transparent',
+                        })}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <IngredientRow ingredient={ing} />
+                        </View>
+                        {fodmapPersons.length > 0 && flag ? <TierDot tier={flag.tier} /> : null}
+                      </Pressable>
+                      {isExpanded ? (
+                        <View style={{ paddingBottom: 10, gap: 4 }}>
+                          <Muted>
+                            {canonical
+                              ? `Matched to ${canonical.name_fr}.`
+                              : 'Not matched to the ingredient table.'}
+                          </Muted>
+                          {fodmapPersons.length > 0 && flag ? (
+                            <Muted>{`FODMAP ${flag.tier} — ${flag.explanation}`}</Muted>
+                          ) : null}
+                          <LinkButton
+                            label="Correct the match"
+                            onPress={() => setFixRaw(rawKey)}
+                            style={{ minHeight: 36 }}
+                            textStyle={{ fontSize: fontSize.small }}
+                          />
+                        </View>
+                      ) : null}
+                    </View>
+                  );
+                })}
                 {recipe.ingredients.length === 0 ? <Muted>No ingredients extracted.</Muted> : null}
               </View>
 
@@ -408,6 +553,16 @@ export default function RecipeDetailScreen() {
         onClose={() => setSheetOpen(false)}
         onAdded={() => void load()}
       />
+
+      {fixRaw !== null ? (
+        <FixMatchSheet
+          visible
+          raw={fixRaw}
+          current={matches.get(fixRaw) ?? null}
+          onClose={() => setFixRaw(null)}
+          onCorrected={() => void loadMatches()}
+        />
+      ) : null}
     </View>
   );
 }
