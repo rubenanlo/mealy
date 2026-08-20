@@ -26,12 +26,9 @@ export function useReducedMotion(): boolean {
   return reduced;
 }
 
-/** Fade+rise stagger (design.md §Motion): 30ms per item, ≤300ms total. */
-export const ENTRANCE_DURATION_MS = 180;
-export const ENTRANCE_STAGGER_MS = 30;
-export const ENTRANCE_MAX_DELAY_MS = 120;
-export const ENTRANCE_RISE_PX = 12;
-
-export function entranceDelay(index: number): number {
-  return Math.min(index * ENTRANCE_STAGGER_MS, ENTRANCE_MAX_DELAY_MS);
-}
+/**
+ * v2 keeps the app still: no entrance staggers. Only two animations exist,
+ * both skipped under reduced motion (design.md §Motion).
+ */
+export const BOOKMARK_FILL_MS = 150;
+export const SEARCH_EXPAND_MS = 200;

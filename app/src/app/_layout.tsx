@@ -1,8 +1,10 @@
+import { Bitter_600SemiBold, Bitter_700Bold } from '@expo-google-fonts/bitter';
 import {
-  Fraunces_400Regular_Italic,
-  Fraunces_600SemiBold,
+  LibreFranklin_400Regular,
+  LibreFranklin_500Medium,
+  LibreFranklin_600SemiBold,
   useFonts,
-} from '@expo-google-fonts/fraunces';
+} from '@expo-google-fonts/libre-franklin';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
@@ -11,7 +13,7 @@ import { ActivityIndicator, View } from 'react-native';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { ThemeProvider, useTheme } from '@/lib/theme';
 
-// Keep the splash up until Fraunces is ready (design.md §Type).
+// Keep the splash up until the display faces are ready (design.md §Type).
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 function RootStack() {
@@ -55,8 +57,11 @@ function RootStack() {
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
-    Fraunces_600SemiBold,
-    Fraunces_400Regular_Italic,
+    Bitter_700Bold,
+    Bitter_600SemiBold,
+    LibreFranklin_400Regular,
+    LibreFranklin_500Medium,
+    LibreFranklin_600SemiBold,
   });
   const fontsReady = fontsLoaded || !!fontError;
 

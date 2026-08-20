@@ -21,14 +21,15 @@ export interface Palette {
   cardPressed: string;
   text: string;
   textMuted: string;
-  /** Actions, active tab, links. */
+  /** Brand red — links, active save states, primary buttons. Used sparingly. */
   accent: string;
   /** Label color on accent surfaces. */
   accentText: string;
-  /** Featured/seasonal highlights and badges. */
+  /** Badge color (needs-review, TODAY). Token name kept from v1. */
   saffron: string;
   /** Errors and allergens only. */
   danger: string;
+  /** Hairline dividers. */
   border: string;
   spineFish: string;
   spineMeat: string;
@@ -36,35 +37,35 @@ export interface Palette {
   spineLegume: string;
 }
 
-/** "Carnet de cuisine": warm paper light / warm cast-iron dark (design.md). */
+/** "Cooking editorial" v2: white/near-black monochrome, one editorial red. */
 export const palettes: Record<SchemeName, Palette> = {
   light: {
-    bg: '#F6F2EA',
-    card: '#FFFDF8',
-    cardPressed: '#F0EAD9',
-    text: '#2B2925',
-    textMuted: '#7A7468',
-    accent: '#44582F',
-    accentText: '#FFFDF8',
-    saffron: '#D9A441',
-    danger: '#B3402F',
-    border: '#E4DCCB',
+    bg: '#FFFFFF',
+    card: '#FFFFFF',
+    cardPressed: '#F5F5F4',
+    text: '#121212',
+    textMuted: '#72716D',
+    accent: '#C7442E',
+    accentText: '#FFFFFF',
+    saffron: '#B58A2A',
+    danger: '#C7442E',
+    border: '#E5E3DE',
     spineFish: '#4E6E8E',
     spineMeat: '#9C4A38',
     spineVeg: '#5F7040',
     spineLegume: '#B08432',
   },
   dark: {
-    bg: '#1C1B18',
-    card: '#2A2721',
-    cardPressed: '#332F27',
-    text: '#EFEAE0',
-    textMuted: '#A39B8B',
-    accent: '#8FA96B',
-    accentText: '#1C1B18',
+    bg: '#121212',
+    card: '#1C1C1C',
+    cardPressed: '#262626',
+    text: '#F5F5F4',
+    textMuted: '#9C9A94',
+    accent: '#E0604A',
+    accentText: '#121212',
     saffron: '#D9A441',
-    danger: '#D06A54',
-    border: '#3A352B',
+    danger: '#E0604A',
+    border: '#333230',
     spineFish: '#6E8DAB',
     spineMeat: '#B56A55',
     spineVeg: '#84955F',
@@ -73,33 +74,40 @@ export const palettes: Record<SchemeName, Palette> = {
 };
 
 /**
- * Kitchen-readable type scale (design.md §Type): body 17, secondary 15,
- * never below 13. `title` = screen titles (Fraunces 28), `large` = recipe
- * titles (Fraunces 22).
+ * v2 editorial scale (design.md §Type): body 16, meta 13, eyebrow 12;
+ * Bitter for display sizes (cardTitle 17 / sectionHead 24 / heroTitle 26 /
+ * wordmark 30), Libre Franklin for everything else.
  */
 export const fontSize = {
-  eyebrow: 13,
+  eyebrow: 12,
+  meta: 13,
   small: 15,
-  base: 17,
-  medium: 19,
-  large: 22,
-  title: 28,
-  wordmark: 34,
+  base: 16,
+  cardTitle: 17,
+  dayName: 20,
+  sectionHead: 24,
+  heroTitle: 26,
+  wordmark: 30,
 } as const;
 
 /**
- * Display faces (Fraunces, loaded in the root layout). Used ONLY for the
- * wordmark, screen titles, recipe titles and planner day names.
+ * Faces loaded in the root layout. Bitter (Karnak stand-in) is reserved for
+ * the wordmark, section headlines, recipe titles and day names; Libre
+ * Franklin carries all UI/body text. Weight lives in the family name —
+ * avoid fontWeight next to these so Android never synthesizes.
  */
 export const fonts = {
-  display: 'Fraunces_600SemiBold',
-  displayItalic: 'Fraunces_400Regular_Italic',
+  display: 'Bitter_700Bold',
+  displaySemi: 'Bitter_600SemiBold',
+  ui: 'LibreFranklin_400Regular',
+  uiMedium: 'LibreFranklin_500Medium',
+  uiSemi: 'LibreFranklin_600SemiBold',
 } as const;
 
-/** Shared shape tokens (design.md §Layout). */
-export const radius = { card: 14, control: 12 } as const;
+/** Shared shape tokens (design.md §Chrome). */
+export const radius = { card: 8, control: 6, thumb: 6 } as const;
 /** Standard control height (buttons, fields). */
-export const controlHeight = 52;
+export const controlHeight = 48;
 /** Horizontal screen padding. */
 export const screenPadding = 20;
 /** Minimum tap target (spec §13). */

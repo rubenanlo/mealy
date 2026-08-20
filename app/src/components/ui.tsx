@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
@@ -5,6 +6,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   View,
@@ -16,12 +18,8 @@ import {
 } from 'react-native';
 import { SafeAreaView, type Edges } from 'react-native-safe-area-context';
 
-import {
-  ENTRANCE_DURATION_MS,
-  ENTRANCE_RISE_PX,
-  entranceDelay,
-  useReducedMotion,
-} from '@/lib/motion';
+import { spineColor, type ProteinCategory } from '@/lib/category';
+import { BOOKMARK_FILL_MS, useReducedMotion } from '@/lib/motion';
 import {
   controlHeight,
   fonts,
@@ -32,7 +30,7 @@ import {
   useTheme,
 } from '@/lib/theme';
 
-/** SafeArea + bg + optional scroll (design.md §Layout). */
+/** SafeArea + bg + optional scroll (design.md §Chrome). */
 export function Screen({
   children,
   scroll = false,
@@ -64,20 +62,69 @@ export function Screen({
   );
 }
 
-/** Screen title — Fraunces 600, 28pt. Reserved for titles only (design.md §Type). */
+/** Screen/section title — Bitter 700, 24, tight leading (design.md §Type). */
 export function Title({ children, style }: { children: ReactNode; style?: StyleProp<TextStyle> }) {
   const { colors } = useTheme();
   return (
     <Text
       accessibilityRole="header"
-      style={[{ color: colors.text, fontSize: fontSize.title, fontFamily: fonts.display }, style]}
+      style={[
+        {
+          color: colors.text,
+          fontSize: fontSize.sectionHead,
+          lineHeight: Math.round(fontSize.sectionHead * 1.15),
+          letterSpacing: -0.3,
+          fontFamily: fonts.display,
+        },
+        style,
+      ]}
     >
       {children}
     </Text>
   );
 }
 
-/** Section label — 13/uppercase/muted, +0.8 letter-spacing. */
+/** Section headline row: Bitter 24 left + optional red "See all" link right. */
+export function SectionHeader({
+  title,
+  linkLabel,
+  onLinkPress,
+  style,
+}: {
+  title: string;
+  linkLabel?: string;
+  onLinkPress?: () => void;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const { colors } = useTheme();
+  return (
+    <View
+      style={[
+        { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
+        style,
+      ]}
+    >
+      <Title>{title}</Title>
+      {linkLabel && onLinkPress ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={onLinkPress}
+          style={({ pressed }) => ({
+            minHeight: 32,
+            justifyContent: 'center',
+            opacity: pressed ? 0.6 : 1,
+          })}
+        >
+          <Text style={{ color: colors.accent, fontSize: fontSize.small, fontFamily: fonts.uiSemi }}>
+            {linkLabel}
+          </Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+/** Section label — 12/uppercase/muted, +1.2 tracking, Franklin 600. */
 export function Eyebrow({
   children,
   style,
@@ -92,8 +139,8 @@ export function Eyebrow({
         {
           color: colors.textMuted,
           fontSize: fontSize.eyebrow,
-          fontWeight: '600',
-          letterSpacing: 0.8,
+          fontFamily: fonts.uiSemi,
+          letterSpacing: 1.2,
           textTransform: 'uppercase',
         },
         style,
@@ -107,78 +154,93 @@ export function Eyebrow({
 export function Body({ children, style }: { children: ReactNode; style?: StyleProp<TextStyle> }) {
   const { colors } = useTheme();
   return (
-    <Text style={[{ color: colors.text, fontSize: fontSize.base, lineHeight: 24 }, style]}>
+    <Text
+      style={[
+        { color: colors.text, fontSize: fontSize.base, lineHeight: 24, fontFamily: fonts.ui },
+        style,
+      ]}
+    >
       {children}
     </Text>
   );
 }
 
+/** Meta line — Franklin 500, 13, muted (design.md §Type). */
 export function Muted({ children, style }: { children: ReactNode; style?: StyleProp<TextStyle> }) {
   const { colors } = useTheme();
   return (
-    <Text style={[{ color: colors.textMuted, fontSize: fontSize.small, lineHeight: 21 }, style]}>
+    <Text
+      style={[
+        { color: colors.textMuted, fontSize: fontSize.meta, lineHeight: 19, fontFamily: fonts.uiMedium },
+        style,
+      ]}
+    >
       {children}
     </Text>
   );
 }
 
-/** 4px rounded left spine — the signature category marker (design.md). */
-function Spine({ color }: { color: string }) {
-  if (color === 'transparent') return null;
+/** Hairline divider — the NYT texture between list sections. */
+export function Hairline({ style }: { style?: StyleProp<ViewStyle> }) {
+  const { colors } = useTheme();
   return (
-    <View
-      style={{
-        position: 'absolute',
-        left: 0,
-        top: 10,
-        bottom: 10,
-        width: 4,
-        borderTopRightRadius: 2,
-        borderBottomRightRadius: 2,
-        backgroundColor: color,
-      }}
-    />
+    <View style={[{ height: StyleSheet.hairlineWidth, backgroundColor: colors.border }, style]} />
   );
 }
 
-/** Card surface: radius 14, 1px border, no heavy shadows. `spine` = category color. */
-export function Card({
-  children,
+/** 8px category dot — the only surviving category color on cards. */
+export function CategoryDot({
+  category,
+  size = 8,
   style,
-  spine,
 }: {
-  children: ReactNode;
+  category: ProteinCategory;
+  size?: number;
   style?: StyleProp<ViewStyle>;
-  spine?: string;
 }) {
   const { colors } = useTheme();
   return (
     <View
       style={[
         {
-          backgroundColor: colors.card,
-          borderRadius: radius.card,
-          borderWidth: 1,
-          borderColor: colors.border,
-          padding: 16,
-          overflow: 'hidden',
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: spineColor(category, colors),
         },
         style,
       ]}
+    />
+  );
+}
+
+/** Card surface: radius 8, no border, no shadow — whitespace defines it. */
+export function Card({
+  children,
+  style,
+}: {
+  children: ReactNode;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const { colors } = useTheme();
+  return (
+    <View
+      style={[
+        { backgroundColor: colors.card, borderRadius: radius.card, padding: 16, overflow: 'hidden' },
+        style,
+      ]}
     >
-      {spine ? <Spine color={spine} /> : null}
       {children}
     </View>
   );
 }
 
-/** Pressable Card: scale 0.98 + cardPressed bg on press (design.md §Motion). */
+/** Pressable surface: pressed = cardPressed bg, no scale (design.md §Motion). */
 export function PressCard({
   children,
   onPress,
   onLongPress,
   style,
-  spine,
   accessibilityLabel,
   accessibilityRole = 'button',
   disabled = false,
@@ -187,7 +249,6 @@ export function PressCard({
   onPress: () => void;
   onLongPress?: () => void;
   style?: StyleProp<ViewStyle>;
-  spine?: string;
   accessibilityLabel?: string;
   accessibilityRole?: AccessibilityRole;
   disabled?: boolean;
@@ -204,24 +265,19 @@ export function PressCard({
         {
           backgroundColor: pressed ? colors.cardPressed : colors.card,
           borderRadius: radius.card,
-          borderWidth: 1,
-          borderColor: colors.border,
-          padding: 16,
           overflow: 'hidden',
-          transform: [{ scale: pressed ? 0.98 : 1 }],
         },
         style,
       ]}
     >
-      {spine ? <Spine color={spine} /> : null}
       {children}
     </Pressable>
   );
 }
 
 /**
- * Button (design.md §Layout): primary accent/accentText; secondary
- * transparent + 1px border; danger = destructive text, no fill.
+ * Button (design.md §Chrome): primary red/white 600, radius 6, height 48.
+ * Secondary = 1px text-color border, transparent. Danger = red text, no chrome.
  */
 export function Button({
   label,
@@ -261,9 +317,8 @@ export function Button({
                 ? colors.cardPressed
                 : 'transparent',
           borderWidth: kind === 'secondary' ? 1 : 0,
-          borderColor: colors.border,
-          opacity: disabled ? 0.45 : pressed && kind !== 'secondary' ? 0.8 : 1,
-          transform: [{ scale: pressed ? 0.98 : 1 }],
+          borderColor: colors.text,
+          opacity: disabled ? 0.45 : pressed && kind !== 'secondary' ? 0.75 : 1,
         },
         style,
       ]}
@@ -271,17 +326,55 @@ export function Button({
       {loading ? (
         <ActivityIndicator color={fg} />
       ) : (
-        <Text style={{ color: fg, fontSize: fontSize.base, fontWeight: '600' }}>{label}</Text>
+        <Text style={{ color: fg, fontSize: fontSize.base, fontFamily: fonts.uiSemi }}>{label}</Text>
       )}
     </Pressable>
   );
 }
 
-/** Field: card bg, 1px border, radius 12, height 52, focus border accent (2px). */
-export function Field(props: TextInputProps & { style?: StyleProp<TextStyle> }) {
+/** Red tertiary text link ("+ Add", "See all") — no chrome. */
+export function LinkButton({
+  label,
+  onPress,
+  accessibilityLabel,
+  style,
+  textStyle,
+}: {
+  label: string;
+  onPress: () => void;
+  accessibilityLabel?: string;
+  style?: StyleProp<ViewStyle>;
+  textStyle?: StyleProp<TextStyle>;
+}) {
+  const { colors } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
+      onPress={onPress}
+      style={({ pressed }) => [
+        { minHeight: minTapTarget, justifyContent: 'center', opacity: pressed ? 0.6 : 1 },
+        style,
+      ]}
+    >
+      <Text style={[{ color: colors.accent, fontSize: fontSize.base, fontFamily: fonts.uiSemi }, textStyle]}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+/**
+ * Field: gray fill (NYT search style), radius 6, no border until focus
+ * (2px text color), height 48, optional leading icon.
+ */
+export function Field({
+  icon,
+  ...props
+}: TextInputProps & { style?: StyleProp<TextStyle>; icon?: keyof typeof Ionicons.glyphMap }) {
   const { colors } = useTheme();
   const [focused, setFocused] = useState(false);
-  return (
+  const input = (
     <TextInput
       placeholderTextColor={colors.textMuted}
       {...props}
@@ -295,47 +388,99 @@ export function Field(props: TextInputProps & { style?: StyleProp<TextStyle> }) 
       }}
       style={[
         {
-          minHeight: controlHeight,
+          minHeight: icon ? controlHeight - 4 : controlHeight,
           borderRadius: radius.control,
-          borderWidth: focused ? 2 : 1,
-          borderColor: focused ? colors.accent : colors.border,
-          paddingHorizontal: focused ? 15 : 16,
-          paddingVertical: focused ? 11 : 12,
-          backgroundColor: colors.card,
+          borderWidth: icon ? 0 : 2,
+          borderColor: !icon && focused ? colors.text : 'transparent',
+          paddingHorizontal: icon ? 0 : 14,
+          paddingVertical: 10,
+          backgroundColor: icon ? 'transparent' : colors.cardPressed,
           color: colors.text,
           fontSize: fontSize.base,
+          fontFamily: fonts.ui,
+          flex: icon ? 1 : undefined,
         },
         props.style,
       ]}
     />
   );
-}
-
-/** Small pill, border only, 13pt (design.md §Layout). */
-export function Tag({ label, color, style }: { label: string; color?: string; style?: StyleProp<ViewStyle> }) {
-  const { colors } = useTheme();
+  if (!icon) return input;
   return (
     <View
-      style={[
-        {
-          borderWidth: 1,
-          borderColor: color ?? colors.border,
-          borderRadius: 999,
-          paddingHorizontal: 10,
-          paddingVertical: 4,
-          alignSelf: 'flex-start',
-        },
-        style,
-      ]}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 12,
+        borderRadius: radius.control,
+        borderWidth: 2,
+        borderColor: focused ? colors.text : 'transparent',
+        backgroundColor: colors.cardPressed,
+        minHeight: controlHeight,
+      }}
     >
-      <Text style={{ color: color ?? colors.textMuted, fontSize: fontSize.eyebrow, fontWeight: '600' }}>
-        {label}
-      </Text>
+      <Ionicons name={icon} size={20} color={colors.textMuted} />
+      {input}
     </View>
   );
 }
 
-/** Centered Fraunces-italic line + one primary action. Direct, never apologetic. */
+/** Bookmark save/plan affordance: outline, filled red when in this week. */
+export function Bookmark({
+  saved,
+  onPress,
+  size = 22,
+  accessibilityLabel,
+  style,
+}: {
+  saved: boolean;
+  onPress?: () => void;
+  size?: number;
+  accessibilityLabel?: string;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const { colors } = useTheme();
+  const reduced = useReducedMotion();
+  const scale = useRef(new Animated.Value(1)).current;
+  const previous = useRef(saved);
+
+  useEffect(() => {
+    if (previous.current === saved) return;
+    previous.current = saved;
+    if (reduced) return;
+    scale.setValue(0.6);
+    Animated.timing(scale, {
+      toValue: 1,
+      duration: BOOKMARK_FILL_MS,
+      useNativeDriver: Platform.OS !== 'web',
+    }).start();
+  }, [saved, reduced, scale]);
+
+  const icon = (
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <Ionicons
+        name={saved ? 'bookmark' : 'bookmark-outline'}
+        size={size}
+        color={saved ? colors.accent : colors.text}
+      />
+    </Animated.View>
+  );
+  if (!onPress) return <View style={style}>{icon}</View>;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? (saved ? 'Planned this week' : 'Add to this week')}
+      accessibilityState={{ selected: saved }}
+      onPress={onPress}
+      hitSlop={8}
+      style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1 }, style]}
+    >
+      {icon}
+    </Pressable>
+  );
+}
+
+/** Bitter headline + one red primary action. Direct, never apologetic. */
 export function EmptyState({
   message,
   actionLabel,
@@ -347,14 +492,15 @@ export function EmptyState({
 }) {
   const { colors } = useTheme();
   return (
-    <View style={{ alignItems: 'center', gap: 20, paddingVertical: 40, paddingHorizontal: 24 }}>
+    <View style={{ alignItems: 'center', gap: 20, paddingVertical: 48, paddingHorizontal: 24 }}>
       <Text
         style={{
           color: colors.text,
-          fontSize: fontSize.medium,
-          fontFamily: fonts.displayItalic,
+          fontSize: fontSize.sectionHead,
+          lineHeight: Math.round(fontSize.sectionHead * 1.2),
+          letterSpacing: -0.3,
+          fontFamily: fonts.display,
           textAlign: 'center',
-          lineHeight: 28,
         }}
       >
         {message}
@@ -363,64 +509,5 @@ export function EmptyState({
         <Button label={actionLabel} onPress={onAction} style={{ alignSelf: 'stretch' }} />
       ) : null}
     </View>
-  );
-}
-
-/**
- * The one deliberate motion: fade + rise 12px on first mount, staggered by
- * `index`. Skipped entirely under reduce-motion (design.md §Motion).
- */
-export function FadeRise({
-  children,
-  index = 0,
-  style,
-}: {
-  children: ReactNode;
-  index?: number;
-  style?: StyleProp<ViewStyle>;
-}) {
-  const reduced = useReducedMotion();
-  const progress = useRef(new Animated.Value(0)).current;
-  const started = useRef(false);
-
-  useEffect(() => {
-    if (started.current) return;
-    started.current = true;
-    if (reduced) {
-      progress.setValue(1);
-      return;
-    }
-    Animated.timing(progress, {
-      toValue: 1,
-      duration: ENTRANCE_DURATION_MS,
-      delay: entranceDelay(index),
-      useNativeDriver: Platform.OS !== 'web',
-    }).start();
-  }, [index, progress, reduced]);
-
-  // If the preference resolves to "reduced" after mount, jump to the end state.
-  useEffect(() => {
-    if (reduced) progress.setValue(1);
-  }, [reduced, progress]);
-
-  return (
-    <Animated.View
-      style={[
-        {
-          opacity: progress,
-          transform: [
-            {
-              translateY: progress.interpolate({
-                inputRange: [0, 1],
-                outputRange: [ENTRANCE_RISE_PX, 0],
-              }),
-            },
-          ],
-        },
-        style,
-      ]}
-    >
-      {children}
-    </Animated.View>
   );
 }

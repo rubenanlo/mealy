@@ -1,6 +1,6 @@
 import { Text, View } from 'react-native';
 
-import { fontSize, useTheme } from '@/lib/theme';
+import { fonts, fontSize, useTheme } from '@/lib/theme';
 import type { IngredientRow as IngredientData } from '@/lib/worker';
 
 /**
@@ -11,9 +11,17 @@ export function IngredientRow({ ingredient }: { ingredient: IngredientData }) {
   const { colors } = useTheme();
   const quantity = [ingredient.quantity, ingredient.unit].filter((v) => v != null).join(' ');
   return (
-    <View style={{ paddingVertical: 8, gap: 2 }}>
+    <View style={{ paddingVertical: 10, gap: 2 }}>
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 12 }}>
-        <Text style={{ flex: 1, color: colors.text, fontSize: fontSize.base, lineHeight: 24 }}>
+        <Text
+          style={{
+            flex: 1,
+            color: colors.text,
+            fontSize: fontSize.base,
+            lineHeight: 24,
+            fontFamily: fonts.ui,
+          }}
+        >
           {ingredient.name}
         </Text>
         {quantity ? (
@@ -22,6 +30,7 @@ export function IngredientRow({ ingredient }: { ingredient: IngredientData }) {
               color: colors.text,
               fontSize: fontSize.base,
               lineHeight: 24,
+              fontFamily: fonts.ui,
               fontVariant: ['tabular-nums'],
               textAlign: 'right',
             }}
@@ -31,7 +40,7 @@ export function IngredientRow({ ingredient }: { ingredient: IngredientData }) {
         ) : null}
       </View>
       {ingredient.raw && ingredient.raw !== ingredient.name ? (
-        <Text style={{ color: colors.textMuted, fontSize: fontSize.eyebrow }}>
+        <Text style={{ color: colors.textMuted, fontSize: fontSize.meta, fontFamily: fonts.ui }}>
           {ingredient.raw}
         </Text>
       ) : null}
