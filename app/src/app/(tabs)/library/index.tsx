@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
@@ -20,7 +20,7 @@ import { EmptyState, Hairline, SectionHeader } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
 import { weekStart } from '@/lib/plan';
 import { supabase } from '@/lib/supabase';
-import { fonts, fontSize, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
+import { fonts, fontSize, minTapTarget, screenPadding, tabBarClearance, useTheme } from '@/lib/theme';
 
 export default function HomeScreen() {
   const { colors } = useTheme();
@@ -144,9 +144,14 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 24 }}>
-        {/* Wordmark + capture icon — discovery only, no search here (v3) */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: tabBarClearance }}>
+        {/* Brand lockup + capture icon — discovery only, no search here (v3) */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 }}>
+          <Image
+            source={require('../../../../assets/images/brand-icon-source.png')}
+            style={{ width: 28, height: 28 }}
+            accessibilityIgnoresInvertColors
+          />
           <Text
             accessibilityRole="header"
             style={{

@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
@@ -34,7 +34,15 @@ import { resolveMatches } from '@/lib/matching';
 import { useImageUrl } from '@/lib/media';
 import { weekStart } from '@/lib/plan';
 import { supabase } from '@/lib/supabase';
-import { fonts, fontSize, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
+import {
+  floatingActionOffset,
+  fonts,
+  fontSize,
+  minTapTarget,
+  screenPadding,
+  tabBarClearance,
+  useTheme,
+} from '@/lib/theme';
 import type { IngredientRow as IngredientData, SourceKind, Verbatim } from '@/lib/worker';
 
 interface RecipeDetail {
@@ -381,7 +389,12 @@ export default function RecipeDetailScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 48 }}>
+      <ScrollView
+        contentContainerStyle={{
+          // Clear the capsule bar + the floating action button when present.
+          paddingBottom: view === 'recipe' && !editing ? tabBarClearance + 72 : tabBarClearance,
+        }}
+      >
         <Hero
           path={heroPath}
           onBack={() => router.back()}
@@ -570,16 +583,26 @@ export default function RecipeDetailScreen() {
         </View>
       </ScrollView>
 
-      {/* v3: sticky bottom action bar (bg + top hairline + safe area) */}
+      {/* v3.1: the primary action floats ABOVE the capsule tab bar */}
       {view === 'recipe' && !editing ? (
         <View
+          pointerEvents="box-none"
           style={{
-            backgroundColor: colors.bg,
-            borderTopWidth: StyleSheet.hairlineWidth,
-            borderTopColor: colors.border,
-            paddingHorizontal: screenPadding,
-            paddingTop: 10,
-            paddingBottom: insets.bottom + 10,
+            position: 'absolute',
+            left: screenPadding,
+            right: screenPadding,
+            bottom: insets.bottom + floatingActionOffset,
+            ...Platform.select({
+              ios: {
+                shadowColor: '#000000',
+                shadowOpacity: 0.12,
+                shadowRadius: 16,
+                shadowOffset: { width: 0, height: 4 },
+              },
+              android: { elevation: 8 },
+              web: { boxShadow: '0 4px 16px rgba(0, 0, 0, 0.12)' } as object,
+              default: {},
+            }),
           }}
         >
           <Button

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, Text, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Platform, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Body, Button, Eyebrow, Field, Muted } from '@/components/ui';
@@ -62,6 +62,11 @@ export default function SignInScreen() {
         style={{ flex: 1, justifyContent: 'center', padding: screenPadding, gap: 16 }}
       >
         <View style={{ gap: 6, marginBottom: 8 }}>
+          <Image
+            source={require('../../../assets/images/brand-icon-source.png')}
+            style={{ width: 44, height: 44, marginBottom: 4 }}
+            accessibilityIgnoresInvertColors
+          />
           <Text
             accessibilityRole="header"
             style={{

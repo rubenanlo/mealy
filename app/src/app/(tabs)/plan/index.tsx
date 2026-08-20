@@ -2,8 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { FlatList, Modal, Pressable, ScrollView, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { FlatList, Modal, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PersonChip } from '@/components/person-chip';
 import {
@@ -37,7 +37,16 @@ import {
 } from '@/lib/plan';
 import { quotaProgress } from '@/lib/quotas';
 import { supabase } from '@/lib/supabase';
-import { fonts, fontSize, minTapTarget, radius, screenPadding, useTheme } from '@/lib/theme';
+import {
+  floatingActionOffset,
+  fonts,
+  fontSize,
+  minTapTarget,
+  radius,
+  screenPadding,
+  tabBarClearance,
+  useTheme,
+} from '@/lib/theme';
 
 interface Person {
   id: string;
@@ -132,6 +141,7 @@ function EntryThumb({ path }: { path: string | null }) {
 export default function PlanScreen() {
   const { colors } = useTheme();
   const { householdId } = useHousehold();
+  const insets = useSafeAreaInsets();
 
   const [weekIso, setWeekIso] = useState(() => weekStart(new Date()));
   const [plan, setPlan] = useState<MealPlanRow | null>(null);
@@ -384,7 +394,13 @@ export default function PlanScreen() {
         </View>
       ) : null}
 
-      <ScrollView contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 24 }}>
+      <ScrollView
+        contentContainerStyle={{
+          paddingHorizontal: screenPadding,
+          // Clear the capsule bar, plus the floating approve button when shown.
+          paddingBottom: showApprove ? tabBarClearance + 72 : tabBarClearance,
+        }}
+      >
         {DAY_LABELS.map((dayLabel, day) => {
           const isToday = day === todayIndex;
           return (
@@ -506,15 +522,26 @@ export default function PlanScreen() {
         <Hairline />
       </ScrollView>
 
-      {/* Sticky approve bar: draft + non-empty only */}
+      {/* v3.1: approve floats ABOVE the capsule tab bar (draft + non-empty only) */}
       {showApprove ? (
         <View
+          pointerEvents="box-none"
           style={{
-            paddingHorizontal: screenPadding,
-            paddingVertical: 10,
-            borderTopWidth: 1,
-            borderTopColor: colors.border,
-            backgroundColor: colors.bg,
+            position: 'absolute',
+            left: screenPadding,
+            right: screenPadding,
+            bottom: insets.bottom + floatingActionOffset,
+            ...Platform.select({
+              ios: {
+                shadowColor: '#000000',
+                shadowOpacity: 0.12,
+                shadowRadius: 16,
+                shadowOffset: { width: 0, height: 4 },
+              },
+              android: { elevation: 8 },
+              web: { boxShadow: '0 4px 16px rgba(0, 0, 0, 0.12)' } as object,
+              default: {},
+            }),
           }}
         >
           <Button label="Approve week" onPress={() => void approveWeek()} loading={busy} />

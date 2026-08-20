@@ -15,6 +15,7 @@ import {
   minTapTarget,
   radius,
   screenPadding,
+  tabBarClearance,
   useTheme,
   type ThemeOverride,
 } from '@/lib/theme';
@@ -162,7 +163,7 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
-      <ScrollView contentContainerStyle={{ padding: screenPadding, gap: 24, paddingBottom: 48 }}>
+      <ScrollView contentContainerStyle={{ padding: screenPadding, gap: 24, paddingBottom: tabBarClearance }}>
         <Title>Settings</Title>
 
         {/* Household */}

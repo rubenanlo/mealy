@@ -113,6 +113,14 @@ export const screenPadding = 20;
 /** Minimum tap target (spec §13). */
 export const minTapTarget = 48;
 
+/**
+ * v3.1 floating capsule tab bar: scroll content needs this much bottom
+ * padding to clear it (64 bar + 8 gap + breathing room).
+ */
+export const tabBarClearance = 96;
+/** Bottom offset (above safe area) for actions floating above the capsule. */
+export const floatingActionOffset = 84; // 8 gap + 64 bar + 12 spacing
+
 export const THEME_OVERRIDE_KEY = 'mealy.theme-override';
 
 /**

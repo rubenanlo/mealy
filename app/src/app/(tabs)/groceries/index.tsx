@@ -20,7 +20,7 @@ import { resolveMatches } from '@/lib/matching';
 import { dayDate, weekStart } from '@/lib/plan';
 import { collectWeekIngredients } from '@/lib/shopping';
 import { supabase } from '@/lib/supabase';
-import { fonts, fontSize, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
+import { fonts, fontSize, minTapTarget, screenPadding, tabBarClearance, useTheme } from '@/lib/theme';
 import type { IngredientRow } from '@/lib/worker';
 
 interface EntryRow {
@@ -440,7 +440,7 @@ export default function GroceriesScreen() {
           onAction={() => router.navigate('/plan')}
         />
       ) : (
-        <ScrollView contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 32 }}>
+        <ScrollView contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: tabBarClearance }}>
           {aisles.map((group, groupIndex) => (
             <View key={group.aisle} style={{ paddingTop: groupIndex === 0 ? 4 : 20 }}>
               <Text

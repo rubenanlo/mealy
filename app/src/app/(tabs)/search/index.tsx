@@ -8,7 +8,7 @@ import { EmptyState, Field, Hairline, LinkButton, Muted, Title } from '@/compone
 import { useHousehold } from '@/lib/auth';
 import { deriveCategory, type ProteinCategory } from '@/lib/category';
 import { supabase } from '@/lib/supabase';
-import { fonts, fontSize, minTapTarget, radius, screenPadding, useTheme } from '@/lib/theme';
+import { fonts, fontSize, minTapTarget, radius, screenPadding, tabBarClearance, useTheme } from '@/lib/theme';
 
 type Filter = 'all' | ProteinCategory | 'needs_review';
 
@@ -158,7 +158,7 @@ export default function SearchScreen() {
             </View>
           )
         }
-        contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 24 }}
+        contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: tabBarClearance }}
       />
     </SafeAreaView>
   );
