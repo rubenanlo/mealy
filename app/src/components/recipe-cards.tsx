@@ -18,6 +18,8 @@ export interface RecipeListItem {
   servings: number | null;
   prep_minutes: number | null;
   cook_minutes: number | null;
+  /** Present where a screen selects it (Home's "Recently added" window). */
+  created_at?: string;
 }
 
 export function totalMinutes(recipe: RecipeListItem): number | null {

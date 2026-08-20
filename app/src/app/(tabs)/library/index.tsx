@@ -39,7 +39,9 @@ export default function HomeScreen() {
     const [{ data: recipeRows }, { data: entryRows }, { data: weekPlan }] = await Promise.all([
       supabase
         .from('recipes')
-        .select('id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes')
+        .select(
+          'id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes, created_at'
+        )
         .eq('household_id', householdId)
         .order('created_at', { ascending: false }),
       supabase
@@ -90,8 +92,16 @@ export default function HomeScreen() {
   const hero = suggestions[0];
   const carousel = suggestions.slice(1);
 
-  /** Last 10 by created_at (recipes arrive newest-first). */
-  const recentlyAdded = useMemo(() => recipes.slice(0, 10), [recipes]);
+  /** Recipes from the last two weeks, newest first, max 10 (hides as it ages). */
+  const recentlyAdded = useMemo(() => {
+    const cutoff = Date.now() - 14 * 24 * 60 * 60 * 1000;
+    return recipes
+      .filter((r) => r.created_at && new Date(r.created_at).getTime() >= cutoff)
+      .slice(0, 10);
+  }, [recipes]);
+
+  /** Browse-everything entry point; Search stays the actual full list. */
+  const allRecipes = useMemo(() => recipes.slice(0, 10), [recipes]);
 
   // Recipe entries dedupe by recipe; custom meals appear once per entry.
   const thisWeek = useMemo<WeekStripItem[]>(() => {
@@ -273,8 +283,32 @@ export default function HomeScreen() {
 
             {recentlyAdded.length > 0 ? (
               <View style={{ paddingTop: 16, gap: 12 }}>
+                <SectionHeader title="Recently added" />
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={carouselContent}
+                  style={carouselStyle}
+                >
+                  {recentlyAdded.map((recipe) => (
+                    <CarouselCard
+                      key={recipe.id}
+                      recipe={recipe}
+                      planned={thisWeekSet.has(recipe.id)}
+                      onPress={() => openRecipe(recipe.id)}
+                      onBookmark={() => onBookmark(recipe)}
+                    />
+                  ))}
+                </ScrollView>
+                <Hairline />
+              </View>
+            ) : null}
+
+            {/* Browse-everything entry point; Search stays the full list. */}
+            {allRecipes.length > 0 ? (
+              <View style={{ paddingTop: 16, gap: 12 }}>
                 <SectionHeader
-                  title="Recently added"
+                  title="All recipes"
                   linkLabel="See all"
                   onLinkPress={() => router.navigate('/search')}
                 />
@@ -284,7 +318,7 @@ export default function HomeScreen() {
                   contentContainerStyle={carouselContent}
                   style={carouselStyle}
                 >
-                  {recentlyAdded.map((recipe) => (
+                  {allRecipes.map((recipe) => (
                     <CarouselCard
                       key={recipe.id}
                       recipe={recipe}
