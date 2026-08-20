@@ -1,11 +1,7 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
-import { Text, type ColorValue } from 'react-native';
 
 import { minTapTarget, useTheme } from '@/lib/theme';
-
-function TabIcon({ glyph, color }: { glyph: string; color: ColorValue }) {
-  return <Text style={{ fontSize: 24, color }}>{glyph}</Text>;
-}
 
 export default function TabsLayout() {
   const { colors, dark } = useTheme();
@@ -16,7 +12,12 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.textMuted,
-        tabBarStyle: { backgroundColor: colors.bg, borderTopColor: colors.card, minHeight: minTapTarget },
+        tabBarStyle: {
+          backgroundColor: colors.card,
+          borderTopWidth: 1,
+          borderTopColor: colors.border,
+          minHeight: minTapTarget,
+        },
         tabBarLabelStyle: { fontSize: 13, fontWeight: '600' },
         sceneStyle: { backgroundColor: colors.bg },
       }}
@@ -25,22 +26,33 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="library"
         options={{
-          title: 'Recettes',
-          tabBarIcon: ({ color }) => <TabIcon glyph="📖" color={color} />,
+          title: 'Recipes',
+          tabBarIcon: ({ color, size }) => <Ionicons name="book-outline" color={color} size={size} />,
         }}
       />
       <Tabs.Screen
         name="plan"
         options={{
-          title: 'Semaine',
-          tabBarIcon: ({ color }) => <TabIcon glyph="🗓️" color={color} />,
+          title: 'Week',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="calendar-outline" color={color} size={size} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="groceries"
+        options={{
+          title: 'Groceries',
+          tabBarIcon: ({ color, size }) => <Ionicons name="cart-outline" color={color} size={size} />,
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
-          title: 'Réglages',
-          tabBarIcon: ({ color }) => <TabIcon glyph="⚙️" color={color} />,
+          title: 'Settings',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="settings-outline" color={color} size={size} />
+          ),
         }}
       />
     </Tabs>
