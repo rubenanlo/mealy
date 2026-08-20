@@ -1,0 +1,1 @@
+"""Mealy ingestion worker."""
