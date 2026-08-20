@@ -39,4 +39,13 @@ describe('collectWeekIngredients', () => {
   it('skips entries whose recipe is unknown', () => {
     expect(collectWeekIngredients([{ recipe_id: 'missing' }], recipes)).toEqual([]);
   });
+
+  it('custom meals (recipe_id null) contribute no ingredient group', () => {
+    const groups = collectWeekIngredients(
+      [{ recipe_id: null }, { recipe_id: 'r1' }],
+      recipes
+    );
+    expect(groups).toHaveLength(1);
+    expect(groups[0].recipeId).toBe('r1');
+  });
 });

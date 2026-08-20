@@ -221,17 +221,24 @@ function SuggestionCard({
   );
 }
 
-function ThisWeekCard({ recipe, onPress }: { recipe: RecipeListItem; onPress: () => void }) {
+/** One "This week" item: a recipe or a free-text meal (no image, no dot). */
+interface WeekStripItem {
+  key: string;
+  title: string;
+  path: string | null;
+}
+
+function ThisWeekCard({ item, onPress }: { item: WeekStripItem; onPress: () => void }) {
   const { colors } = useTheme();
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Open the week — ${recipe.title}`}
+      accessibilityLabel={`Open the week — ${item.title}`}
       onPress={onPress}
       style={({ pressed }) => ({ width: 110, opacity: pressed ? 0.7 : 1 })}
     >
       <RecipeImage
-        path={recipe.cover_image_path}
+        path={item.path}
         style={{ width: 110, height: 82, borderRadius: radius.card }}
         iconSize={22}
       />
@@ -245,7 +252,7 @@ function ThisWeekCard({ recipe, onPress }: { recipe: RecipeListItem; onPress: ()
           paddingTop: 6,
         }}
       >
-        {recipe.title}
+        {item.title}
       </Text>
     </Pressable>
   );
@@ -297,7 +304,9 @@ export default function LibraryScreen() {
 
   const [recipes, setRecipes] = useState<RecipeListItem[]>([]);
   const [plannedEverIds, setPlannedEverIds] = useState<Set<string>>(new Set());
-  const [thisWeekIds, setThisWeekIds] = useState<string[]>([]);
+  const [weekEntries, setWeekEntries] = useState<
+    { id: string; recipe_id: string | null; custom_title: string | null }[]
+  >([]);
   const [search, setSearch] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const searchProgress = useRef(new Animated.Value(0)).current;
@@ -324,18 +333,24 @@ export default function LibraryScreen() {
     ]);
     if (recipeRows) setRecipes(recipeRows as RecipeListItem[]);
     if (entryRows) {
-      setPlannedEverIds(new Set((entryRows as { recipe_id: string }[]).map((e) => e.recipe_id)));
+      setPlannedEverIds(
+        new Set(
+          (entryRows as { recipe_id: string | null }[])
+            .map((e) => e.recipe_id)
+            .filter((id): id is string => id !== null)
+        )
+      );
     }
     if (weekPlan) {
-      const { data: weekEntries } = await supabase
+      const { data: weekRows } = await supabase
         .from('plan_entries')
-        .select('recipe_id')
+        .select('id, recipe_id, custom_title')
         .eq('meal_plan_id', weekPlan.id);
-      setThisWeekIds([
-        ...new Set(((weekEntries as { recipe_id: string }[]) ?? []).map((e) => e.recipe_id)),
-      ]);
+      setWeekEntries(
+        (weekRows as { id: string; recipe_id: string | null; custom_title: string | null }[]) ?? []
+      );
     } else {
-      setThisWeekIds([]);
+      setWeekEntries([]);
     }
   }, [householdId]);
 
@@ -368,11 +383,32 @@ export default function LibraryScreen() {
   const hero = suggestions[0];
   const carousel = suggestions.slice(1);
 
-  const thisWeek = useMemo(() => {
+  // Recipe entries dedupe by recipe; custom meals appear once per entry.
+  const thisWeek = useMemo<WeekStripItem[]>(() => {
     const byId = new Map(recipes.map((r) => [r.id, r]));
-    return thisWeekIds.map((id) => byId.get(id)).filter((r): r is RecipeListItem => !!r);
-  }, [recipes, thisWeekIds]);
-  const thisWeekSet = useMemo(() => new Set(thisWeekIds), [thisWeekIds]);
+    const items: WeekStripItem[] = [];
+    const seen = new Set<string>();
+    for (const entry of weekEntries) {
+      if (entry.recipe_id) {
+        if (seen.has(entry.recipe_id)) continue;
+        seen.add(entry.recipe_id);
+        const recipe = byId.get(entry.recipe_id);
+        if (recipe) {
+          items.push({ key: `r-${recipe.id}`, title: recipe.title, path: recipe.cover_image_path });
+        }
+      } else if (entry.custom_title) {
+        items.push({ key: `c-${entry.id}`, title: entry.custom_title, path: null });
+      }
+    }
+    return items;
+  }, [recipes, weekEntries]);
+  const thisWeekSet = useMemo(
+    () =>
+      new Set(
+        weekEntries.map((e) => e.recipe_id).filter((id): id is string => id !== null)
+      ),
+    [weekEntries]
+  );
 
   const query = search.trim().toLowerCase();
   const searching = query.length > 0;
@@ -499,12 +535,8 @@ export default function LibraryScreen() {
                 contentContainerStyle={{ gap: 14, paddingHorizontal: screenPadding }}
                 style={{ marginHorizontal: -screenPadding }}
               >
-                {thisWeek.map((recipe) => (
-                  <ThisWeekCard
-                    key={recipe.id}
-                    recipe={recipe}
-                    onPress={() => router.navigate('/plan')}
-                  />
+                {thisWeek.map((item) => (
+                  <ThisWeekCard key={item.key} item={item} onPress={() => router.navigate('/plan')} />
                 ))}
               </ScrollView>
               <Hairline />

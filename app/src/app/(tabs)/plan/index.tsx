@@ -144,6 +144,9 @@ export default function PlanScreen() {
   const [pickerCell, setPickerCell] = useState<{ day: number; slot: MealSlot } | null>(null);
   const [pickerSearch, setPickerSearch] = useState('');
   const [pickedRecipe, setPickedRecipe] = useState<RecipeLite | null>(null);
+  /** Free-text meal draft ("write down a specific meal"). */
+  const [customDraft, setCustomDraft] = useState('');
+  const [pickedCustom, setPickedCustom] = useState<string | null>(null);
   const [pickedPersonIds, setPickedPersonIds] = useState<string[]>([]);
   const [pickedCook, setPickedCook] = useState<CookType>('family');
 
@@ -245,12 +248,21 @@ export default function PlanScreen() {
     setPickerCell({ day, slot });
     setPickerSearch('');
     setPickedRecipe(null);
+    setCustomDraft('');
+    setPickedCustom(null);
     setPickedPersonIds([]);
     setPickedCook('family');
   };
 
+  const pickCustom = () => {
+    const title = customDraft.trim();
+    if (!title) return;
+    setPickedCustom(title);
+    setPickedRecipe(null);
+  };
+
   const confirmAdd = async () => {
-    if (!pickerCell || !pickedRecipe) return;
+    if (!pickerCell || (!pickedRecipe && !pickedCustom)) return;
     setBusy(true);
     try {
       const mealPlanId = await ensurePlan();
@@ -259,7 +271,7 @@ export default function PlanScreen() {
         mealPlanId,
         day: pickerCell.day,
         slot: pickerCell.slot,
-        recipeId: pickedRecipe.id,
+        ...(pickedRecipe ? { recipeId: pickedRecipe.id } : { customTitle: pickedCustom! }),
         personIds: pickedPersonIds,
         assignedCook: pickedCook,
         position,
@@ -420,7 +432,7 @@ export default function PlanScreen() {
                         />
                       </View>
                       {cellEntries.map((entry) => {
-                        const recipe = recipeById.get(entry.recipe_id);
+                        const recipe = entry.recipe_id ? recipeById.get(entry.recipe_id) : undefined;
                         const category = deriveCategory(recipe?.tags ?? []);
                         return (
                           <View
@@ -438,7 +450,7 @@ export default function PlanScreen() {
                                 }}
                               >
                                 {entry.assigned_cook === 'employee' ? '👩‍🍳 ' : ''}
-                                {recipe?.title ?? 'Recipe'}
+                                {entry.custom_title ?? recipe?.title ?? 'Recipe'}
                               </Text>
                               <View
                                 style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}
@@ -513,8 +525,25 @@ export default function PlanScreen() {
                 {DAY_LABELS[pickerCell.day]} — {SLOT_LABELS[pickerCell.slot]}
               </Title>
             ) : null}
-            {!pickedRecipe ? (
+            {!pickedRecipe && !pickedCustom ? (
               <>
+                {/* Free-text meal: no recipe required */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Field
+                    value={customDraft}
+                    onChangeText={setCustomDraft}
+                    placeholder="Or type a meal…"
+                    style={{ flex: 1 }}
+                    onSubmitEditing={pickCustom}
+                    returnKeyType="done"
+                  />
+                  <LinkButton
+                    label="Add"
+                    accessibilityLabel="Add this meal"
+                    onPress={pickCustom}
+                    style={{ opacity: customDraft.trim() ? 1 : 0.4 }}
+                  />
+                </View>
                 <Field
                   icon="search-outline"
                   value={pickerSearch}
@@ -551,7 +580,9 @@ export default function PlanScreen() {
               </>
             ) : (
               <View style={{ gap: 16 }}>
-                <Body style={{ fontFamily: fonts.uiSemi }}>{pickedRecipe.title}</Body>
+                <Body style={{ fontFamily: fonts.uiSemi }}>
+                  {pickedRecipe?.title ?? pickedCustom}
+                </Body>
                 <Muted>Who eats? No selection means the whole household.</Muted>
                 <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
                   {eaters.map((person) => (
@@ -613,7 +644,14 @@ export default function PlanScreen() {
                   })}
                 </View>
                 <Button label="Add to the week" onPress={() => void confirmAdd()} loading={busy} />
-                <Button label="Pick another recipe" kind="secondary" onPress={() => setPickedRecipe(null)} />
+                <Button
+                  label="Pick something else"
+                  kind="secondary"
+                  onPress={() => {
+                    setPickedRecipe(null);
+                    setPickedCustom(null);
+                  }}
+                />
               </View>
             )}
             <Button label="Close" kind="secondary" onPress={() => setPickerCell(null)} />

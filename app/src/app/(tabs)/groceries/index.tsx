@@ -17,7 +17,8 @@ const CHECKED_KEY_PREFIX = 'mealy.groceries.checked.';
 
 interface EntryRow {
   id: string;
-  recipe_id: string;
+  /** Null for free-text meals — they contribute no ingredients. */
+  recipe_id: string | null;
   day: number;
   slot: string;
   position: number;

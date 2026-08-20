@@ -98,10 +98,33 @@ describe('payload builders', () => {
       day: 3,
       slot: 'dinner',
       recipe_id: 'r1',
+      custom_title: null,
       person_ids: [],
       assigned_cook: 'family',
       position: 0,
     });
+  });
+
+  it('builds a free-text meal payload (custom_title only, recipe_id null)', () => {
+    const payload = upsertEntryPayload({
+      mealPlanId: 'mp',
+      day: 5,
+      slot: 'lunch',
+      customTitle: '  Leftover soup  ',
+    });
+    expect(payload.recipe_id).toBeNull();
+    expect(payload.custom_title).toBe('Leftover soup');
+    expect(payload.person_ids).toEqual([]);
+  });
+
+  it('never allows both a recipe and a custom title, nor neither', () => {
+    expect(() =>
+      upsertEntryPayload({ mealPlanId: 'mp', day: 0, slot: 'lunch', recipeId: 'r1', customTitle: 'x' })
+    ).toThrow();
+    expect(() => upsertEntryPayload({ mealPlanId: 'mp', day: 0, slot: 'lunch' })).toThrow();
+    expect(() =>
+      upsertEntryPayload({ mealPlanId: 'mp', day: 0, slot: 'lunch', customTitle: '   ' })
+    ).toThrow();
   });
 
   it('keeps explicit person subset and cook', () => {
@@ -128,8 +151,8 @@ describe('plannedEvents', () => {
   it('logs one event per (entry, covered person), empty subset = everyone', () => {
     const events = plannedEvents(
       [
-        { recipe_id: 'r1', person_ids: [], day: 0, slot: 'lunch' },
-        { recipe_id: 'r2', person_ids: ['b'], day: 0, slot: 'dinner' },
+        { recipe_id: 'r1', custom_title: null, person_ids: [], day: 0, slot: 'lunch' },
+        { recipe_id: 'r2', custom_title: null, person_ids: ['b'], day: 0, slot: 'dinner' },
       ],
       'hh',
       ['a', 'b'],
@@ -145,5 +168,22 @@ describe('plannedEvents', () => {
     });
     expect(events[2].person_id).toBe('b');
     expect(events[2].recipe_id).toBe('r2');
+  });
+
+  it('logs custom meals with recipe_id null and meta.custom_title', () => {
+    const events = plannedEvents(
+      [{ recipe_id: null, custom_title: 'Leftover soup', person_ids: [], day: 2, slot: 'dinner' }],
+      'hh',
+      ['a', 'b'],
+      '2026-08-17'
+    );
+    expect(events).toHaveLength(2);
+    expect(events[0].recipe_id).toBeNull();
+    expect(events[0].meta).toEqual({
+      week_start: '2026-08-17',
+      day: 2,
+      slot: 'dinner',
+      custom_title: 'Leftover soup',
+    });
   });
 });

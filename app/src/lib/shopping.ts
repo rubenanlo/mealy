@@ -14,7 +14,8 @@ export interface ShoppingGroup {
 }
 
 interface EntryLike {
-  recipe_id: string;
+  /** Null for free-text meals — they contribute no ingredients. */
+  recipe_id: string | null;
 }
 
 interface RecipeLike {
@@ -35,6 +36,7 @@ export function collectWeekIngredients(
   const byId = new Map(recipes.map((recipe) => [recipe.id, recipe]));
   const groups: ShoppingGroup[] = [];
   for (const entry of entries) {
+    if (entry.recipe_id === null) continue; // custom meal — no ingredients
     const recipe = byId.get(entry.recipe_id);
     if (!recipe) continue;
     groups.push({

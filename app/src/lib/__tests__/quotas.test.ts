@@ -45,6 +45,18 @@ describe('quotaProgress', () => {
     }
   });
 
+  it('custom meals (recipe_id null) contribute to no category', () => {
+    const entries = [
+      { recipe_id: null, person_ids: [] },
+      { recipe_id: 'saumon', person_ids: [] },
+    ];
+    expect(quotaProgress(entries, 'alice', recipes, targets)).toEqual([
+      { category: 'fish', planned: 1, min: 2, max: 2 },
+      { category: 'meat', planned: 0, min: 0, max: 3 },
+      { category: 'vegetarian', planned: 0, min: 1, max: null },
+    ]);
+  });
+
   it('returns one row per target with min/max passed through', () => {
     const rows = quotaProgress([], 'alice', recipes, targets);
     expect(rows.map((r) => r.category)).toEqual(['fish', 'meat', 'vegetarian']);

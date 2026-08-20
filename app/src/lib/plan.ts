@@ -7,7 +7,10 @@ export interface PlanEntry {
   /** 0 = Monday … 6 = Sunday. */
   day: number;
   slot: MealSlot;
-  recipe_id: string;
+  /** Null for free-text meals (migration 0003). */
+  recipe_id: string | null;
+  /** Free-text meal title; null for library-recipe entries. */
+  custom_title: string | null;
   /** Empty array ⇒ the whole household eats this entry. */
   person_ids: string[];
   assigned_cook: CookType;
@@ -99,19 +102,30 @@ export interface UpsertEntryInput {
   mealPlanId: string;
   day: number;
   slot: MealSlot;
-  recipeId: string;
+  /** Exactly one of recipeId / customTitle must be provided (DB check 0003). */
+  recipeId?: string;
+  /** Free-text meal ("write down a specific meal"). */
+  customTitle?: string;
   personIds?: string[];
   assignedCook?: CookType;
   position?: number;
 }
 
-/** Insert payload for a plan_entries row. */
+/** Insert payload for a plan_entries row: a library recipe or a free-text meal. */
 export function upsertEntryPayload(input: UpsertEntryInput) {
+  const customTitle = input.customTitle?.trim();
+  if (!input.recipeId && !customTitle) {
+    throw new Error('A plan entry needs a recipe or a meal title.');
+  }
+  if (input.recipeId && customTitle) {
+    throw new Error('A plan entry cannot have both a recipe and a custom title.');
+  }
   return {
     meal_plan_id: input.mealPlanId,
     day: input.day,
     slot: input.slot,
-    recipe_id: input.recipeId,
+    recipe_id: input.recipeId ?? null,
+    custom_title: input.recipeId ? null : (customTitle as string),
     person_ids: input.personIds ?? [],
     assigned_cook: input.assignedCook ?? ('family' as CookType),
     position: input.position ?? 0,
@@ -126,9 +140,11 @@ export function removeEntryPayload(entryId: string) {
 /**
  * events rows logged when a week is approved: one 'planned' event per
  * (entry, covered person). Empty person_ids ⇒ every household person.
+ * Custom meals log recipe_id null with meta.custom_title so history keeps
+ * them (consistent with the companion's historical_meal imports).
  */
 export function plannedEvents(
-  entries: Pick<PlanEntry, 'recipe_id' | 'person_ids' | 'day' | 'slot'>[],
+  entries: Pick<PlanEntry, 'recipe_id' | 'custom_title' | 'person_ids' | 'day' | 'slot'>[],
   householdId: string,
   persons: string[],
   weekStartIso: string
@@ -140,7 +156,12 @@ export function plannedEvents(
       person_id: personId,
       recipe_id: entry.recipe_id,
       type: 'planned' as const,
-      meta: { week_start: weekStartIso, day: entry.day, slot: entry.slot },
+      meta: {
+        week_start: weekStartIso,
+        day: entry.day,
+        slot: entry.slot,
+        ...(entry.custom_title ? { custom_title: entry.custom_title } : {}),
+      },
     }));
   });
 }

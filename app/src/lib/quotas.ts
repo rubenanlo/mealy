@@ -12,7 +12,8 @@ export interface QuotaProgress {
 }
 
 export interface QuotaEntry {
-  recipe_id: string;
+  /** Null for free-text meals — they carry no tags, so no category counts. */
+  recipe_id: string | null;
   /** Empty array ⇒ the whole household eats this entry. */
   person_ids: string[];
 }
@@ -42,8 +43,9 @@ export function quotaProgress(
   const eaten = entries.filter((e) => entryCoversPerson(e, personId));
   return targets.map((target) => ({
     category: target.category,
-    planned: eaten.filter((e) => (tagsById.get(e.recipe_id) ?? []).includes(target.category))
-      .length,
+    planned: eaten.filter(
+      (e) => e.recipe_id !== null && (tagsById.get(e.recipe_id) ?? []).includes(target.category)
+    ).length,
     min: target.min,
     max: target.max,
   }));
