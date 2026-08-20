@@ -17,6 +17,7 @@ dependencies = [
     "pyjwt",
     "pypdf",
     "pypdfium2",
+    "pillow",
 ]
 
 [dependency-groups]
