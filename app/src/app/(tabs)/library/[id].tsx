@@ -5,10 +5,25 @@ import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AddToWeekSheet } from '@/components/add-to-week';
 import { IngredientRow } from '@/components/ingredient-row';
-import { Body, Button, Card, Eyebrow, Field, Muted } from '@/components/ui';
-import { deriveCategory, spineColor } from '@/lib/category';
+import {
+  Body,
+  Bookmark,
+  Button,
+  Card,
+  CategoryDot,
+  Eyebrow,
+  Field,
+  Hairline,
+  LinkButton,
+  Muted,
+  Title,
+} from '@/components/ui';
+import { useHousehold } from '@/lib/auth';
+import { CATEGORY_LABELS, deriveCategory } from '@/lib/category';
 import { useImageUrl } from '@/lib/media';
+import { weekStart } from '@/lib/plan';
 import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
 import type { IngredientRow as IngredientData, SourceKind, Verbatim } from '@/lib/worker';
@@ -55,7 +70,13 @@ function Hero({ path, onBack }: { path: string | null; onBack: () => void }) {
   const insets = useSafeAreaInsets();
   const url = useImageUrl(path);
   return (
-    <View style={{ height: path ? 260 : insets.top + 64, backgroundColor: colors.cardPressed }}>
+    <View
+      style={{
+        aspectRatio: path ? 4 / 3 : undefined,
+        height: path ? undefined : insets.top + 64,
+        backgroundColor: colors.cardPressed,
+      }}
+    >
       {url ? <Image source={{ uri: url }} style={{ flex: 1 }} contentFit="cover" /> : null}
       <Pressable
         accessibilityRole="button"
@@ -68,9 +89,7 @@ function Hero({ path, onBack }: { path: string | null; onBack: () => void }) {
           width: minTapTarget,
           height: minTapTarget,
           borderRadius: minTapTarget / 2,
-          backgroundColor: pressed ? colors.cardPressed : colors.card,
-          borderWidth: 1,
-          borderColor: colors.border,
+          backgroundColor: pressed ? colors.cardPressed : colors.bg,
           alignItems: 'center',
           justifyContent: 'center',
         })}
@@ -86,7 +105,7 @@ function GalleryImage({ path }: { path: string }) {
   const { colors } = useTheme();
   return (
     <View
-      style={{ width: 240, height: 180, borderRadius: 14, overflow: 'hidden', backgroundColor: colors.cardPressed }}
+      style={{ width: 240, height: 180, borderRadius: 8, overflow: 'hidden', backgroundColor: colors.cardPressed }}
     >
       {url ? <Image source={{ uri: url }} style={{ flex: 1 }} contentFit="cover" /> : null}
     </View>
@@ -99,8 +118,11 @@ function VerbatimBlock({ label, text }: { label: string; text: string | null }) 
   return (
     <View style={{ gap: 6 }}>
       <Eyebrow>{label}</Eyebrow>
-      <Card>
-        <Text selectable style={{ color: colors.text, fontSize: fontSize.base, lineHeight: 24 }}>
+      <Card style={{ backgroundColor: colors.cardPressed }}>
+        <Text
+          selectable
+          style={{ color: colors.text, fontSize: fontSize.base, lineHeight: 24, fontFamily: fonts.ui }}
+        >
           {text}
         </Text>
       </Card>
@@ -113,7 +135,7 @@ function SourceView({ sources }: { sources: SourceRow[] }) {
     <View style={{ gap: 20 }}>
       {sources.map((source) => (
         <View key={source.id} style={{ gap: 12 }}>
-          <Body style={{ fontWeight: '700' }}>{KIND_LABELS[source.kind] ?? source.kind}</Body>
+          <Body style={{ fontFamily: fonts.uiSemi }}>{KIND_LABELS[source.kind] ?? source.kind}</Body>
           {source.url ? <Muted>{source.url}</Muted> : null}
           <VerbatimBlock label="Pasted text" text={source.verbatim.pasted} />
           <VerbatimBlock label="Page text" text={source.verbatim.page_text} />
@@ -139,29 +161,11 @@ function SourceView({ sources }: { sources: SourceRow[] }) {
   );
 }
 
-function ReviewBadge() {
-  const { colors } = useTheme();
-  return (
-    <View
-      style={{
-        backgroundColor: colors.saffron,
-        borderRadius: 8,
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        alignSelf: 'center',
-      }}
-    >
-      <Text style={{ color: '#2B2925', fontSize: fontSize.eyebrow, fontWeight: '700' }}>
-        needs review
-      </Text>
-    </View>
-  );
-}
-
 export default function RecipeDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { colors } = useTheme();
   const router = useRouter();
+  const { householdId } = useHousehold();
   const [recipe, setRecipe] = useState<RecipeDetail | null>(null);
   const [sources, setSources] = useState<SourceRow[]>([]);
   const [images, setImages] = useState<ImageRow[]>([]);
@@ -169,18 +173,36 @@ export default function RecipeDetailScreen() {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ title: '', servings: '', prep: '', cook: '' });
   const [saving, setSaving] = useState(false);
+  const [inThisWeek, setInThisWeek] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
-    const [r, s, i] = await Promise.all([
+    const [r, s, i, weekPlan] = await Promise.all([
       supabase.from('recipes').select('*').eq('id', id).single(),
       supabase.from('recipe_sources').select('*').eq('recipe_id', id).order('captured_at'),
       supabase.from('recipe_images').select('id, storage_path, position').eq('recipe_id', id).order('position'),
+      supabase
+        .from('meal_plans')
+        .select('id')
+        .eq('household_id', householdId)
+        .eq('week_start', weekStart(new Date()))
+        .maybeSingle(),
     ]);
     if (r.data) setRecipe(r.data as RecipeDetail);
     if (s.data) setSources(s.data as SourceRow[]);
     if (i.data) setImages(i.data as ImageRow[]);
-  }, [id]);
+    if (weekPlan.data) {
+      const { count } = await supabase
+        .from('plan_entries')
+        .select('id', { count: 'exact', head: true })
+        .eq('meal_plan_id', weekPlan.data.id)
+        .eq('recipe_id', id);
+      setInThisWeek((count ?? 0) > 0);
+    } else {
+      setInThisWeek(false);
+    }
+  }, [id, householdId]);
 
   useEffect(() => {
     void load();
@@ -236,13 +258,12 @@ export default function RecipeDetailScreen() {
     );
   }
 
-  const meta = [
+  const category = deriveCategory(recipe.tags);
+  const metaParts = [
     recipe.servings ? `${recipe.servings} servings` : null,
     recipe.prep_minutes ? `Prep ${recipe.prep_minutes} min` : null,
     recipe.cook_minutes ? `Cook ${recipe.cook_minutes} min` : null,
-  ]
-    .filter(Boolean)
-    .join(' · ');
+  ].filter(Boolean);
 
   const galleryPaths =
     images.length > 0
@@ -252,85 +273,64 @@ export default function RecipeDetailScreen() {
         : [];
   const heroPath = galleryPaths[0] ?? null;
   const restPaths = galleryPaths.slice(1);
-  const category = deriveCategory(recipe.tags);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView contentContainerStyle={{ paddingBottom: 48 }}>
         <Hero path={heroPath} onBack={() => router.back()} />
 
-        <View style={{ padding: screenPadding, gap: 16 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <Text
-              style={{
-                flex: 1,
-                color: colors.text,
-                fontSize: 24,
-                lineHeight: 32,
-                fontFamily: fonts.display,
-              }}
-            >
-              {recipe.title}
-            </Text>
+        <View style={{ padding: screenPadding, gap: 14 }}>
+          <Text
+            style={{
+              color: colors.text,
+              fontSize: fontSize.heroTitle,
+              lineHeight: Math.round(fontSize.heroTitle * 1.15),
+              letterSpacing: -0.3,
+              fontFamily: fonts.display,
+            }}
+          >
+            {recipe.title}
+          </Text>
+
+          {/* Byline-style meta */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             {category ? (
-              <View
-                style={{
-                  width: 4,
-                  height: 28,
-                  borderRadius: 2,
-                  backgroundColor: spineColor(category, colors),
-                }}
-              />
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                <CategoryDot category={category} />
+                <Muted>{CATEGORY_LABELS[category]}</Muted>
+              </View>
+            ) : null}
+            {category && metaParts.length > 0 ? <Muted>·</Muted> : null}
+            {metaParts.length > 0 ? <Muted>{metaParts.join(' · ')}</Muted> : null}
+            {recipe.needs_review ? (
+              <Text style={{ color: colors.saffron, fontSize: fontSize.meta, fontFamily: fonts.uiSemi }}>
+                needs review
+              </Text>
             ) : null}
           </View>
-          {meta ? <Eyebrow>{meta}</Eyebrow> : null}
-          {recipe.tags.length > 0 ? <Muted>{recipe.tags.join(' · ')}</Muted> : null}
 
-          {recipe.needs_review ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <ReviewBadge />
+          <LinkButton
+            label={view === 'recipe' ? 'Original source' : 'Back to the recipe'}
+            onPress={() => setView(view === 'recipe' ? 'source' : 'recipe')}
+            style={{ minHeight: 36 }}
+          />
+
+          {view === 'recipe' && !editing ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
               <Button
-                label="Mark as reviewed"
-                kind="secondary"
-                onPress={() => void markReviewed()}
+                label={inThisWeek ? 'Add again this week' : 'Add to this week'}
+                onPress={() => setSheetOpen(true)}
                 style={{ flex: 1 }}
               />
+              <Bookmark saved={inThisWeek} onPress={() => setSheetOpen(true)} size={26} />
             </View>
           ) : null}
 
-          {/* Segmented text buttons: recipe / original source */}
-          <View style={{ flexDirection: 'row', gap: 24 }}>
-            {(
-              [
-                ['recipe', 'Recipe'],
-                ['source', 'Original source'],
-              ] as const
-            ).map(([key, label]) => {
-              const active = view === key;
-              return (
-                <Pressable
-                  key={key}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  onPress={() => setView(key)}
-                  style={{ minHeight: minTapTarget, justifyContent: 'center' }}
-                >
-                  <Text
-                    style={{
-                      color: active ? colors.accent : colors.textMuted,
-                      fontSize: fontSize.base,
-                      fontWeight: '600',
-                      borderBottomWidth: 2,
-                      borderBottomColor: active ? colors.accent : 'transparent',
-                      paddingBottom: 4,
-                    }}
-                  >
-                    {label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          {recipe.needs_review && view === 'recipe' && !editing ? (
+            <Button label="Mark as reviewed" kind="secondary" onPress={() => void markReviewed()} />
+          ) : null}
+
+          <Hairline />
 
           {view === 'source' ? (
             <SourceView sources={sources} />
@@ -360,7 +360,7 @@ export default function RecipeDetailScreen() {
               <Button label="Cancel" kind="secondary" onPress={() => setEditing(false)} />
             </View>
           ) : (
-            <View style={{ gap: 16 }}>
+            <View style={{ gap: 18 }}>
               {restPaths.length > 0 ? (
                 <ScrollView
                   horizontal
@@ -373,30 +373,23 @@ export default function RecipeDetailScreen() {
                 </ScrollView>
               ) : null}
 
-              <Eyebrow>Ingredients</Eyebrow>
-              <Card>
+              <Title>Ingredients</Title>
+              <View>
                 {recipe.ingredients.map((ing, i) => (
-                  <IngredientRow key={`${ing.raw}-${i}`} ingredient={ing} />
+                  <View key={`${ing.raw}-${i}`}>
+                    {i > 0 ? <Hairline /> : null}
+                    <IngredientRow ingredient={ing} />
+                  </View>
                 ))}
                 {recipe.ingredients.length === 0 ? <Muted>No ingredients extracted.</Muted> : null}
-              </Card>
+              </View>
 
-              <Eyebrow>Steps</Eyebrow>
-              <View style={{ gap: 16 }}>
+              <Title>Steps</Title>
+              <View style={{ gap: 20 }}>
                 {recipe.steps.map((step, i) => (
-                  <View key={i} style={{ flexDirection: 'row', gap: 14 }}>
-                    <Text
-                      style={{
-                        color: colors.accent,
-                        fontSize: fontSize.large,
-                        fontFamily: fonts.display,
-                        minWidth: 26,
-                        lineHeight: 28,
-                      }}
-                    >
-                      {i + 1}
-                    </Text>
-                    <Body style={{ flex: 1 }}>{step}</Body>
+                  <View key={i} style={{ gap: 6 }}>
+                    <Eyebrow>Step {i + 1}</Eyebrow>
+                    <Body>{step}</Body>
                   </View>
                 ))}
                 {recipe.steps.length === 0 ? <Muted>No steps extracted.</Muted> : null}
@@ -407,6 +400,14 @@ export default function RecipeDetailScreen() {
           )}
         </View>
       </ScrollView>
+
+      <AddToWeekSheet
+        visible={sheetOpen}
+        recipeId={recipe.id}
+        recipeTitle={recipe.title}
+        onClose={() => setSheetOpen(false)}
+        onAdded={() => void load()}
+      />
     </View>
   );
 }
