@@ -2,7 +2,10 @@ import { Stack } from 'expo-router';
 
 import { useTheme } from '@/lib/theme';
 
-/** One tab route for settings; person/[id] stays nested (see library/_layout). */
+/**
+ * Settings lives outside the tab group (v3.1b): pushed from the Home
+ * header's gear button, with person/[id] nested in this stack.
+ */
 export default function SettingsStack() {
   const { colors } = useTheme();
   return (

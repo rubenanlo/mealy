@@ -50,6 +50,7 @@ function RootStack() {
       </Stack.Protected>
       <Stack.Protected guard={hasHousehold}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="settings" />
         <Stack.Screen name="capture" options={{ presentation: 'modal' }} />
       </Stack.Protected>
     </Stack>

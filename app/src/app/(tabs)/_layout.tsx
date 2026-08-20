@@ -14,7 +14,6 @@ const TAB_ICONS: Record<string, IconName> = {
   search: 'search',
   plan: 'calendar',
   groceries: 'basket',
-  settings: 'person-circle',
 };
 
 /**
@@ -114,14 +113,13 @@ export default function TabsLayout() {
       }}
       key={dark ? 'dark' : 'light'}
     >
-      {/* Exactly five tabs — each directory has its own Stack layout, so no
-          nested route (library/[id], settings/person/[id]) can ever register
-          as a tab again. */}
+      {/* Exactly four tabs (v3.1b — Settings moved to the Home header gear).
+          Each directory has its own Stack layout, so no nested route
+          (library/[id], …) can ever register as a tab again. */}
       <Tabs.Screen name="library" options={{ title: 'Home' }} />
       <Tabs.Screen name="search" options={{ title: 'Search' }} />
       <Tabs.Screen name="plan" options={{ title: 'Week' }} />
       <Tabs.Screen name="groceries" options={{ title: 'Groceries' }} />
-      <Tabs.Screen name="settings" options={{ title: 'Settings' }} />
     </Tabs>
   );
 }

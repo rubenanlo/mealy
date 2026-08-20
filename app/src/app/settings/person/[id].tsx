@@ -7,15 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Body, Button, Eyebrow, Field, Hairline, Muted, Title } from '@/components/ui';
 import { FODMAP_MODES, normalizeDietProfile, type DietProfile } from '@/lib/diet';
 import { supabase } from '@/lib/supabase';
-import {
-  fonts,
-  fontSize,
-  minTapTarget,
-  radius,
-  screenPadding,
-  tabBarClearance,
-  useTheme,
-} from '@/lib/theme';
+import { fonts, fontSize, minTapTarget, radius, screenPadding, useTheme } from '@/lib/theme';
 
 function TagEditor({
   label,
@@ -154,7 +146,7 @@ export default function PersonScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
-      <ScrollView contentContainerStyle={{ padding: screenPadding, gap: 20, paddingBottom: tabBarClearance }}>
+      <ScrollView contentContainerStyle={{ padding: screenPadding, gap: 20, paddingBottom: 48 }}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Back to settings"

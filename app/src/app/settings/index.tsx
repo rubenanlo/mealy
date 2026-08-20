@@ -15,7 +15,6 @@ import {
   minTapTarget,
   radius,
   screenPadding,
-  tabBarClearance,
   useTheme,
   type ThemeOverride,
 } from '@/lib/theme';
@@ -163,7 +162,23 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
-      <ScrollView contentContainerStyle={{ padding: screenPadding, gap: 24, paddingBottom: tabBarClearance }}>
+      <ScrollView contentContainerStyle={{ padding: screenPadding, gap: 24, paddingBottom: 48 }}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          onPress={() => router.back()}
+          style={({ pressed }) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 4,
+            minHeight: minTapTarget,
+            alignSelf: 'flex-start',
+            opacity: pressed ? 0.7 : 1,
+          })}
+        >
+          <Ionicons name="chevron-back" size={20} color={colors.text} />
+          <Body style={{ fontFamily: fonts.uiSemi }}>Home</Body>
+        </Pressable>
         <Title>Settings</Title>
 
         {/* Household */}
