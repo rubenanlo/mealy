@@ -1,86 +1,71 @@
-# Mealy — Design System ("Carnet de cuisine")
+# Mealy — Design System v2 ("Cooking editorial", NYT Cooking-inspired)
 
-The app should feel like a well-kept family recipe notebook, not a startup product. Warm paper in light mode, warm cast-iron in dark mode, print-cookbook serif for titles only, system type for everything else. Kitchen-readable is the quality floor: base font 17+, tap targets ≥48, one-hand reach, high contrast in both modes.
+Direction: the NYT Cooking app. Photography does the selling; the chrome is quiet, white, and typographic. Chunky slab-serif headlines over clean sans UI, hairline dividers, monochrome icons, one editorial red used sparingly. The app opens on a **recipes landing feed** — a browsable, magazine-like home — not a utility list. Kitchen-readable floor stays: base 16–17, tap targets ≥48, both modes high-contrast.
 
-## Signature element — the category spine
+This replaces v1 ("carnet de cuisine"). Keep all v1 *functional* behavior (4 tabs, suggestions logic, groceries checklist, quota data, three sign-in flows); only the visual language changes.
 
-Everywhere a recipe appears (library row, planner chip, suggestion, shopping context), the card carries a 4px rounded **left spine** colored by protein category. This encodes the quota system (fish 2×/meat 3×) visually: a week grid's balance is legible at a glance without reading.
-
-- fish → `spineFish` slate blue
-- meat → `spineMeat` brick
-- vegetarian → `spineVeg` olive
-- legume → `spineLegume` ochre
-- unknown/other → transparent (no spine — absence is information)
-
-Category derives from `recipe.tags` (Phase 1 stand-in, same rule as quotaProgress).
-
-## Color tokens (theme.ts)
+## Color tokens (theme.ts — same token names, new values)
 
 | Token | Light | Dark |
 |---|---|---|
-| bg | `#F6F2EA` | `#1C1B18` |
-| card | `#FFFDF8` | `#2A2721` |
-| cardPressed | `#F0EAD9` | `#332F27` |
-| text | `#2B2925` | `#EFEAE0` |
-| textMuted | `#7A7468` | `#A39B8B` |
-| accent (actions, active tab, links) | `#44582F` | `#8FA96B` |
-| accentText (on accent) | `#FFFDF8` | `#1C1B18` |
-| saffron (featured/seasonal highlights, badges) | `#D9A441` | `#D9A441` |
-| danger (errors, allergens only) | `#B3402F` | `#D06A54` |
-| border | `#E4DCCB` | `#3A352B` |
+| bg | `#FFFFFF` | `#121212` |
+| card | `#FFFFFF` | `#1C1C1C` |
+| cardPressed | `#F5F5F4` | `#262626` |
+| text | `#121212` | `#F5F5F4` |
+| textMuted | `#72716D` | `#9C9A94` |
+| accent (brand red — links, active save states, primary buttons) | `#C7442E` | `#E0604A` |
+| accentText | `#FFFFFF` | `#121212` |
+| saffron → repurpose as `badge` (needs-review, TODAY) | `#B58A2A` | `#D9A441` |
+| danger | `#C7442E` | `#E0604A` |
+| border (hairlines) | `#E5E3DE` | `#333230` |
 | spineFish | `#4E6E8E` | `#6E8DAB` |
 | spineMeat | `#9C4A38` | `#B56A55` |
 | spineVeg | `#5F7040` | `#84955F` |
 | spineLegume | `#B08432` | `#C29A4A` |
 
-Existing token names (bg, card, text, textMuted, accent, danger) keep their names — extend, don't rename, so screens keep compiling.
+Chrome is monochrome (black/white/gray + hairlines). Red appears only on: primary buttons, active/save states, small "editorial" links ("See all"). Category spine colors survive **only** as small 8px dots + 12pt labels on cards and in the Week quota chips — no more 4px side bars (photography carries the cards now).
 
 ## Type
 
-- **Display: Fraunces** (`@expo-google-fonts/fraunces`, weights 600 + 400italic), used ONLY for: app wordmark, screen titles, recipe titles, day names in the planner header. Load via `useFonts` in root layout; render nothing until loaded (splash covers it).
-- **Body: system font** (SF Pro/Roboto) — everything else. Base 17, secondary 15, never below 13.
-- **Quantities/numbers:** system with `fontVariant: ['tabular-nums']`, right-aligned in ingredient rows.
-- Scale: wordmark 34, screenTitle 28 (Fraunces 600), recipeTitle 22 (Fraunces 600), body 17, secondary 15, eyebrow 13 uppercase +0.8 letter-spacing.
+- **Display: Bitter** (`@expo-google-fonts/bitter`, 700 + 600) — the Karnak stand-in. Wordmark, section headlines, recipe titles, day names. Tight line-height (1.15), slight negative letter-spacing (-0.3) at ≥22.
+- **UI/body: Libre Franklin** (`@expo-google-fonts/libre-franklin`, 400/500/600) — all UI text, meta lines, buttons, ingredients, steps.
+- Numbers: Libre Franklin with `tabular-nums`.
+- Scale: wordmark 30 (Bitter 700), sectionHead 24 (Bitter 700), heroTitle 26 (Bitter 700), cardTitle 17 (Bitter 600), body 16, meta 13 (Franklin 500, textMuted), eyebrow 12 uppercase +1.2 tracking (Franklin 600).
+- Replace Fraunces entirely; remove its package.
 
-## Layout & components (components/ui)
+## Chrome components
 
-- Screen padding 20 horizontal. Card radius 14, border 1px `border`, no heavy shadows (max iOS shadowOpacity 0.06).
-- `Screen` — SafeArea + bg + optional scroll, consistent header slot.
-- `Eyebrow` — 13/uppercase/muted; used for section labels ("THIS WEEK", "INGREDIENTS") and the date line "Wednesday, August 20" on Week.
-- `Card` — surface with radius/border; `spine` prop takes a category color.
-- `Button` — primary: accent bg, accentText label, radius 12, height 52, weight 600. Secondary: transparent, 1px border, text color. Destructive: danger text, no fill. Loading = ActivityIndicator replacing label.
-- `Field` — card bg, 1px border, radius 12, height 52, focus border accent (2px). Placeholder textMuted.
-- `Tag` — small pill, border only, 13pt.
-- `EmptyState` — centered Fraunces italic line + one primary action. Empty states direct, never apologize: "No recipes yet." + button "Add a recipe".
-- Tab bar: bg card, top border, active tint accent, inactive textMuted, Ionicons: Recipes `book-outline`, Week `calendar-outline`, Groceries `cart-outline`, Settings `settings-outline`. Labels always visible.
+- Hairline dividers (`StyleSheet.hairlineWidth`, border color) between list sections — the NYT texture. Cards have **no borders and no shadows**; images and whitespace define them. radius 8 on standalone images/cards, 0 on full-bleed.
+- **Bottom tab bar (the one to get right):** bg `bg`, top hairline, height comfortable (labels 11 Franklin 500), thin-outline Ionicons 24: Recipes `restaurant-outline`… no — use: Recipes `home-outline`, Week `calendar-clear-outline`, Groceries `basket-outline`, Settings `person-circle-outline`. Active = `text` color (black/white), NOT red; inactive = textMuted. No pill, no background blob. iOS: subtle blur optional — skip, plain bg is fine.
+- Buttons: primary = red bg, white 600 label, radius 6 (squarer than v1), height 48. Secondary = 1px `text` border, text label, transparent. Tertiary/link = red 600 text, no chrome.
+- Field: bg cardPressed (light gray fill, NYT search style), radius 6, no border until focus (2px text color), height 48, leading search icon where relevant.
+- SectionHeader component: Bitter 24 + optional red "See all" link right-aligned.
+- Save/plan affordance on cards: bookmark-outline icon top-right of image, filled red when the recipe is in the current week.
 
 ## Screens
 
-**Sign in** — wordmark "Mealy" in Fraunces 600 34 + eyebrow "The family cooking notebook" beneath; form in a single Card (fields + primary button); secondary actions as text buttons below the card. Error text under the card in danger, prefixed by nothing (no ⚠ emoji).
+**Recipes (home / landing page)** — the NYT Cooking feed:
+1. Header row: wordmark "Mealy" (Bitter 700, 30) left; search icon + ＋ icon right (48px targets, monochrome). Tapping search expands a full-width Field beneath (collapsible); ＋ opens capture.
+2. **Hero**: the first suggestion as a full-bleed card — image 4:3 full width, then below (not overlaid): title Bitter 26, meta line "35 min · Fish · 4 servings" (13 muted), hairline beneath. Tapping opens the recipe.
+3. **"Suggested for you"** section (SectionHeader) — horizontal carousel of 150×190 cards: image 150×110 radius 8, title Bitter 600 17 two-line clamp, meta 13 with category dot. Same data rule as v1 (recipes in no plan entry, newest first, max 6, hero takes the first).
+4. **"This week"** section — small horizontal row of the current week's planned recipes (image 110×82 + title 15) linking to Week; hidden when empty.
+5. **"All recipes"** section — vertical list rows: 96×72 image left radius 6, title Bitter 600 17, meta line (time · category dot+label · "needs review" badge in `badge` color), hairline between rows (no gaps, no cards — NYT list style).
+Empty library: full-bleed empty state, Bitter headline "Your cooking notebook starts here.", red primary "Add your first recipe".
 
-### Tab structure (4 tabs)
+**Recipe detail** — NYT recipe page: full-bleed 4:3 image; title Bitter 26 below; byline-style meta line; then a red primary row button "Add to this week" (opens day/slot picker) next to bookmark; INGREDIENTS as sectionHead with hairline rows (name left, quantity right tabular, raw string beneath 13 muted); STEPS sectionHead, steps as "Step 1" eyebrow + body 16 paragraphs (NYT style — eyebrow "STEP 1", not decorative numerals); "Original source" as a tertiary link under meta. Edit/mark-reviewed kept, monochrome.
 
-1. **Recipes** (home) — recipes + suggestions. Ionicons `book-outline`.
-2. **Week** — the planner. `calendar-outline`.
-3. **Groceries** — shopping list. `cart-outline`.
-4. **Settings** — settings. `settings-outline`.
+**Week** — keep structure (date eyebrow, title "Week", chevrons, TODAY badge, Lunch/Dinner slots, sticky "Approve week" in red), restyled: day cards → day *sections* separated by hairlines, day name Bitter 600 20, slots as rows with 64×48 thumbnails; empty slot = "+ Add" tertiary red link, not dashed boxes. Quota chips: outlined, 8px category dot + "Fish 1/2" Franklin 500 13. Employee marker stays 👩‍🍳.
 
-**Recipes (home)** — header: screen title "Recipes" + ＋ button (52px circle, accent). Then a **Suggestions section**: eyebrow "SUGGESTIONS" + horizontally scrolling cards (160×200: thumbnail top, title 15/600 2-line clamp, spine) showing up to 6 recipes **not present in any plan entry**, newest first (simple Phase-1 heuristic; the real Featured engine with taste/season ranking and the FODMAP toggle arrives in Phase 3 on this same surface). Hide the section entirely when empty. Below: search field + the full library list. Rows as Cards with spine: 72px thumbnail (radius 10) left, recipe title 17/600 (Fraunces reserved for detail), tags row, "needs review" badge in saffron. List separators 12px gaps, not hairlines.
+**Groceries** — keep behavior; restyle: recipe groups as sectionHead 20 Bitter, hairline rows, 26px round checkbox (red fill + white check when done, strike-through muted), week eyebrow up top.
 
-**Groceries (shopping list)** — Phase-1 honest version: reads the current week's plan (approved or draft) and lists every ingredient **grouped by recipe** (eyebrow = recipe title, rows = ingredient name left, quantity+unit right in tabular figures). Each row has a 28px checkbox (checked = struck-through, textMuted); checked state persists locally (AsyncStorage keyed by week). Header: title "Groceries" + eyebrow with the week ("Week of August 24"). Empty state: "No meals planned this week." + button "Open the week" (navigates to the Week tab). No merging/summing yet — Phase 2 brings canonical-ingredient aggregation and grams; the layout must not promise it (no totals row).
+**Settings** — NYT-style: plain rows with hairlines (no cards), group eyebrows (HOUSEHOLD / MEAL PLANNING / OTHER REQUIREMENTS / APPEARANCE), 52px rows, chevron, segmented theme control monochrome.
 
-**Recipe detail** — hero image full-bleed top (radius 0, height 260) with back button overlay; title Fraunces 22-26; meta row (servings · prep · cuisson) as eyebrow; INGREDIENTS section: rows name-left / quantity-right (tabular), raw original string beneath in textMuted 13; STEPS: numbered 1..n — number in Fraunces 600 accent, step body 17, generous 16 gap. "Original source" toggle stays, styled as segmented text buttons.
+**Sign in** — white page, wordmark Bitter 30 centered-left, eyebrow "The family cooking notebook", plain fields (gray fill style), red primary button. Three flows unchanged.
 
-**Week (planner)** — top: eyebrow date "Wednesday, August 20" + title "Week" + week nav ◀ ▶ (48px targets). Days as vertical sections; **today's section gets a saffron eyebrow "TODAY"** and card border accent. Each day: two labeled slots (Lunch / Dinner) as dashed-border empty targets ("Add") or filled chips (Card+spine, title + person initials chips + 👩‍🍳 marker for employee-assigned). Quota strip under the header: small pills per category "Fish 1/2 · Meat 2/3" using spine colors — fed by quotaProgress.
-**"Approve week"** as sticky bottom primary button when the week is draft and non-empty.
-
-**Settings** — grouped Cards with Eyebrow group labels (HOUSEHOLD, MEAL PLANNING, OTHER REQUIREMENTS, APPEARANCE), rows 52px with chevron. Theme selector as 3 segmented options.
-
-**Capture** — modal keeps focus: title "Add a recipe", one Field ("Paste a link or text"), primary button, then two secondary buttons Photos / PDF as horizontal cards with icons. Failure state text is directive: "Could not fetch the recipe. Paste the text below."
+**Capture** — sheet: title Bitter 24 "Add a recipe", gray-fill field, red primary, Photos/PDF as two bordered secondary buttons side by side with icons.
 
 ## Motion & floor
 
-- One deliberate motion: planner day sections and library rows fade+rise 12px on first mount (staggered 30ms, ≤300ms total); respect `useReducedMotion` — skip entirely.
-- Press feedback: cards scale 0.98 + cardPressed bg.
-- No other animation. No gradients anywhere. No emoji in UI copy except the 👩‍🍳 cook marker.
-- Copy rules: sentence case, **English** (app chrome is English; recipe content keeps its source language; the employee page is 100% Spanish per spec §10), verbs on buttons ("Add a recipe", "Approve week"), errors say what to do next, empty states invite action.
+- Keep it stiller than v1: no entrance staggers. Only: pressed state (cardPressed bg, no scale), bookmark fill animation (single 150ms), search field expand/collapse (200ms). Respect reduced motion (skip the two animated ones).
+- Copy rules unchanged: English chrome, sentence case, verbs on buttons; recipe content keeps source language; employee page (Phase 4) 100% Spanish.
+- Accessibility floor unchanged: labels on all touchables, focus visible, contrast AA in both modes (gray meta 13 only on plain bg).
