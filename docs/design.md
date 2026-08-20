@@ -69,3 +69,24 @@ Empty library: full-bleed empty state, Bitter headline "Your cooking notebook st
 - Keep it stiller than v1: no entrance staggers. Only: pressed state (cardPressed bg, no scale), bookmark fill animation (single 150ms), search field expand/collapse (200ms). Respect reduced motion (skip the two animated ones).
 - Copy rules unchanged: English chrome, sentence case, verbs on buttons; recipe content keeps source language; employee page (Phase 4) 100% Spanish.
 - Accessibility floor unchanged: labels on all touchables, focus visible, contrast AA in both modes (gray meta 13 only on plain bg).
+
+
+---
+
+# v3 addendum — NYT Cooking IA + navbar ("ease-of-use pass", supersedes conflicting v2 items)
+
+## Tab bar (5 tabs, the NYT pattern)
+Home · Search · Week · Groceries · Settings. Ionicons pairs, **outline when inactive → filled when active**: home-outline/home, search-outline/search, calendar-outline/calendar, basket-outline/basket, person-circle-outline/person-circle. Active = icon+label in `text`; inactive = `textMuted`. Labels 11 Franklin 500, always visible. bg `bg`, top hairline, no blur, no red.
+
+## IA: Search is its own tab
+- **Home** = discovery only: wordmark row ("Mealy" Bitter 30 left, ＋ capture icon right — the collapsible search field is REMOVED); hero (first suggestion, 4:3 full-bleed); "Suggested for you" carousel; "This week" strip; "Recently added" carousel (last 10 by created_at). No full list on Home.
+- **Search (new screen, src/app/(tabs)/search/index.tsx)** = the workhorse: large gray-fill search field (not autofocused) with search icon; beneath it a horizontally scrolling chip row of filters: All · Fish · Meat · Vegetarian · Legume · Needs review (single-select, chip = 1px border pill, active = text-color fill/bg-inverted text); then the full hairline recipe list (v2 row style), filtered by chip + query, newest first. Empty results: "No recipes match." + "Clear filters" tertiary.
+
+## Signature: the bookmark chip on every photo
+36px circle, `bg` fill (dark: card), subtle 1px border, bookmark-outline icon — overlaid top-right on EVERY recipe image (hero, carousel cards, list-row thumbnails 40px×28 rows may omit, detail hero). In-this-week → red filled bookmark. Tap = AddToWeekSheet (or removes when already planned this week — confirm via small action sheet). Same affordance everywhere; 150ms fill pop kept, reduced-motion gated.
+
+## Recipe page: sticky action bar
+"Add to this week" moves to a sticky bottom bar (bg + top hairline, safe-area padded): red primary full-width. The FODMAP summary (Phase 2 Task 7) renders ABOVE the ingredients section, not in the bar.
+
+## Everything else
+v2 stands: tokens, Bitter/Libre Franklin, hairline lists, Week/Groceries/Settings layouts, copy rules, motion floor. Week rows: minimum row height 56 for glanceable tapping.
