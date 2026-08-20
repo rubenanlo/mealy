@@ -115,3 +115,8 @@ Tapping a recipe anywhere presents the detail as a card from the bottom: covers 
 
 ## Pinned ingredients while reading steps
 When the STEPS section header scrolls past the top of the sheet, a pinned bar appears (bg, bottom hairline, 44px): "Ingredients" + chevron. Tap → 200ms expand of a panel (max-height 60% of sheet, internally scrollable) listing ingredients name-left / quantity-right (tabular), raw line omitted here for density; tap the bar again or any step to collapse. Panel and bar disappear when scrolled back above the steps. Reduced-motion: instant toggle. The bar must not overlap the close affordance.
+
+## v3.1b — Settings out of the tab bar (user request, matches NYT screenshot)
+- The bottom capsule has **4 tabs**: Home, Search, Week, Groceries. No Settings tab.
+- Settings is reached from the **Home header, top-right: a gear icon button next to ＋** ([＋][gear], gear outermost), settings-outline Ionicon, icon-only (no label), 48px target, monochrome — the NYT top-right gear pattern.
+- The settings screens move out of the tab group (stack route pushed from the gear, back chevron); person/[id] moves with it; all functionality unchanged.
