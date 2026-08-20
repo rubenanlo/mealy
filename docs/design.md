@@ -90,3 +90,18 @@ Home · Search · Week · Groceries · Settings. Ionicons pairs, **outline when 
 
 ## Everything else
 v2 stands: tokens, Bitter/Libre Franklin, hairline lists, Week/Groceries/Settings layouts, copy rules, motion floor. Week rows: minimum row height 56 for glanceable tapping.
+
+---
+
+# v3.1 correction — the real NYT tab bar (per user screenshot, supersedes v3 "Tab bar")
+
+The NYT Cooking bar is a **floating capsule**, not a flat edge-to-edge strip:
+- Container: absolute-positioned above the bottom safe area, inset ~12 horizontal, borderRadius 999 (full capsule), bg `bg` (white / #1C1C1C dark), soft shadow (iOS: opacity 0.12 radius 16 offset y4; Android elevation 8; web boxShadow), height ~64, content row space-evenly. Content scrolls behind it — screens need bottom padding ≈ 88 so lists aren't hidden.
+- Items: **filled Ionicons for all states** (home, search, calendar, basket, person-circle) 22px + label 11 Franklin 500 beneath. Active ≠ icon swap: the **active item gets a rounded-pill blob** (cardPressed bg, radius 999, padding ~10×16) behind its icon+label; inactive items plain, `textMuted`; active `text`.
+- Exactly 5 tabs: Home, Search, Week, Groceries, Settings. Nested routes (library/[id], settings/person/[id], etc.) must never appear as tabs.
+
+# Brand lockup
+Home header: the Mealy brand icon (assets/images/brand-icon-source.png, transparent bg) at 28×28, then "Mealy" Bitter 700 30, 8px gap — the "T | Cooking" lockup pattern. Also on the sign-in screen above the wordmark at 44×44.
+
+# Web icon reliability
+Ionicons must render on web (current bug: triangle placeholders): load the icon font explicitly via expo-font in the root layout (`useFonts({ ...Ionicons.font })` style) alongside the text fonts, and keep the splash until loaded.
