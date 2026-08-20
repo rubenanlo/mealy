@@ -210,6 +210,59 @@ export async function ingestPdf(asset: MediaAsset): Promise<IngestResult> {
 }
 
 // ---------------------------------------------------------------------------
+// Ingredient → canonical LLM fallback matcher (Phase 2 Task 4 endpoint).
+// ---------------------------------------------------------------------------
+
+export interface IngredientMatch {
+  line: string;
+  /** A candidate slug or null — the worker may only answer from candidates. */
+  slug: string | null;
+}
+
+/**
+ * Ask the worker to map unmatched raw lines to candidate slugs. Returns null
+ * when the worker is unreachable/out of credits/answers garbage — callers
+ * degrade gracefully (lines stay unmatched, nothing is cached).
+ */
+export async function matchIngredients(
+  lines: string[],
+  candidates: string[]
+): Promise<IngredientMatch[] | null> {
+  if (lines.length === 0) return [];
+  if (!WORKER_URL) return null;
+  try {
+    const token = await accessToken();
+    const response = await fetch(`${WORKER_URL}/match/ingredients`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ lines, candidates }),
+    });
+    if (!response.ok) return null;
+    const payload = (await response.json()) as { matches?: unknown };
+    if (!Array.isArray(payload.matches)) return null;
+    const candidateSet = new Set(candidates);
+    return payload.matches
+      .filter(
+        (m): m is { line: string; slug: string | null } =>
+          !!m &&
+          typeof (m as { line?: unknown }).line === 'string' &&
+          ((m as { slug?: unknown }).slug === null ||
+            typeof (m as { slug?: unknown }).slug === 'string')
+      )
+      .map((m) => ({
+        line: m.line,
+        // Defense in depth: never accept a slug outside the candidate list (§4).
+        slug: m.slug !== null && candidateSet.has(m.slug) ? m.slug : null,
+      }));
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Persistence: IngestResult -> Supabase rows (+ media upload).
 // ---------------------------------------------------------------------------
 
