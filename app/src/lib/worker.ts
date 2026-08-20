@@ -153,12 +153,12 @@ const WORKER_URL = process.env.EXPO_PUBLIC_WORKER_URL;
 async function accessToken(): Promise<string> {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
-  if (!token) throw new Error('Session expirée — reconnectez-vous.');
+  if (!token) throw new Error('Session expired — sign in again.');
   return token;
 }
 
 async function postWorker(path: string, body: FormData | Record<string, unknown>): Promise<IngestResult> {
-  if (!WORKER_URL) throw new Error('EXPO_PUBLIC_WORKER_URL manquant — vérifiez app/.env');
+  if (!WORKER_URL) throw new Error('EXPO_PUBLIC_WORKER_URL is missing — check app/.env');
   const token = await accessToken();
   const isForm = body instanceof FormData;
   const response = await fetch(`${WORKER_URL}${path}`, {
@@ -170,7 +170,7 @@ async function postWorker(path: string, body: FormData | Record<string, unknown>
     body: isForm ? body : JSON.stringify(body),
   });
   if (!response.ok) {
-    throw new Error(`Le service d'import a répondu ${response.status}.`);
+    throw new Error(`The import service answered ${response.status}.`);
   }
   return (await response.json()) as IngestResult;
 }
@@ -225,7 +225,7 @@ async function uploadAsset(path: string, asset: MediaAsset): Promise<void> {
     contentType: asset.mimeType ?? 'application/octet-stream',
     upsert: true,
   });
-  if (error) throw new Error(`Échec de l'envoi du média : ${error.message}`);
+  if (error) throw new Error(`Media upload failed: ${error.message}`);
 }
 
 /** Persist an IngestResult: recipes + recipe_sources + recipe_images (+ Storage). */
@@ -242,7 +242,7 @@ export async function persistIngestResult(
     .select('id')
     .single();
   if (recipeError || !recipe) {
-    throw new Error(`Échec de l'enregistrement de la recette : ${recipeError?.message}`);
+    throw new Error(`Saving the recipe failed: ${recipeError?.message}`);
   }
   const recipeId = recipe.id as string;
 
@@ -259,7 +259,7 @@ export async function persistIngestResult(
     media_paths: mediaPaths,
   });
   if (sourceError) {
-    throw new Error(`Échec de l'enregistrement de la source : ${sourceError.message}`);
+    throw new Error(`Saving the source failed: ${sourceError.message}`);
   }
 
   const galleryPaths = [

@@ -1,14 +1,15 @@
+import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Body, Button, Field, Muted, Title } from '@/components/ui';
+import { Body, Button, Field, Muted, PressCard, Title } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
-import { useTheme } from '@/lib/theme';
+import { fontSize, screenPadding, useTheme } from '@/lib/theme';
 import {
   captureFromImages,
   captureFromPdf,
@@ -45,10 +46,10 @@ export default function CaptureScreen() {
     try {
       const { data } = await supabase.auth.getSession();
       const userId = data.session?.user.id;
-      if (!userId) throw new Error('Session expirée — reconnectez-vous.');
+      if (!userId) throw new Error('Session expired — sign in again.');
       finish(await fn({ householdId: membership.householdId, userId }));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Une erreur est survenue pendant l'import.");
+      setError(e instanceof Error ? e.message : 'Something went wrong during the import. Try again.');
     } finally {
       setBusy(false);
     }
@@ -97,47 +98,58 @@ export default function CaptureScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
       >
-        <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }}>
-          <Title>Ajouter une recette</Title>
-          <Muted>Collez un lien (site, Instagram, TikTok) ou le texte complet de la recette.</Muted>
+        <ScrollView
+          contentContainerStyle={{ padding: screenPadding, gap: 16 }}
+          keyboardShouldPersistTaps="handled"
+        >
+          <Title>Add a recipe</Title>
+          <Muted>Paste a link (website, Instagram, TikTok) or the full recipe text.</Muted>
           <Field
             value={input}
             onChangeText={setInput}
-            placeholder="Lien ou texte de la recette"
+            placeholder="Paste a link or text"
             multiline
             style={{ minHeight: 140, textAlignVertical: 'top' }}
             autoCapitalize="none"
           />
           {needsPaste ? (
             <Body style={{ color: colors.danger }}>
-              Impossible de récupérer — collez le texte ?
+              Could not fetch the recipe. Paste the text below.
             </Body>
           ) : null}
           {error ? <Body style={{ color: colors.danger }}>{error}</Body> : null}
           <Button
-            label="Capturer"
+            label="Capture"
             onPress={capturePasted}
             loading={busy}
             disabled={input.trim().length === 0}
           />
           <View style={{ flexDirection: 'row', gap: 12 }}>
-            <Button
-              label="Photos"
-              kind="secondary"
+            <PressCard
               onPress={() => void pickPhotos()}
               disabled={busy}
-              style={{ flex: 1 }}
-            />
-            <Button
-              label="PDF"
-              kind="secondary"
+              accessibilityLabel="Import from photos"
+              style={{ flex: 1, alignItems: 'center', gap: 8, paddingVertical: 20 }}
+            >
+              <Ionicons name="images-outline" size={26} color={colors.accent} />
+              <Text style={{ color: colors.text, fontSize: fontSize.base, fontWeight: '600' }}>
+                Photos
+              </Text>
+            </PressCard>
+            <PressCard
               onPress={() => void pickPdf()}
               disabled={busy}
-              style={{ flex: 1 }}
-            />
+              accessibilityLabel="Import a PDF"
+              style={{ flex: 1, alignItems: 'center', gap: 8, paddingVertical: 20 }}
+            >
+              <Ionicons name="document-outline" size={26} color={colors.accent} />
+              <Text style={{ color: colors.text, fontSize: fontSize.base, fontWeight: '600' }}>
+                PDF
+              </Text>
+            </PressCard>
           </View>
-          {busy ? <Muted>Analyse en cours…</Muted> : null}
-          <Button label="Annuler" kind="secondary" onPress={() => router.back()} disabled={busy} />
+          {busy ? <Muted>Analyzing…</Muted> : null}
+          <Button label="Cancel" kind="secondary" onPress={() => router.back()} disabled={busy} />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

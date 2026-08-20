@@ -14,19 +14,19 @@ export interface PlanEntry {
   position: number;
 }
 
-export const DAY_LABELS_FR = [
-  'Lundi',
-  'Mardi',
-  'Mercredi',
-  'Jeudi',
-  'Vendredi',
-  'Samedi',
-  'Dimanche',
+export const DAY_LABELS = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
 ] as const;
 
-export const SLOT_LABELS_FR: Record<MealSlot, string> = {
-  lunch: 'Déjeuner',
-  dinner: 'Dîner',
+export const SLOT_LABELS: Record<MealSlot, string> = {
+  lunch: 'Lunch',
+  dinner: 'Dinner',
 };
 
 function toIsoDate(date: Date): string {

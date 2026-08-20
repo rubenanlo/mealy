@@ -24,17 +24,17 @@ export interface DietProfile {
   spanishVariant: string | null;
 }
 
-export const QUOTA_CATEGORIES: { category: string; labelFr: string }[] = [
-  { category: 'fish', labelFr: 'Poisson' },
-  { category: 'meat', labelFr: 'Viande' },
-  { category: 'vegetarian', labelFr: 'Végétarien' },
+export const QUOTA_CATEGORIES: { category: string; label: string }[] = [
+  { category: 'fish', label: 'Fish' },
+  { category: 'meat', label: 'Meat' },
+  { category: 'vegetarian', label: 'Vegetarian' },
 ];
 
-export const FODMAP_MODES: { mode: FodmapMode; labelFr: string }[] = [
-  { mode: 'off', labelFr: 'Désactivé' },
-  { mode: 'elimination', labelFr: 'Élimination' },
-  { mode: 'reintroduction', labelFr: 'Réintroduction' },
-  { mode: 'personalized', labelFr: 'Personnalisé' },
+export const FODMAP_MODES: { mode: FodmapMode; label: string }[] = [
+  { mode: 'off', label: 'Off' },
+  { mode: 'elimination', label: 'Elimination' },
+  { mode: 'reintroduction', label: 'Reintroduction' },
+  { mode: 'personalized', label: 'Personalized' },
 ];
 
 function stringArray(value: unknown): string[] {

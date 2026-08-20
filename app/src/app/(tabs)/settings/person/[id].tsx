@@ -1,12 +1,13 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Body, Button, Card, Field, Muted, Title } from '@/components/ui';
+import { Body, Button, Card, Eyebrow, Field, Muted, Title } from '@/components/ui';
 import { FODMAP_MODES, normalizeDietProfile, type DietProfile } from '@/lib/diet';
 import { supabase } from '@/lib/supabase';
-import { fontSize, minTapTarget, useTheme } from '@/lib/theme';
+import { fontSize, minTapTarget, radius, screenPadding, useTheme } from '@/lib/theme';
 
 function TagEditor({
   label,
@@ -29,29 +30,31 @@ function TagEditor({
   };
   return (
     <View style={{ gap: 10 }}>
-      <Body style={{ fontWeight: '700' }}>{label}</Body>
+      <Eyebrow>{label}</Eyebrow>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {values.map((value) => (
           <Pressable
             key={value}
             accessibilityRole="button"
-            accessibilityLabel={`Retirer ${value}`}
+            accessibilityLabel={`Remove ${value}`}
             onPress={() => onChange(values.filter((v) => v !== value))}
-            style={{
+            style={({ pressed }) => ({
               flexDirection: 'row',
               alignItems: 'center',
               gap: 6,
-              backgroundColor: colors.card,
-              borderRadius: 10,
+              backgroundColor: pressed ? colors.cardPressed : colors.card,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 999,
               paddingHorizontal: 12,
               minHeight: 40,
-            }}
+            })}
           >
-            <Text style={{ color: colors.text, fontSize: fontSize.base }}>{value}</Text>
-            <Text style={{ color: colors.danger, fontSize: fontSize.base }}>✕</Text>
+            <Text style={{ color: colors.text, fontSize: fontSize.small }}>{value}</Text>
+            <Ionicons name="close" size={16} color={colors.textMuted} />
           </Pressable>
         ))}
-        {values.length === 0 ? <Muted>Aucun</Muted> : null}
+        {values.length === 0 ? <Muted>None</Muted> : null}
       </View>
       <View style={{ flexDirection: 'row', gap: 10 }}>
         <Field
@@ -61,7 +64,7 @@ function TagEditor({
           style={{ flex: 1 }}
           onSubmitEditing={add}
         />
-        <Button label="Ajouter" kind="secondary" onPress={add} />
+        <Button label="Add" kind="secondary" onPress={add} />
       </View>
     </View>
   );
@@ -114,10 +117,10 @@ export default function PersonScreen() {
   };
 
   const remove = () => {
-    Alert.alert('Supprimer cette personne ?', `${name} sera retirée du foyer.`, [
-      { text: 'Annuler', style: 'cancel' },
+    Alert.alert('Remove this person?', `${name} will be removed from the household.`, [
+      { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Supprimer',
+        text: 'Remove',
         style: 'destructive',
         onPress: () => {
           void (async () => {
@@ -132,8 +135,8 @@ export default function PersonScreen() {
   if (!loaded || !profile) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
-        <View style={{ padding: 20 }}>
-          <Muted>Chargement…</Muted>
+        <View style={{ padding: screenPadding }}>
+          <Muted>Loading…</Muted>
         </View>
       </SafeAreaView>
     );
@@ -141,25 +144,33 @@ export default function PersonScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
-      <ScrollView contentContainerStyle={{ padding: 20, gap: 20, paddingBottom: 48 }}>
+      <ScrollView contentContainerStyle={{ padding: screenPadding, gap: 20, paddingBottom: 48 }}>
         <Pressable
           accessibilityRole="button"
+          accessibilityLabel="Back to settings"
           onPress={() => router.back()}
-          style={{ minHeight: minTapTarget, justifyContent: 'center' }}
+          style={({ pressed }) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 4,
+            minHeight: minTapTarget,
+            opacity: pressed ? 0.7 : 1,
+          })}
         >
-          <Body style={{ color: colors.accent, fontWeight: '600' }}>‹ Réglages</Body>
+          <Ionicons name="chevron-back" size={20} color={colors.accent} />
+          <Body style={{ color: colors.accent, fontWeight: '600' }}>Settings</Body>
         </Pressable>
-        <Title>{name || 'Personne'}</Title>
+        <Title>{name || 'Person'}</Title>
 
         <View style={{ gap: 10 }}>
-          <Body style={{ fontWeight: '700' }}>Nom</Body>
-          <Field value={name} onChangeText={setName} placeholder="Nom" />
+          <Eyebrow>Name</Eyebrow>
+          <Field value={name} onChangeText={setName} placeholder="Name" />
         </View>
 
         <Card
           style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
         >
-          <Body>Employée de maison</Body>
+          <Body>Household employee</Body>
           <Switch
             value={isEmployee}
             onValueChange={setIsEmployee}
@@ -168,34 +179,41 @@ export default function PersonScreen() {
         </Card>
 
         <View style={{ gap: 10 }}>
-          <Body style={{ fontWeight: '700' }}>FODMAP</Body>
+          <Eyebrow>FODMAP</Eyebrow>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {FODMAP_MODES.map(({ mode, labelFr }) => {
+            {FODMAP_MODES.map(({ mode, label }) => {
               const selected = profile.fodmap.mode === mode;
               return (
                 <Pressable
                   key={mode}
                   accessibilityRole="button"
+                  accessibilityState={{ selected }}
                   onPress={() =>
                     setProfile({ ...profile, fodmap: { ...profile.fodmap, mode } })
                   }
-                  style={{
+                  style={({ pressed }) => ({
                     minHeight: minTapTarget,
-                    borderRadius: 12,
+                    borderRadius: radius.control,
                     paddingHorizontal: 16,
                     alignItems: 'center',
                     justifyContent: 'center',
-                    backgroundColor: selected ? colors.accent : colors.card,
-                  }}
+                    borderWidth: 1,
+                    borderColor: selected ? colors.accent : colors.border,
+                    backgroundColor: selected
+                      ? colors.accent
+                      : pressed
+                        ? colors.cardPressed
+                        : colors.card,
+                  })}
                 >
                   <Text
                     style={{
-                      color: selected ? '#FFFFFF' : colors.text,
+                      color: selected ? colors.accentText : colors.text,
                       fontSize: fontSize.base,
                       fontWeight: '600',
                     }}
                   >
-                    {labelFr}
+                    {label}
                   </Text>
                 </Pressable>
               );
@@ -204,32 +222,32 @@ export default function PersonScreen() {
         </View>
 
         <TagEditor
-          label="Allergènes (exclusion stricte)"
-          placeholder="Ex. : arachide"
+          label="Allergens (strict exclusion)"
+          placeholder="e.g. peanuts"
           values={profile.allergens}
           onChange={(allergens) => setProfile({ ...profile, allergens })}
         />
 
         <TagEditor
-          label="N'aime pas"
-          placeholder="Ex. : chou-fleur"
+          label="Dislikes"
+          placeholder="e.g. cauliflower"
           values={profile.dislikes}
           onChange={(dislikes) => setProfile({ ...profile, dislikes })}
         />
 
         <View style={{ gap: 10 }}>
-          <Body style={{ fontWeight: '700' }}>Autres exigences</Body>
+          <Eyebrow>Other requirements</Eyebrow>
           <Field
             value={notes}
             onChangeText={setNotes}
-            placeholder="Texte libre, pris en compte tel quel"
+            placeholder="Free text, used as-is when planning"
             multiline
             style={{ minHeight: 100, textAlignVertical: 'top' }}
           />
         </View>
 
-        <Button label="Enregistrer" onPress={() => void save()} loading={saving} />
-        <Button label="Supprimer cette personne" kind="danger" onPress={remove} />
+        <Button label="Save" onPress={() => void save()} loading={saving} />
+        <Button label="Remove this person" kind="danger" onPress={remove} />
       </ScrollView>
     </SafeAreaView>
   );
