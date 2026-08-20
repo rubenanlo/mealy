@@ -187,6 +187,7 @@ Per-recipe **12-month suitability curve** (not a binary flag).
 
 ## 13. Design
 
+- **App UI language: English** (decided 2026-08-20). Recipe content keeps its source language; the employee page is 100% Spanish (§10).
 - **Dark + light mode:** follow system theme, manual override in Settings.
 - Simple, mobile-first, **kitchen-readable at arm's length**: large touch targets, high contrast, no dense grids. The two daily-driver screens — this week's plan and the shopping list — get priority; everything else serves them. The employee page applies these rules even more strictly.
 - **Settings sections:** Household (members, per-person diet profiles, employee + her link management), Meal planning (per-person protein quotas: fish ×/week, meat ×/week, …), Other requirements (free text + structured proposals), Appearance (theme).
