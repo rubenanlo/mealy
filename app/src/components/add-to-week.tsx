@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, Modal, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PersonChip } from '@/components/person-chip';
@@ -21,6 +21,36 @@ interface PersonLite {
   id: string;
   name: string;
   is_employee: boolean;
+}
+
+/** Delete every current-week entry of a recipe (bookmark un-save, v3). */
+export async function removeRecipeFromCurrentWeek(
+  householdId: string,
+  recipeId: string
+): Promise<void> {
+  const { data: plan } = await supabase
+    .from('meal_plans')
+    .select('id')
+    .eq('household_id', householdId)
+    .eq('week_start', weekStart(new Date()))
+    .maybeSingle();
+  if (!plan) return;
+  await supabase.from('plan_entries').delete().eq('meal_plan_id', plan.id).eq('recipe_id', recipeId);
+}
+
+/** Small cross-platform confirm for the bookmark's remove action. */
+export function confirmRemoveFromWeek(recipeTitle: string, onConfirm: () => void): void {
+  if (Platform.OS === 'web') {
+    // Alert with buttons is a no-op on react-native-web.
+    if (typeof window !== 'undefined' && window.confirm(`Remove “${recipeTitle}” from this week?`)) {
+      onConfirm();
+    }
+    return;
+  }
+  Alert.alert('Remove from this week?', recipeTitle, [
+    { text: 'Cancel', style: 'cancel' },
+    { text: 'Remove', style: 'destructive', onPress: onConfirm },
+  ]);
 }
 
 /**

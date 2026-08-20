@@ -480,6 +480,46 @@ export function Bookmark({
   );
 }
 
+/**
+ * v3 signature: the 36px bookmark chip overlaid top-right on recipe photos.
+ * Card-fill circle + 1px border; red filled bookmark when in this week.
+ */
+export function BookmarkChip({
+  saved,
+  onPress,
+  accessibilityLabel,
+  style,
+}: {
+  saved: boolean;
+  onPress: () => void;
+  accessibilityLabel?: string;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const { colors } = useTheme();
+  return (
+    <View
+      style={[
+        {
+          position: 'absolute',
+          top: 8,
+          right: 8,
+          width: 36,
+          height: 36,
+          borderRadius: 18,
+          backgroundColor: colors.card,
+          borderWidth: 1,
+          borderColor: colors.border,
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+        style,
+      ]}
+    >
+      <Bookmark saved={saved} onPress={onPress} size={18} accessibilityLabel={accessibilityLabel} />
+    </View>
+  );
+}
+
 /** Bitter headline + one red primary action. Direct, never apologetic. */
 export function EmptyState({
   message,
