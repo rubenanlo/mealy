@@ -1,8 +1,18 @@
+import {
+  Fraunces_400Regular_Italic,
+  Fraunces_600SemiBold,
+  useFonts,
+} from '@expo-google-fonts/fraunces';
 import { Stack } from 'expo-router';
+import * as SplashScreen from 'expo-splash-screen';
+import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { ThemeProvider, useTheme } from '@/lib/theme';
+
+// Keep the splash up until Fraunces is ready (design.md §Type).
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 function RootStack() {
   const { colors } = useTheme();
@@ -44,6 +54,19 @@ function RootStack() {
 }
 
 export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts({
+    Fraunces_600SemiBold,
+    Fraunces_400Regular_Italic,
+  });
+  const fontsReady = fontsLoaded || !!fontError;
+
+  useEffect(() => {
+    if (fontsReady) SplashScreen.hideAsync().catch(() => {});
+  }, [fontsReady]);
+
+  // Splash covers this; render nothing until the display face is ready.
+  if (!fontsReady) return null;
+
   return (
     <ThemeProvider>
       <AuthProvider>

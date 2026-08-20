@@ -18,7 +18,22 @@ describe('resolveScheme', () => {
 });
 
 describe('palettes', () => {
-  const tokens = ['bg', 'card', 'text', 'textMuted', 'accent', 'danger'] as const;
+  const tokens = [
+    'bg',
+    'card',
+    'cardPressed',
+    'text',
+    'textMuted',
+    'accent',
+    'accentText',
+    'saffron',
+    'danger',
+    'border',
+    'spineFish',
+    'spineMeat',
+    'spineVeg',
+    'spineLegume',
+  ] as const;
 
   it.each(['light', 'dark'] as const)('%s palette has every token', (scheme) => {
     for (const token of tokens) {
