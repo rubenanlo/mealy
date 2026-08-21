@@ -12,15 +12,23 @@ import {
 import {
   CarouselCard,
   Hero,
+  RecipeRow,
   ThisWeekCard,
   type RecipeListItem,
   type WeekStripItem,
 } from '@/components/recipe-cards';
+import { QuickFilters } from '@/components/quick-filters';
 import { EmptyState, Hairline, SectionHeader } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
+import { matchCanonical, normalizeRaw } from '@/lib/canonical';
+import type { ProteinCategory } from '@/lib/category';
+import { resolveProteinCategory } from '@/lib/category';
+import { computeRecipeFodmap } from '@/lib/fodmap';
 import { weekStart } from '@/lib/plan';
+import { matchesQuickFilters, type QuickFilter } from '@/lib/quick-filters';
 import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, minTapTarget, screenPadding, tabBarClearance, useTheme } from '@/lib/theme';
+import { useCanonicalIndex } from '@/lib/use-canonical';
 
 export default function HomeScreen() {
   const { colors } = useTheme();
@@ -34,6 +42,16 @@ export default function HomeScreen() {
     { id: string; recipe_id: string | null; custom_title: string | null }[]
   >([]);
   const [sheetRecipe, setSheetRecipe] = useState<RecipeListItem | null>(null);
+  const [activeFilters, setActiveFilters] = useState<Set<QuickFilter>>(new Set());
+  const index = useCanonicalIndex();
+
+  const toggleFilter = (f: QuickFilter) =>
+    setActiveFilters((prev) => {
+      const next = new Set(prev);
+      if (next.has(f)) next.delete(f);
+      else next.add(f);
+      return next;
+    });
 
   const load = useCallback(async () => {
     const weekIso = weekStart(new Date());
@@ -103,6 +121,46 @@ export default function HomeScreen() {
 
   /** Browse-everything entry point; Search stays the actual full list. */
   const allRecipes = useMemo(() => recipes.slice(0, 10), [recipes]);
+
+  /** Chip inputs per recipe — pure local matching only (no LLM/cache). */
+  const filterInputs = useMemo(() => {
+    const map = new Map<string, { category: ProteinCategory | null; fodmapFriendly: boolean | null }>();
+    for (const r of recipes) {
+      const category = resolveProteinCategory(r.tags, r.ingredients, index);
+      let fodmapFriendly: boolean | null = null;
+      if (index && r.ingredients && r.ingredients.length > 0) {
+        const result = computeRecipeFodmap(
+          r.ingredients.map((ing) => ({
+            raw: ing.raw || ing.name,
+            name: ing.name,
+            quantity: ing.quantity,
+            unit: ing.unit,
+          })),
+          r.servings,
+          (line) => matchCanonical(normalizeRaw(line.raw), index)?.ingredient ?? null
+        );
+        fodmapFriendly = !result.flags.some((f) => f.tier === 'high');
+      }
+      map.set(r.id, { category, fodmapFriendly });
+    }
+    return map;
+  }, [recipes, index]);
+
+  const filteredRecipes = useMemo(() => {
+    if (activeFilters.size === 0) return recipes;
+    return recipes.filter((r) => {
+      const input = filterInputs.get(r.id);
+      return matchesQuickFilters(
+        {
+          prep_minutes: r.prep_minutes,
+          needs_review: r.needs_review,
+          category: input?.category ?? null,
+          fodmapFriendly: input?.fodmapFriendly ?? null,
+        },
+        activeFilters
+      );
+    });
+  }, [recipes, activeFilters, filterInputs]);
 
   // Recipe entries dedupe by recipe; custom meals appear once per entry.
   const thisWeek = useMemo<WeekStripItem[]>(() => {
@@ -214,12 +272,30 @@ export default function HomeScreen() {
           </Pressable>
         </View>
 
+        <QuickFilters active={activeFilters} onToggle={toggleFilter} />
+
         {recipes.length === 0 ? (
           <EmptyState
             message="Your cooking notebook starts here."
             actionLabel="Add your first recipe"
             onAction={() => router.push('/capture')}
           />
+        ) : activeFilters.size > 0 ? (
+          <View style={{ paddingTop: 8 }}>
+            {filteredRecipes.map((recipe, i) => (
+              <View key={recipe.id}>
+                {i > 0 ? <Hairline /> : null}
+                <RecipeRow recipe={recipe} onPress={() => openRecipe(recipe.id)} />
+              </View>
+            ))}
+            {filteredRecipes.length === 0 ? (
+              <EmptyState
+                message="No recipes match these filters."
+                actionLabel="Clear filters"
+                onAction={() => setActiveFilters(new Set())}
+              />
+            ) : null}
+          </View>
         ) : (
           <View>
             {hero ? (
