@@ -531,6 +531,7 @@ export default function RecipeSheetScreen() {
       patch.ingredients = rescaleIngredients(recipe.ingredients, newServings / recipe.servings);
     }
     setDetailsOpen(false);
+    setIngredientsDraft(null);
     await saveRecipe(patch);
   };
 
@@ -566,6 +567,9 @@ export default function RecipeSheetScreen() {
     const r = reExtractResult;
     if (!r) return;
     setReExtractResult(null);
+    setTitleDraft(null);
+    setIngredientsDraft(null);
+    setStepsDraft(null);
     await saveRecipe({
       title: r.title,
       language: r.language,
@@ -616,9 +620,19 @@ export default function RecipeSheetScreen() {
     const r = swapsResult;
     if (!recipe || !r) return;
     const byRaw = new Map(r.swaps.map((s) => [s.raw, s.replacement]));
-    const ingredients = recipe.ingredients.map((ing) => byRaw.get(ing.raw || ing.name) ?? ing);
+    const ingredients = recipe.ingredients.map((ing) => {
+      const key = ing.raw || ing.name;
+      const rep = byRaw.get(key);
+      // Rebase `raw` onto the replacement's name so the FODMAP engine
+      // (which keys off `raw`) matches the swapped ingredient going
+      // forward instead of re-flagging the original line forever.
+      return rep ? { ...rep, raw: rep.name } : ing;
+    });
     setSwapsOpen(false);
     setSwapsResult(null);
+    // External write: invalidate any open drafts that mirror these fields.
+    setIngredientsDraft(null);
+    setStepsDraft(null);
     await saveRecipe({ ingredients, steps: r.steps });
   };
 
