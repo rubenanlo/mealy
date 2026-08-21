@@ -13,8 +13,10 @@ import {
   buildRecipeRows,
   detectCaptureKind,
   fetchWebImage,
+  fodmapSwaps,
   reExtract,
   type IngestResult,
+  type IngredientRow,
   type Verbatim,
 } from '../worker';
 
@@ -131,6 +133,75 @@ describe('reExtract', () => {
   it('returns null on failure', async () => {
     global.fetch = jest.fn().mockResolvedValue({ ok: false }) as jest.Mock;
     expect(await reExtract({ kind: 'paste', url: null, json_ld: null, page_text: null, caption: null, transcript: null, overlay_text: null, ocr_text: null, pasted: 'x' })).toBeNull();
+  });
+});
+
+describe('fodmapSwaps', () => {
+  const swapIngredients: IngredientRow[] = [
+    { raw: '1 oignon', quantity: 1, unit: null, name: 'oignon', group: null, fodmap: 'high' },
+  ];
+
+  it('POSTs the full body (incl. flagged) to /fodmap/swaps and returns the parsed response', async () => {
+    const swapResponse = {
+      swaps: [
+        {
+          raw: '1 oignon',
+          replacement: { raw: '1 oignon', quantity: 1, unit: null, name: 'ciboulette', group: null, fodmap: 'low' },
+          note: 'Use the green tops only.',
+        },
+      ],
+      steps: ['Faire revenir la ciboulette.'],
+    };
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => swapResponse }) as jest.Mock;
+    const result = await fodmapSwaps({
+      title: 'Soupe',
+      language: 'fr',
+      servings: 4,
+      ingredients: swapIngredients,
+      steps: ['Faire revenir l’oignon.'],
+      flagged: ['1 oignon'],
+    });
+    expect(result).toEqual(swapResponse);
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(url).toContain('/fodmap/swaps');
+    expect(init.headers.Authorization).toBe('Bearer test-token');
+    const body = JSON.parse(init.body);
+    expect(body).toEqual({
+      title: 'Soupe',
+      language: 'fr',
+      servings: 4,
+      ingredients: swapIngredients,
+      steps: ['Faire revenir l’oignon.'],
+      flagged: ['1 oignon'],
+    });
+  });
+
+  it('returns null on a non-ok response', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: false }) as jest.Mock;
+    expect(
+      await fodmapSwaps({
+        title: 'Soupe',
+        language: 'fr',
+        servings: 4,
+        ingredients: swapIngredients,
+        steps: [],
+        flagged: ['1 oignon'],
+      })
+    ).toBeNull();
+  });
+
+  it('returns null when the request throws', async () => {
+    global.fetch = jest.fn().mockRejectedValue(new Error('network down')) as jest.Mock;
+    expect(
+      await fodmapSwaps({
+        title: 'Soupe',
+        language: 'fr',
+        servings: 4,
+        ingredients: swapIngredients,
+        steps: [],
+        flagged: ['1 oignon'],
+      })
+    ).toBeNull();
   });
 });
 

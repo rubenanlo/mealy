@@ -59,8 +59,10 @@ import { fonts, fontSize, minTapTarget, screenPadding, useTheme } from '@/lib/th
 import { useCanonicalIndex } from '@/lib/use-canonical';
 import {
   fetchWebImage,
+  fodmapSwaps,
   reExtract,
   type CanonicalRecipe,
+  type FodmapSwapResult,
   type IngredientRow as IngredientData,
   type SourceKind,
   type Verbatim,
@@ -349,6 +351,16 @@ export default function RecipeSheetScreen() {
   // Tracked separately from reExtractResult so "worker returned null" (show the
   // failure message) is distinguishable from "sheet closed" (both null).
   const [reExtractFailed, setReExtractFailed] = useState(false);
+  // Low-FODMAP swap suggestions (spec Part 8). Same ref-guard pattern as
+  // reExtractingRef: a fast double-tap on the pill fires both presses before
+  // the swapsLoading state flush.
+  const swapsLoadingRef = useRef(false);
+  const [swapsLoading, setSwapsLoading] = useState(false);
+  const [swapsResult, setSwapsResult] = useState<FodmapSwapResult | null>(null);
+  // Tracked separately from swapsResult so "worker returned null" (show the
+  // failure message) is distinguishable from "sheet closed" (both null).
+  const [swapsFailed, setSwapsFailed] = useState(false);
+  const [swapsOpen, setSwapsOpen] = useState(false);
   // v3.2 pinned-ingredients state
   const [stepsY, setStepsY] = useState<number | null>(null);
   const [pinnedVisible, setPinnedVisible] = useState(false);
@@ -430,6 +442,14 @@ export default function RecipeSheetScreen() {
 
   const flagByRaw = useMemo(
     () => new Map((fodmap?.flags ?? []).map((flag) => [flag.raw, flag])),
+    [fodmap]
+  );
+
+  const swappableRaws = useMemo(
+    () =>
+      (fodmap?.flags ?? [])
+        .filter((f) => f.tier === 'high' || f.tier === 'moderate')
+        .map((f) => f.raw),
     [fodmap]
   );
 
@@ -559,6 +579,47 @@ export default function RecipeSheetScreen() {
       nutrition: r.nutrition,
       needs_review: r.confidence < 0.6,
     });
+  };
+
+  const runSwaps = async () => {
+    // Check-and-set the ref synchronously: a fast double-tap fires both
+    // presses before the swapsLoading state flush, so state alone can let
+    // two concurrent /fodmap/swaps calls through.
+    if (!recipe || swappableRaws.length === 0 || swapsLoadingRef.current) return;
+    swapsLoadingRef.current = true;
+    setSwapsLoading(true);
+    try {
+      const response = await fodmapSwaps({
+        title: recipe.title,
+        language: recipe.language,
+        servings: recipe.servings,
+        ingredients: recipe.ingredients,
+        steps: recipe.steps,
+        flagged: swappableRaws,
+      });
+      setSwapsResult(response); // null → sheet shows the failure message
+      setSwapsFailed(response === null);
+      setSwapsOpen(true);
+    } finally {
+      swapsLoadingRef.current = false;
+      setSwapsLoading(false);
+    }
+  };
+
+  const closeSwapsSheet = () => {
+    setSwapsOpen(false);
+    setSwapsResult(null);
+    setSwapsFailed(false);
+  };
+
+  const applySwaps = async () => {
+    const r = swapsResult;
+    if (!recipe || !r) return;
+    const byRaw = new Map(r.swaps.map((s) => [s.raw, s.replacement]));
+    const ingredients = recipe.ingredients.map((ing) => byRaw.get(ing.raw || ing.name) ?? ing);
+    setSwapsOpen(false);
+    setSwapsResult(null);
+    await saveRecipe({ ingredients, steps: r.steps });
   };
 
   /** Bookmark chip: plan it, or confirm-remove when already in this week (v3). */
@@ -745,6 +806,30 @@ export default function RecipeSheetScreen() {
                   <Muted>Add servings & time</Muted>
                 )}
               </Pressable>
+              {swappableRaws.length > 0 ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Suggest low-FODMAP swaps"
+                  onPress={() => void runSwaps()}
+                  style={({ pressed }) => ({
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4,
+                    minHeight: 28,
+                    paddingHorizontal: 10,
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    borderColor: colors.accent,
+                    backgroundColor: 'transparent',
+                    opacity: pressed ? 0.7 : 1,
+                  })}
+                >
+                  <Ionicons name="leaf-outline" size={14} color={colors.accent} />
+                  <Text style={{ color: colors.accent, fontSize: fontSize.meta, fontFamily: fonts.uiSemi }}>
+                    {swapsLoading ? 'Working…' : 'Low-FODMAP'}
+                  </Text>
+                </Pressable>
+              ) : null}
               {recipe.needs_review ? (
                 <Text style={{ color: colors.saffron, fontSize: fontSize.meta, fontFamily: fonts.uiSemi }}>
                   needs review
@@ -1355,6 +1440,45 @@ export default function RecipeSheetScreen() {
               </Muted>
               <Button label="Apply" onPress={() => void applyReExtract()} />
               <Button label="Cancel" kind="secondary" onPress={closeReExtractSheet} />
+            </>
+          ) : null}
+        </View>
+      </Modal>
+
+      <Modal visible={swapsOpen} transparent animationType="fade" onRequestClose={closeSwapsSheet}>
+        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }} onPress={closeSwapsSheet} />
+        <View
+          style={{
+            backgroundColor: colors.bg,
+            padding: screenPadding,
+            paddingBottom: insets.bottom + 16,
+            gap: 12,
+            borderTopLeftRadius: 16,
+            borderTopRightRadius: 16,
+          }}
+        >
+          <Eyebrow>Low-FODMAP swaps</Eyebrow>
+          {swapsFailed ? (
+            <>
+              <Body>Could not fetch suggestions — try again later.</Body>
+              <Button label="Close" kind="secondary" onPress={closeSwapsSheet} />
+            </>
+          ) : swapsResult ? (
+            <>
+              <ScrollView style={{ maxHeight: 320 }} contentContainerStyle={{ gap: 12 }}>
+                {swapsResult.swaps.map((swap) => {
+                  const flag = flagByRaw.get(swap.raw);
+                  return (
+                    <View key={swap.raw} style={{ gap: 2 }}>
+                      <Body>{`${flag?.name ?? swap.raw} → ${swap.replacement.name}`}</Body>
+                      <Muted>{swap.note}</Muted>
+                    </View>
+                  );
+                })}
+                {swapsResult.swaps.length === 0 ? <Muted>No swaps suggested.</Muted> : null}
+              </ScrollView>
+              <Button label="Apply all" onPress={() => void applySwaps()} />
+              <Button label="Cancel" kind="secondary" onPress={closeSwapsSheet} />
             </>
           ) : null}
         </View>

@@ -309,6 +309,45 @@ export async function fetchWebImage(url: string): Promise<ArrayBuffer | null> {
 }
 
 // ---------------------------------------------------------------------------
+// Low-FODMAP swap suggestions (Phase 2 Task 16/17 / spec Part 8).
+// ---------------------------------------------------------------------------
+
+export interface FodmapSwapRequest {
+  title: string;
+  language: string;
+  servings: number | null;
+  ingredients: IngredientRow[];
+  steps: string[];
+  /** raw ingredient lines flagged high/moderate FODMAP */
+  flagged: string[];
+}
+
+export interface FodmapSwapResult {
+  swaps: { raw: string; replacement: IngredientRow; note: string }[];
+  steps: string[];
+}
+
+/**
+ * Ask the worker for low-FODMAP substitutions + rewritten steps (spec Part 8).
+ * Returns null on any failure — the caller shows "could not fetch suggestions".
+ */
+export async function fodmapSwaps(request: FodmapSwapRequest): Promise<FodmapSwapResult | null> {
+  if (!WORKER_URL) return null;
+  try {
+    const token = await accessToken();
+    const response = await fetch(`${WORKER_URL}/fodmap/swaps`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    });
+    if (!response.ok) return null;
+    return (await response.json()) as FodmapSwapResult;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Persistence: IngestResult -> Supabase rows (+ media upload).
 // ---------------------------------------------------------------------------
 
