@@ -331,6 +331,10 @@ export default function RecipeSheetScreen() {
   const [stepsDraft, setStepsDraft] = useState<string[] | null>(null);
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
   // Re-extract from stored source (confirm-before-replace, spec Part 6).
+  // The ref is the synchronous re-entrancy mutex (LinkButton has no disabled
+  // prop, and a fast double-tap can beat the state flush); the state only
+  // drives the label swap.
+  const reExtractingRef = useRef(false);
   const [reExtracting, setReExtracting] = useState(false);
   const [reExtractResult, setReExtractResult] = useState<CanonicalRecipe | null>(null);
   // Tracked separately from reExtractResult so "worker returned null" (show the
@@ -474,12 +478,20 @@ export default function RecipeSheetScreen() {
   };
 
   const runReExtract = async () => {
-    if (sources.length === 0 || reExtracting) return;
+    // Check-and-set the ref synchronously: a fast double-tap fires both
+    // presses before the reExtracting state flush, so state alone can let
+    // two concurrent /structure calls through.
+    if (sources.length === 0 || reExtractingRef.current) return;
+    reExtractingRef.current = true;
     setReExtracting(true);
-    const result = await reExtract(sources[0].verbatim);
-    setReExtracting(false);
-    setReExtractResult(result); // null → sheet shows the failure message
-    setReExtractFailed(result === null);
+    try {
+      const result = await reExtract(sources[0].verbatim);
+      setReExtractResult(result); // null → sheet shows the failure message
+      setReExtractFailed(result === null);
+    } finally {
+      reExtractingRef.current = false;
+      setReExtracting(false);
+    }
   };
 
   const closeReExtractSheet = () => {
