@@ -6,6 +6,7 @@ import {
   Animated,
   Easing,
   Linking,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -47,6 +48,7 @@ import { resolveMatches } from '@/lib/matching';
 import { useImageUrl } from '@/lib/media';
 import { useReducedMotion } from '@/lib/motion';
 import { weekStart } from '@/lib/plan';
+import { rescaleIngredients } from '@/lib/servings';
 import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
 import { useCanonicalIndex } from '@/lib/use-canonical';
@@ -270,6 +272,8 @@ export default function RecipeSheetScreen() {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ title: '', servings: '', prep: '', cook: '' });
   const [saving, setSaving] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [details, setDetails] = useState({ servings: '', prep: '', cook: '' });
   const [inThisWeek, setInThisWeek] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   // Full-screen image viewer for the Original source gallery.
@@ -395,6 +399,39 @@ export default function RecipeSheetScreen() {
     setSaving(false);
     setEditing(false);
     void load();
+  };
+
+  /** Single write path for the structured layer (recipe_sources never touched). */
+  const saveRecipe = useCallback(
+    async (patch: Record<string, unknown>) => {
+      if (!recipe) return;
+      await supabase
+        .from('recipes')
+        .update({ ...patch, updated_at: new Date().toISOString() })
+        .eq('id', recipe.id);
+      void load();
+    },
+    [recipe, load]
+  );
+
+  const saveDetails = async () => {
+    if (!recipe) return;
+    const toInt = (v: string) => {
+      const n = parseInt(v, 10);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
+    const newServings = toInt(details.servings);
+    const patch: Record<string, unknown> = {
+      servings: newServings,
+      prep_minutes: toInt(details.prep),
+      cook_minutes: toInt(details.cook),
+    };
+    // Servings change rescales parsed quantities (spec Part 3).
+    if (newServings && recipe.servings && newServings !== recipe.servings) {
+      patch.ingredients = rescaleIngredients(recipe.ingredients, newServings / recipe.servings);
+    }
+    setDetailsOpen(false);
+    await saveRecipe(patch);
   };
 
   const markReviewed = async () => {
@@ -527,7 +564,24 @@ export default function RecipeSheetScreen() {
                 </View>
               ) : null}
               {category && metaParts.length > 0 ? <Muted>·</Muted> : null}
-              {metaParts.length > 0 ? <Muted>{metaParts.join(' · ')}</Muted> : null}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Edit servings and times"
+                onPress={() => {
+                  setDetails({
+                    servings: recipe.servings?.toString() ?? '',
+                    prep: recipe.prep_minutes?.toString() ?? '',
+                    cook: recipe.cook_minutes?.toString() ?? '',
+                  });
+                  setDetailsOpen(true);
+                }}
+              >
+                {metaParts.length > 0 ? (
+                  <Muted>{metaParts.join(' · ')}</Muted>
+                ) : (
+                  <Muted>Add servings & time</Muted>
+                )}
+              </Pressable>
               {recipe.needs_review ? (
                 <Text style={{ color: colors.saffron, fontSize: fontSize.meta, fontFamily: fonts.uiSemi }}>
                   needs review
@@ -826,6 +880,41 @@ export default function RecipeSheetScreen() {
         onClose={() => setSheetOpen(false)}
         onAdded={() => void load()}
       />
+
+      <Modal visible={detailsOpen} transparent animationType="fade" onRequestClose={() => setDetailsOpen(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }} onPress={() => setDetailsOpen(false)} />
+        <View
+          style={{
+            backgroundColor: colors.bg,
+            padding: screenPadding,
+            paddingBottom: insets.bottom + 16,
+            gap: 12,
+            borderTopLeftRadius: 16,
+            borderTopRightRadius: 16,
+          }}
+        >
+          <Eyebrow>Servings</Eyebrow>
+          <Field
+            value={details.servings}
+            onChangeText={(v) => setDetails({ ...details, servings: v })}
+            keyboardType="number-pad"
+          />
+          <Eyebrow>Prep (min)</Eyebrow>
+          <Field
+            value={details.prep}
+            onChangeText={(v) => setDetails({ ...details, prep: v })}
+            keyboardType="number-pad"
+          />
+          <Eyebrow>Cook (min)</Eyebrow>
+          <Field
+            value={details.cook}
+            onChangeText={(v) => setDetails({ ...details, cook: v })}
+            keyboardType="number-pad"
+          />
+          <Button label="Save" onPress={() => void saveDetails()} />
+          <Button label="Cancel" kind="secondary" onPress={() => setDetailsOpen(false)} />
+        </View>
+      </Modal>
 
       {fixRaw !== null ? (
         <FixMatchSheet
