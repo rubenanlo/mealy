@@ -24,6 +24,7 @@ import {
   confirmRemoveFromWeek,
   removeRecipeFromCurrentWeek,
 } from '@/components/add-to-week';
+import { CoverRepositionModal } from '@/components/cover-editor';
 import { EditRowControls, SectionTitle } from '@/components/editable-list';
 import { FixMatchSheet } from '@/components/fix-match';
 import { ImageLightbox } from '@/components/image-lightbox';
@@ -43,6 +44,7 @@ import {
 import { useHousehold } from '@/lib/auth';
 import type { CanonicalIngredient, FodmapTier } from '@/lib/canonical';
 import { CATEGORY_LABELS, resolveProteinCategory } from '@/lib/category';
+import { focalToContentPosition } from '@/lib/cover-focal';
 import { normalizeDietProfile } from '@/lib/diet';
 import { moveItem, removeItem, updateItem } from '@/lib/edit-list';
 import { computeRecipeFodmap, FODMAP_DISCLAIMER, type RecipeFodmap } from '@/lib/fodmap';
@@ -69,6 +71,7 @@ interface RecipeDetail {
   steps: string[];
   needs_review: boolean;
   cover_image_path: string | null;
+  cover_focal: { x: number; y: number } | null;
 }
 
 interface SourceRow {
@@ -155,11 +158,15 @@ function Hero({
   saved,
   onBookmark,
   onPress,
+  focal = null,
+  onEdit,
 }: {
   path: string | null;
   saved: boolean;
   onBookmark: () => void;
   onPress?: () => void;
+  focal?: { x: number; y: number } | null;
+  onEdit?: () => void;
 }) {
   const { colors } = useTheme();
   const url = useImageUrl(path);
@@ -179,11 +186,39 @@ function Hero({
           disabled={!onPress}
           style={{ flex: 1 }}
         >
-          <Image source={{ uri: url }} style={{ flex: 1 }} contentFit="cover" />
+          <Image
+            source={{ uri: url }}
+            style={{ flex: 1 }}
+            contentFit="cover"
+            contentPosition={focalToContentPosition(focal)}
+          />
         </Pressable>
       ) : null}
       {/* Bookmark chip sits above the image Pressable so it keeps its own taps. */}
       {path ? <BookmarkChip saved={saved} onPress={onBookmark} style={{ top: 12, right: 12 }} /> : null}
+      {/* Edit chip sits bottom-right, clear of the top-right bookmark chip. */}
+      {path && onEdit ? (
+        <View style={{ position: 'absolute', bottom: 12, right: 12 }}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Edit the cover image"
+            onPress={onEdit}
+            style={({ pressed }) => ({
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              backgroundColor: colors.card,
+              borderWidth: 1,
+              borderColor: colors.border,
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: pressed ? 0.75 : 1,
+            })}
+          >
+            <Ionicons name="camera-outline" size={18} color={colors.text} />
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -275,6 +310,8 @@ export default function RecipeSheetScreen() {
   const [details, setDetails] = useState({ servings: '', prep: '', cook: '' });
   const [inThisWeek, setInThisWeek] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [coverMenuOpen, setCoverMenuOpen] = useState(false);
+  const [repositionOpen, setRepositionOpen] = useState(false);
   // Full-screen image viewer for the Original source gallery.
   const [viewer, setViewer] = useState<{ paths: string[]; index: number } | null>(null);
   // FODMAP flags + match corrections (Phase 2 Task 7)
@@ -472,8 +509,8 @@ export default function RecipeSheetScreen() {
       : recipe.cover_image_path
         ? [recipe.cover_image_path]
         : [];
-  const heroPath = galleryPaths[0] ?? null;
-  const restPaths = galleryPaths.slice(1);
+  const heroPath = recipe.cover_image_path ?? galleryPaths[0] ?? null;
+  const restPaths = galleryPaths.filter((p) => p !== heroPath);
   // url/reel captures carry the original link; photo/paste/PDF are null.
   const sourceUrl = sources.find((s) => s.url)?.url ?? null;
   const hasSource = galleryPaths.length > 0 || sourceUrl !== null;
@@ -502,9 +539,15 @@ export default function RecipeSheetScreen() {
             path={heroPath}
             saved={inThisWeek}
             onBookmark={onBookmark}
+            focal={recipe.cover_focal}
+            onEdit={heroPath ? () => setCoverMenuOpen(true) : undefined}
             onPress={
               galleryPaths.length > 0
-                ? () => setViewer({ paths: galleryPaths, index: 0 })
+                ? () =>
+                    setViewer({
+                      paths: galleryPaths,
+                      index: Math.max(0, galleryPaths.indexOf(heroPath ?? '')),
+                    })
                 : undefined
             }
           />
@@ -605,12 +648,15 @@ export default function RecipeSheetScreen() {
                       showsHorizontalScrollIndicator={false}
                       contentContainerStyle={{ gap: 12 }}
                     >
-                      {restPaths.map((path, i) => (
+                      {restPaths.map((path) => (
                         <GalleryImage
                           key={path}
                           path={path}
-                          // restPaths[i] === galleryPaths[i + 1]; hero is index 0.
-                          onPress={() => setViewer({ paths: galleryPaths, index: i + 1 })}
+                          // heroPath may not be galleryPaths[0] (cover_image_path wins), so
+                          // look up this image's real position for the lightbox.
+                          onPress={() =>
+                            setViewer({ paths: galleryPaths, index: galleryPaths.indexOf(path) })
+                          }
                         />
                       ))}
                     </ScrollView>
@@ -989,6 +1035,55 @@ export default function RecipeSheetScreen() {
           <Button label="Cancel" kind="secondary" onPress={() => setDetailsOpen(false)} />
         </View>
       </Modal>
+
+      <Modal
+        visible={coverMenuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCoverMenuOpen(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }}
+          onPress={() => setCoverMenuOpen(false)}
+        />
+        <View
+          style={{
+            backgroundColor: colors.bg,
+            padding: screenPadding,
+            paddingBottom: insets.bottom + 16,
+            gap: 12,
+            borderTopLeftRadius: 16,
+            borderTopRightRadius: 16,
+          }}
+        >
+          <Eyebrow>Cover image</Eyebrow>
+          <Button
+            label="Reposition"
+            kind="secondary"
+            onPress={() => {
+              setCoverMenuOpen(false);
+              setRepositionOpen(true);
+            }}
+          />
+          {/* Wired in Task 11. */}
+          <Button label="Choose from captured" kind="secondary" disabled onPress={() => {}} />
+          <Button label="Choose from library" kind="secondary" disabled onPress={() => {}} />
+          <Button label="Cancel" kind="secondary" onPress={() => setCoverMenuOpen(false)} />
+        </View>
+      </Modal>
+
+      {heroPath && repositionOpen ? (
+        <CoverRepositionModal
+          visible
+          path={heroPath}
+          focal={recipe.cover_focal}
+          onClose={() => setRepositionOpen(false)}
+          onSave={(f) => {
+            setRepositionOpen(false);
+            void saveRecipe({ cover_focal: f, cover_image_path: heroPath });
+          }}
+        />
+      ) : null}
 
       {fixRaw !== null ? (
         <FixMatchSheet
