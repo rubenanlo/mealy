@@ -24,6 +24,7 @@ import {
   confirmRemoveFromWeek,
   removeRecipeFromCurrentWeek,
 } from '@/components/add-to-week';
+import { EditRowControls, SectionTitle } from '@/components/editable-list';
 import { FixMatchSheet } from '@/components/fix-match';
 import { ImageLightbox } from '@/components/image-lightbox';
 import { IngredientRow } from '@/components/ingredient-row';
@@ -43,6 +44,7 @@ import { useHousehold } from '@/lib/auth';
 import type { CanonicalIngredient, FodmapTier } from '@/lib/canonical';
 import { CATEGORY_LABELS, resolveProteinCategory } from '@/lib/category';
 import { normalizeDietProfile } from '@/lib/diet';
+import { moveItem, removeItem, updateItem } from '@/lib/edit-list';
 import { computeRecipeFodmap, FODMAP_DISCLAIMER, type RecipeFodmap } from '@/lib/fodmap';
 import { resolveMatches } from '@/lib/matching';
 import { useImageUrl } from '@/lib/media';
@@ -283,6 +285,7 @@ export default function RecipeSheetScreen() {
   const [fodmapPersons, setFodmapPersons] = useState<string[]>([]);
   const [expandedRaw, setExpandedRaw] = useState<string | null>(null);
   const [fixRaw, setFixRaw] = useState<string | null>(null);
+  const [ingredientsDraft, setIngredientsDraft] = useState<IngredientData[] | null>(null);
   // v3.2 pinned-ingredients state
   const [stepsY, setStepsY] = useState<number | null>(null);
   const [pinnedVisible, setPinnedVisible] = useState(false);
@@ -645,7 +648,15 @@ export default function RecipeSheetScreen() {
                   </View>
                 ) : null}
 
-                <Title>Ingredients</Title>
+                <SectionTitle
+                  title="Ingredients"
+                  editing={ingredientsDraft !== null}
+                  onToggle={() =>
+                    setIngredientsDraft(
+                      ingredientsDraft === null ? recipe.ingredients.map((i) => ({ ...i })) : null
+                    )
+                  }
+                />
 
                 {/* FODMAP summary per FODMAP-mode person (spec §4) */}
                 {fodmap && fodmapPersons.length > 0 && fodmap.hasWarnings ? (
@@ -676,55 +687,122 @@ export default function RecipeSheetScreen() {
                   </View>
                 ) : null}
 
-                <View>
-                  {recipe.ingredients.map((ing, i) => {
-                    const rawKey = ing.raw || ing.name;
-                    const flag = flagByRaw.get(rawKey);
-                    const canonical = matches.get(rawKey) ?? null;
-                    const isExpanded = expandedRaw === rawKey;
-                    return (
-                      <View key={`${rawKey}-${i}`}>
-                        {i > 0 ? <Hairline /> : null}
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel={`Details for ${ing.name}`}
-                          accessibilityState={{ expanded: isExpanded }}
-                          onPress={() => setExpandedRaw(isExpanded ? null : rawKey)}
-                          style={({ pressed }) => ({
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            gap: 10,
-                            backgroundColor: pressed ? colors.cardPressed : 'transparent',
-                          })}
-                        >
-                          <View style={{ flex: 1 }}>
-                            <IngredientRow ingredient={ing} />
-                          </View>
-                          {fodmapPersons.length > 0 && flag ? <TierDot tier={flag.tier} /> : null}
-                        </Pressable>
-                        {isExpanded ? (
-                          <View style={{ paddingBottom: 10, gap: 4 }}>
-                            <Muted>
-                              {canonical
-                                ? `Matched to ${canonical.name_fr}.`
-                                : 'Not matched to the ingredient table.'}
-                            </Muted>
-                            {fodmapPersons.length > 0 && flag ? (
-                              <Muted>{`FODMAP ${flag.tier} — ${flag.explanation}`}</Muted>
-                            ) : null}
-                            <LinkButton
-                              label="Correct the match"
-                              onPress={() => setFixRaw(rawKey)}
-                              style={{ minHeight: 36 }}
-                              textStyle={{ fontSize: fontSize.small }}
-                            />
-                          </View>
-                        ) : null}
+                {ingredientsDraft !== null ? (
+                  <View style={{ gap: 10 }}>
+                    {ingredientsDraft.map((ing, i) => (
+                      <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Field
+                          value={ing.quantity?.toString() ?? ''}
+                          onChangeText={(v) => {
+                            const n = parseFloat(v.replace(',', '.'));
+                            setIngredientsDraft(
+                              updateItem(ingredientsDraft, i, {
+                                ...ing,
+                                quantity: Number.isFinite(n) ? n : null,
+                              })
+                            );
+                          }}
+                          keyboardType="decimal-pad"
+                          placeholder="qty"
+                          style={{ width: 64 }}
+                        />
+                        <Field
+                          value={ing.unit ?? ''}
+                          onChangeText={(v) =>
+                            setIngredientsDraft(updateItem(ingredientsDraft, i, { ...ing, unit: v || null }))
+                          }
+                          placeholder="unit"
+                          style={{ width: 64 }}
+                        />
+                        <View style={{ flex: 1 }}>
+                          <Field
+                            value={ing.name}
+                            onChangeText={(v) =>
+                              setIngredientsDraft(updateItem(ingredientsDraft, i, { ...ing, name: v }))
+                            }
+                            placeholder="ingredient"
+                          />
+                        </View>
+                        <EditRowControls
+                          index={i}
+                          count={ingredientsDraft.length}
+                          onMove={(from, to) => setIngredientsDraft(moveItem(ingredientsDraft, from, to))}
+                          onRemove={(idx) => setIngredientsDraft(removeItem(ingredientsDraft, idx))}
+                        />
                       </View>
-                    );
-                  })}
-                  {recipe.ingredients.length === 0 ? <Muted>No ingredients extracted.</Muted> : null}
-                </View>
+                    ))}
+                    <Button
+                      label="Add ingredient"
+                      kind="secondary"
+                      onPress={() =>
+                        setIngredientsDraft([
+                          ...ingredientsDraft,
+                          { raw: '', quantity: null, unit: null, name: '', group: null, fodmap: null },
+                        ])
+                      }
+                    />
+                    <Button
+                      label="Save ingredients"
+                      onPress={() =>
+                        void saveRecipe({
+                          ingredients: ingredientsDraft
+                            .filter((ing) => ing.name.trim())
+                            .map((ing) => ({ ...ing, raw: ing.raw || ing.name.trim(), name: ing.name.trim() })),
+                        }).then(() => setIngredientsDraft(null))
+                      }
+                    />
+                  </View>
+                ) : (
+                  <View>
+                    {recipe.ingredients.map((ing, i) => {
+                      const rawKey = ing.raw || ing.name;
+                      const flag = flagByRaw.get(rawKey);
+                      const canonical = matches.get(rawKey) ?? null;
+                      const isExpanded = expandedRaw === rawKey;
+                      return (
+                        <View key={`${rawKey}-${i}`}>
+                          {i > 0 ? <Hairline /> : null}
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel={`Details for ${ing.name}`}
+                            accessibilityState={{ expanded: isExpanded }}
+                            onPress={() => setExpandedRaw(isExpanded ? null : rawKey)}
+                            style={({ pressed }) => ({
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 10,
+                              backgroundColor: pressed ? colors.cardPressed : 'transparent',
+                            })}
+                          >
+                            <View style={{ flex: 1 }}>
+                              <IngredientRow ingredient={ing} />
+                            </View>
+                            {fodmapPersons.length > 0 && flag ? <TierDot tier={flag.tier} /> : null}
+                          </Pressable>
+                          {isExpanded ? (
+                            <View style={{ paddingBottom: 10, gap: 4 }}>
+                              <Muted>
+                                {canonical
+                                  ? `Matched to ${canonical.name_fr}.`
+                                  : 'Not matched to the ingredient table.'}
+                              </Muted>
+                              {fodmapPersons.length > 0 && flag ? (
+                                <Muted>{`FODMAP ${flag.tier} — ${flag.explanation}`}</Muted>
+                              ) : null}
+                              <LinkButton
+                                label="Correct the match"
+                                onPress={() => setFixRaw(rawKey)}
+                                style={{ minHeight: 36 }}
+                                textStyle={{ fontSize: fontSize.small }}
+                              />
+                            </View>
+                          ) : null}
+                        </View>
+                      );
+                    })}
+                    {recipe.ingredients.length === 0 ? <Muted>No ingredients extracted.</Muted> : null}
+                  </View>
+                )}
               </View>
             )}
           </View>
