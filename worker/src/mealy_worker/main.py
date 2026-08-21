@@ -7,11 +7,13 @@ itself. All routes except ``/health`` require a Supabase access token.
 
 from __future__ import annotations
 
-from fastapi import Depends, File, UploadFile
+from fastapi import Depends, File, HTTPException, UploadFile
 from fastapi import FastAPI
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from .auth import verify_token
+from .images import fetch_validated_image
 from .ingest.media import ingest_images, ingest_pdf
 from .ingest.social import ingest_social
 from .ingest.url import ingest_url
@@ -42,6 +44,10 @@ class MatchResponse(BaseModel):
 class StructureBody(BaseModel):
     verbatim: Verbatim
     force_llm: bool = False
+
+
+class ImageUrlBody(BaseModel):
+    url: str
 
 
 @app.get("/health")
@@ -100,3 +106,14 @@ async def ingest_pdf_route(
     file: UploadFile = File(...), _claims: dict = Depends(verify_token)
 ) -> IngestResult:
     return await ingest_pdf(await file.read())
+
+
+@app.post("/image/fetch")
+async def image_fetch_route(
+    body: ImageUrlBody, _claims: dict = Depends(verify_token)
+) -> Response:
+    """Download + validate a web image for the cover-replace flow (Part 4/7)."""
+    data = await fetch_validated_image(body.url)
+    if data is None:
+        raise HTTPException(status_code=422, detail="image failed validation")
+    return Response(content=data, media_type="image/jpeg")

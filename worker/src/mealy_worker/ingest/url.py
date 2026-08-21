@@ -20,6 +20,7 @@ import httpx
 import lxml.html
 from recipe_scrapers import scrape_html
 
+from ..images import pick_cover
 from ..models import CanonicalRecipe, Ingredient, IngestResult, Verbatim
 from ..structure import recipe_from_json_ld, structure_text
 
@@ -60,6 +61,30 @@ def _json_ld_image_urls(json_ld: dict) -> list[str]:
         elif isinstance(item, dict) and isinstance(item.get("url"), str):
             urls.append(item["url"])
     return urls
+
+
+def _meta_image_urls(html: str) -> list[str]:
+    """og:image / twitter:image candidates — currently never scraped."""
+    try:
+        doc = lxml.html.fromstring(html)
+    except Exception:
+        return []
+    urls: list[str] = []
+    for xp in (
+        '//meta[@property="og:image"]/@content',
+        '//meta[@name="twitter:image"]/@content',
+    ):
+        urls.extend(u for u in doc.xpath(xp) if isinstance(u, str) and u.startswith("http"))
+    return urls
+
+
+async def _ordered_image_urls(primary: list[str], html: str) -> list[str]:
+    """Primary source images + meta candidates, deduped, validated cover first."""
+    candidates = list(dict.fromkeys([*primary, *_meta_image_urls(html)]))
+    cover = await pick_cover(candidates)
+    if cover is None:
+        return candidates
+    return [cover, *[u for u in candidates if u != cover]]
 
 
 def _readable_text(html: str) -> str:
@@ -150,7 +175,7 @@ async def ingest_url(url: str) -> IngestResult:
                 verbatim=Verbatim(kind="url", url=url, json_ld=json_ld),
                 canonical=canonical,
                 needs_review=len(canonical.ingredients) < 2 or len(canonical.steps) < 1,
-                image_urls=_json_ld_image_urls(json_ld),
+                image_urls=await _ordered_image_urls(_json_ld_image_urls(json_ld), html),
             )
 
     # 2) recipe-scrapers on the same HTML (microdata / site-specific), no LLM
@@ -162,7 +187,7 @@ async def ingest_url(url: str) -> IngestResult:
             ),
             canonical=scraped,
             needs_review=len(scraped.ingredients) < 2 or len(scraped.steps) < 1,
-            image_urls=scraped_images,
+            image_urls=await _ordered_image_urls(scraped_images, html),
         )
 
     # 3) readable text → the structuring brain
@@ -179,4 +204,5 @@ async def ingest_url(url: str) -> IngestResult:
         verbatim=verbatim,
         canonical=canonical,
         needs_review=canonical.confidence < 0.6,
+        image_urls=await _ordered_image_urls([], html),
     )

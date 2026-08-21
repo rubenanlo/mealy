@@ -47,10 +47,16 @@ class NoCallAnthropicClient:
         raise AssertionError("Anthropic client must not be called")
 
 
+async def _no_network_pick_cover(urls, limit=3):  # pragma: no cover - trivial fake
+    """Stand-in for images.pick_cover: no live HTTP calls in these tests."""
+    return None
+
+
 @respx.mock
 async def test_json_ld_page_maps_without_llm(monkeypatch):
     no_llm = NoCallAnthropicClient()
     monkeypatch.setattr(structure, "get_anthropic_client", lambda: no_llm)
+    monkeypatch.setattr(url_mod, "pick_cover", _no_network_pick_cover)
     respx.get("https://example.com/rata").mock(
         return_value=Response(200, text=HTML_WITH_JSON_LD)
     )
@@ -84,6 +90,7 @@ async def test_unstructured_page_falls_through_to_structure_text(monkeypatch):
         return canned
 
     monkeypatch.setattr(url_mod, "structure_text", fake_structure_text)
+    monkeypatch.setattr(url_mod, "pick_cover", _no_network_pick_cover)
     respx.get("https://example.com/blog").mock(return_value=Response(200, text=HTML_PLAIN))
 
     result = await url_mod.ingest_url("https://example.com/blog")
@@ -121,3 +128,15 @@ async def test_network_error_returns_needs_review():
     result = await url_mod.ingest_url("https://down.example.com/")
     assert result.canonical is None
     assert result.needs_review is True
+
+
+def test_meta_image_urls_extracts_og_and_twitter():
+    from mealy_worker.ingest.url import _meta_image_urls
+
+    html = (
+        "<html><head>"
+        '<meta property="og:image" content="https://x.com/a.jpg">'
+        '<meta name="twitter:image" content="https://x.com/b.jpg">'
+        "</head><body></body></html>"
+    )
+    assert _meta_image_urls(html) == ["https://x.com/a.jpg", "https://x.com/b.jpg"]

@@ -184,3 +184,35 @@ def test_ingest_pdf_multipart(client, monkeypatch):
     )
     assert response.status_code == 200
     assert seen["data"] == b"%PDF-bytes"
+
+
+def test_image_fetch_requires_token(client):
+    assert client.post("/image/fetch", json={"url": "https://x.com/a.jpg"}).status_code == 401
+
+
+def test_image_fetch_returns_validated_jpeg(client, monkeypatch):
+    seen = {}
+
+    async def fake_fetch_validated_image(url):
+        seen["url"] = url
+        return b"jpeg"
+
+    monkeypatch.setattr(main, "fetch_validated_image", fake_fetch_validated_image)
+    response = client.post(
+        "/image/fetch", json={"url": "https://x.com/a.jpg"}, headers=auth()
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/jpeg"
+    assert response.content == b"jpeg"
+    assert seen["url"] == "https://x.com/a.jpg"
+
+
+def test_image_fetch_422_when_validation_fails(client, monkeypatch):
+    async def fake_fetch_validated_image(url):
+        return None
+
+    monkeypatch.setattr(main, "fetch_validated_image", fake_fetch_validated_image)
+    response = client.post(
+        "/image/fetch", json={"url": "https://x.com/bad.jpg"}, headers=auth()
+    )
+    assert response.status_code == 422
