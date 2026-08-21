@@ -26,6 +26,12 @@ def validate_image_bytes(data: bytes) -> bytes | None:
         return None
     if img.width > MAX_EDGE or img.height > MAX_EDGE:
         img.thumbnail((MAX_EDGE, MAX_EDGE), Image.LANCZOS)
+    if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+        # Composite onto white so transparent pixels don't leak RGB noise.
+        rgba = img.convert("RGBA")
+        background = Image.new("RGB", rgba.size, (255, 255, 255))
+        background.paste(rgba, mask=rgba.split()[-1])
+        img = background
     buf = io.BytesIO()
     img.convert("RGB").save(buf, "JPEG", quality=85)
     return buf.getvalue()
