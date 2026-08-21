@@ -21,6 +21,7 @@ export interface QuotaEntry {
 export interface QuotaRecipe {
   id: string;
   tags: string[];
+  category?: string | null;
 }
 
 /** Does this plan entry cover this person? Empty person_ids covers everyone. */
@@ -40,11 +41,15 @@ export function quotaProgress(
   targets: QuotaTarget[]
 ): QuotaProgress[] {
   const tagsById = new Map(recipes.map((r) => [r.id, r.tags]));
+  const catById = new Map(recipes.map((r) => [r.id, r.category ?? null]));
   const eaten = entries.filter((e) => entryCoversPerson(e, personId));
   return targets.map((target) => ({
     category: target.category,
     planned: eaten.filter(
-      (e) => e.recipe_id !== null && (tagsById.get(e.recipe_id) ?? []).includes(target.category)
+      (e) =>
+        e.recipe_id !== null &&
+        (catById.get(e.recipe_id) === target.category ||
+          (tagsById.get(e.recipe_id) ?? []).includes(target.category))
     ).length,
     min: target.min,
     max: target.max,

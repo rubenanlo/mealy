@@ -6,9 +6,10 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { RecipeRow, type RecipeListItem } from '@/components/recipe-cards';
 import { EmptyState, Field, Hairline, LinkButton, Muted, Title } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
-import { deriveCategory, type ProteinCategory } from '@/lib/category';
+import { resolveProteinCategory, type ProteinCategory } from '@/lib/category';
 import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, minTapTarget, radius, screenPadding, tabBarClearance, useTheme } from '@/lib/theme';
+import { useCanonicalIndex } from '@/lib/use-canonical';
 
 type Filter = 'all' | ProteinCategory | 'needs_review';
 
@@ -68,13 +69,16 @@ export default function SearchScreen() {
   const [recipes, setRecipes] = useState<RecipeListItem[]>([]);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
+  const index = useCanonicalIndex();
 
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
       supabase
         .from('recipes')
-        .select('id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes')
+        .select(
+          'id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes, ingredients'
+        )
         .eq('household_id', householdId)
         .order('created_at', { ascending: false })
         .then(({ data }) => {
@@ -92,9 +96,9 @@ export default function SearchScreen() {
       if (q && !recipe.title.toLowerCase().includes(q)) return false;
       if (filter === 'all') return true;
       if (filter === 'needs_review') return recipe.needs_review;
-      return deriveCategory(recipe.tags) === filter;
+      return resolveProteinCategory(recipe.tags, recipe.ingredients, index) === filter;
     });
-  }, [recipes, query, filter]);
+  }, [recipes, query, filter, index]);
 
   const hasActiveFilters = query.trim().length > 0 || filter !== 'all';
   const clearFilters = () => {

@@ -3,9 +3,11 @@ import { Image } from 'expo-image';
 import { Pressable, Text, View } from 'react-native';
 
 import { BookmarkChip, CategoryDot, Hairline, Muted } from '@/components/ui';
-import { CATEGORY_LABELS, deriveCategory } from '@/lib/category';
+import { CATEGORY_LABELS, resolveProteinCategory } from '@/lib/category';
+import { useCanonicalIndex } from '@/lib/use-canonical';
 import { useImageUrl } from '@/lib/media';
 import { fonts, fontSize, radius, screenPadding, useTheme } from '@/lib/theme';
+import type { IngredientRow as IngredientData } from '@/lib/worker';
 
 /** Shared recipe card/row building blocks (v3: Home + Search). */
 
@@ -20,6 +22,8 @@ export interface RecipeListItem {
   cook_minutes: number | null;
   /** Present where a screen selects it (Home's "Recently added" window). */
   created_at?: string;
+  /** Present where a screen selects it — enables ingredient-derived category. */
+  ingredients?: IngredientData[];
 }
 
 export function totalMinutes(recipe: RecipeListItem): number | null {
@@ -38,7 +42,8 @@ export function MetaLine({
   showBadge?: boolean;
 }) {
   const { colors } = useTheme();
-  const category = deriveCategory(recipe.tags);
+  const index = useCanonicalIndex();
+  const category = resolveProteinCategory(recipe.tags, recipe.ingredients, index);
   const minutes = totalMinutes(recipe);
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>

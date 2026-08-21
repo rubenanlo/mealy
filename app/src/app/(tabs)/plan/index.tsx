@@ -18,7 +18,7 @@ import {
   Title,
 } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
-import { deriveCategory, type ProteinCategory } from '@/lib/category';
+import { resolveProteinCategory, type ProteinCategory } from '@/lib/category';
 import { normalizeDietProfile } from '@/lib/diet';
 import { useImageUrl } from '@/lib/media';
 import {
@@ -47,6 +47,8 @@ import {
   tabBarClearance,
   useTheme,
 } from '@/lib/theme';
+import { useCanonicalIndex } from '@/lib/use-canonical';
+import type { IngredientRow as IngredientData } from '@/lib/worker';
 
 interface Person {
   id: string;
@@ -60,6 +62,7 @@ interface RecipeLite {
   title: string;
   tags: string[];
   cover_image_path: string | null;
+  ingredients?: IngredientData[];
 }
 
 interface MealPlanRow {
@@ -143,6 +146,7 @@ export default function PlanScreen() {
   const { householdId } = useHousehold();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const index = useCanonicalIndex();
 
   const [weekIso, setWeekIso] = useState(() => weekStart(new Date()));
   const [plan, setPlan] = useState<MealPlanRow | null>(null);
@@ -195,7 +199,7 @@ export default function PlanScreen() {
             .order('created_at'),
           supabase
             .from('recipes')
-            .select('id, title, tags, cover_image_path')
+            .select('id, title, tags, cover_image_path, ingredients')
             .eq('household_id', householdId)
             .order('title'),
         ]);
@@ -220,11 +224,15 @@ export default function PlanScreen() {
    */
   const quotaChips = useMemo(() => {
     if (eaters.length === 0) return [];
+    const quotaRecipes = recipes.map((r) => ({
+      ...r,
+      category: resolveProteinCategory(r.tags, r.ingredients, index),
+    }));
     const perPerson = eaters.map((person) =>
       quotaProgress(
         entries,
         person.id,
-        recipes,
+        quotaRecipes,
         normalizeDietProfile(person.diet_profile).proteinQuotas.targets
       )
     );
@@ -241,7 +249,7 @@ export default function PlanScreen() {
       chips.push({ category, planned, target });
     }
     return chips;
-  }, [eaters, entries, recipes]);
+  }, [eaters, entries, recipes, index]);
 
   const ensurePlan = async (): Promise<string> => {
     if (plan) return plan.id;
@@ -449,7 +457,11 @@ export default function PlanScreen() {
                       </View>
                       {cellEntries.map((entry) => {
                         const recipe = entry.recipe_id ? recipeById.get(entry.recipe_id) : undefined;
-                        const category = deriveCategory(recipe?.tags ?? []);
+                        const category = resolveProteinCategory(
+                          recipe?.tags ?? [],
+                          recipe?.ingredients,
+                          index
+                        );
                         return (
                           <View
                             key={entry.id}
@@ -604,7 +616,7 @@ export default function PlanScreen() {
                   keyExtractor={(r) => r.id}
                   ItemSeparatorComponent={Hairline}
                   renderItem={({ item }) => {
-                    const category = deriveCategory(item.tags);
+                    const category = resolveProteinCategory(item.tags, item.ingredients, index);
                     return (
                       <Pressable
                         accessibilityRole="button"

@@ -62,4 +62,14 @@ describe('quotaProgress', () => {
     expect(rows.map((r) => r.category)).toEqual(['fish', 'meat', 'vegetarian']);
     expect(rows[2].max).toBeNull();
   });
+
+  it('counts a recipe by derived category even when tags are empty', () => {
+    const progress = quotaProgress(
+      [{ recipe_id: 'r1', person_ids: [] }],
+      'p1',
+      [{ id: 'r1', tags: [], category: 'meat' }],
+      [{ category: 'meat', min: 1, max: null }]
+    );
+    expect(progress[0].planned).toBe(1);
+  });
 });

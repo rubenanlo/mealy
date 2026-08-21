@@ -40,7 +40,7 @@ import {
 } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
 import type { CanonicalIngredient, FodmapTier } from '@/lib/canonical';
-import { CATEGORY_LABELS, deriveCategory } from '@/lib/category';
+import { CATEGORY_LABELS, resolveProteinCategory } from '@/lib/category';
 import { normalizeDietProfile } from '@/lib/diet';
 import { computeRecipeFodmap, FODMAP_DISCLAIMER, type RecipeFodmap } from '@/lib/fodmap';
 import { resolveMatches } from '@/lib/matching';
@@ -49,6 +49,7 @@ import { useReducedMotion } from '@/lib/motion';
 import { weekStart } from '@/lib/plan';
 import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
+import { useCanonicalIndex } from '@/lib/use-canonical';
 import type { IngredientRow as IngredientData, SourceKind, Verbatim } from '@/lib/worker';
 
 interface RecipeDetail {
@@ -261,6 +262,7 @@ export default function RecipeSheetScreen() {
   const insets = useSafeAreaInsets();
   const reduced = useReducedMotion();
   const { householdId } = useHousehold();
+  const canonicalIndex = useCanonicalIndex();
 
   const [recipe, setRecipe] = useState<RecipeDetail | null>(null);
   const [sources, setSources] = useState<SourceRow[]>([]);
@@ -452,7 +454,7 @@ export default function RecipeSheetScreen() {
     );
   }
 
-  const category = deriveCategory(recipe.tags);
+  const category = resolveProteinCategory(recipe.tags, recipe.ingredients, canonicalIndex);
   const metaParts = [
     recipe.servings ? `${recipe.servings} servings` : null,
     recipe.prep_minutes ? `Prep ${recipe.prep_minutes} min` : null,
