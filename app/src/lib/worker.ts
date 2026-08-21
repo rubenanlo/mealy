@@ -288,6 +288,27 @@ export async function reExtract(verbatim: Verbatim): Promise<CanonicalRecipe | n
 }
 
 // ---------------------------------------------------------------------------
+// Web cover image fetch/validation (Phase 2 Task 15 / spec Part 4/7).
+// ---------------------------------------------------------------------------
+
+/** Download + validate a web image via the worker (spec Part 4/7). */
+export async function fetchWebImage(url: string): Promise<ArrayBuffer | null> {
+  if (!WORKER_URL) return null;
+  try {
+    const token = await accessToken();
+    const response = await fetch(`${WORKER_URL}/image/fetch`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    if (!response.ok) return null;
+    return await response.arrayBuffer();
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Persistence: IngestResult -> Supabase rows (+ media upload).
 // ---------------------------------------------------------------------------
 

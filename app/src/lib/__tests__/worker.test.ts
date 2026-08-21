@@ -12,6 +12,7 @@ jest.mock('@/lib/supabase', () => ({
 import {
   buildRecipeRows,
   detectCaptureKind,
+  fetchWebImage,
   reExtract,
   type IngestResult,
   type Verbatim,
@@ -130,5 +131,28 @@ describe('reExtract', () => {
   it('returns null on failure', async () => {
     global.fetch = jest.fn().mockResolvedValue({ ok: false }) as jest.Mock;
     expect(await reExtract({ kind: 'paste', url: null, json_ld: null, page_text: null, caption: null, transcript: null, overlay_text: null, ocr_text: null, pasted: 'x' })).toBeNull();
+  });
+});
+
+describe('fetchWebImage', () => {
+  it('POSTs the url to /image/fetch and returns the array buffer', async () => {
+    const buffer = new ArrayBuffer(8);
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => buffer }) as jest.Mock;
+    const data = await fetchWebImage('https://example.com/photo.jpg');
+    expect(data).toBe(buffer);
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(url).toContain('/image/fetch');
+    expect(JSON.parse(init.body).url).toBe('https://example.com/photo.jpg');
+    expect(init.headers.Authorization).toBe('Bearer test-token');
+  });
+
+  it('returns null on a non-ok response', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: false }) as jest.Mock;
+    expect(await fetchWebImage('https://example.com/photo.jpg')).toBeNull();
+  });
+
+  it('returns null when the request throws', async () => {
+    global.fetch = jest.fn().mockRejectedValue(new Error('network down')) as jest.Mock;
+    expect(await fetchWebImage('https://example.com/photo.jpg')).toBeNull();
   });
 });

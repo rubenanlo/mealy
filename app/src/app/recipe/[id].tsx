@@ -58,6 +58,7 @@ import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
 import { useCanonicalIndex } from '@/lib/use-canonical';
 import {
+  fetchWebImage,
   reExtract,
   type CanonicalRecipe,
   type IngredientRow as IngredientData,
@@ -320,6 +321,14 @@ export default function RecipeSheetScreen() {
   const [coverMenuOpen, setCoverMenuOpen] = useState(false);
   const [repositionOpen, setRepositionOpen] = useState(false);
   const [pickCapturedOpen, setPickCapturedOpen] = useState(false);
+  // "From the web" cover sheet (spec Part 4/7). The ref is the synchronous
+  // re-entrancy mutex (mirrors reExtractingRef) — a fast double-tap on Fetch
+  // fires both presses before the fetching-state flush.
+  const [webCoverOpen, setWebCoverOpen] = useState(false);
+  const [webCoverUrl, setWebCoverUrl] = useState('');
+  const [webCoverError, setWebCoverError] = useState<string | null>(null);
+  const webCoverFetchingRef = useRef(false);
+  const [webCoverFetching, setWebCoverFetching] = useState(false);
   // Full-screen image viewer for the Original source gallery.
   const [viewer, setViewer] = useState<{ paths: string[]; index: number } | null>(null);
   // FODMAP flags + match corrections (Phase 2 Task 7)
@@ -449,6 +458,40 @@ export default function RecipeSheetScreen() {
       .upload(path, data, { contentType: asset.mimeType ?? 'image/jpeg', upsert: true });
     if (error) return;
     await saveRecipe({ cover_image_path: path, cover_focal: null });
+  };
+
+  const replaceCoverFromWeb = async () => {
+    if (!recipe || webCoverFetchingRef.current) return;
+    const imageUrl = webCoverUrl.trim();
+    if (!imageUrl) {
+      setWebCoverError('Paste an image URL first.');
+      return;
+    }
+    webCoverFetchingRef.current = true;
+    setWebCoverFetching(true);
+    setWebCoverError(null);
+    try {
+      const data = await fetchWebImage(imageUrl);
+      if (!data) {
+        setWebCoverError('That image could not be used (too small or unreachable).');
+        return;
+      }
+      const path = `${householdId}/${recipe.id}/cover-web.jpg`;
+      const { error } = await supabase.storage
+        .from('recipe-media')
+        .upload(path, data, { contentType: 'image/jpeg', upsert: true });
+      if (error) {
+        setWebCoverError('Upload failed — try again.');
+        return;
+      }
+      setWebCoverOpen(false);
+      setWebCoverUrl('');
+      setWebCoverError(null);
+      await saveRecipe({ cover_image_path: path, cover_focal: null });
+    } finally {
+      webCoverFetchingRef.current = false;
+      setWebCoverFetching(false);
+    }
   };
 
   const saveDetails = async () => {
@@ -1166,7 +1209,69 @@ export default function RecipeSheetScreen() {
               void pickCoverFromLibrary();
             }}
           />
+          <Button
+            label="From the web"
+            kind="secondary"
+            onPress={() => {
+              setCoverMenuOpen(false);
+              setWebCoverUrl('');
+              setWebCoverError(null);
+              setWebCoverOpen(true);
+            }}
+          />
           <Button label="Cancel" kind="secondary" onPress={() => setCoverMenuOpen(false)} />
+        </View>
+      </Modal>
+
+      <Modal
+        visible={webCoverOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setWebCoverOpen(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }}
+          onPress={() => setWebCoverOpen(false)}
+        />
+        <View
+          style={{
+            backgroundColor: colors.bg,
+            padding: screenPadding,
+            paddingBottom: insets.bottom + 16,
+            gap: 12,
+            borderTopLeftRadius: 16,
+            borderTopRightRadius: 16,
+          }}
+        >
+          <Eyebrow>From the web</Eyebrow>
+          <Field
+            value={webCoverUrl}
+            onChangeText={(v) => {
+              setWebCoverUrl(v);
+              setWebCoverError(null);
+            }}
+            placeholder="Paste an image URL"
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+          />
+          {webCoverError ? (
+            <Body style={{ color: colors.danger }}>{webCoverError}</Body>
+          ) : null}
+          <Button
+            label={webCoverFetching ? 'Fetching…' : 'Fetch'}
+            disabled={webCoverFetching}
+            onPress={() => void replaceCoverFromWeb()}
+          />
+          <Button
+            label="Cancel"
+            kind="secondary"
+            onPress={() => {
+              setWebCoverOpen(false);
+              setWebCoverUrl('');
+              setWebCoverError(null);
+            }}
+          />
         </View>
       </Modal>
 
