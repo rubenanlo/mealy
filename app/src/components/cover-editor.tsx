@@ -28,20 +28,29 @@ export function CoverRepositionModal({
   const frameH = (frameW * 3) / 4;
   const url = useImageUrl(path);
   const [current, setCurrent] = useState<CoverFocal>(focal ?? { x: 0.5, y: 0.5 });
+  // The PanResponder below is created exactly once, so its callbacks must not
+  // close over React state (a closure would be frozen at mount and every later
+  // drag would restart from the mount-time focal). Mirror the live values into
+  // refs each render and read only refs inside the responder.
+  const currentRef = useRef(current);
+  currentRef.current = current;
+  const frameRef = useRef({ w: frameW, h: frameH });
+  frameRef.current = { w: frameW, h: frameH };
   const startRef = useRef<CoverFocal>(current);
 
   const pan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onPanResponderGrant: () => {
-        startRef.current = current;
+        // Grant-time base = the focal as of this touch-down, not mount.
+        startRef.current = currentRef.current;
       },
       onPanResponderMove: (_evt, g) => {
         // Dragging the image right shows more of its left side → focal decreases.
         setCurrent(
           clampFocal({
-            x: startRef.current.x - g.dx / frameW,
-            y: startRef.current.y - g.dy / frameH,
+            x: startRef.current.x - g.dx / frameRef.current.w,
+            y: startRef.current.y - g.dy / frameRef.current.h,
           })
         );
       },
