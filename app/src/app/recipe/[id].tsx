@@ -24,12 +24,12 @@ import {
   removeRecipeFromCurrentWeek,
 } from '@/components/add-to-week';
 import { FixMatchSheet } from '@/components/fix-match';
+import { ImageLightbox } from '@/components/image-lightbox';
 import { IngredientRow } from '@/components/ingredient-row';
 import {
   Body,
   BookmarkChip,
   Button,
-  Card,
   CategoryDot,
   Eyebrow,
   Field,
@@ -79,14 +79,6 @@ interface ImageRow {
   storage_path: string;
   position: number;
 }
-
-const KIND_LABELS: Record<SourceKind, string> = {
-  url: 'Web page',
-  reel: 'Reel (video)',
-  photo: 'Photos',
-  pdf: 'PDF',
-  paste: 'Pasted text',
-};
 
 const PINNED_BAR_HEIGHT = 44;
 
@@ -157,10 +149,12 @@ function Hero({
   path,
   saved,
   onBookmark,
+  onPress,
 }: {
   path: string | null;
   saved: boolean;
   onBookmark: () => void;
+  onPress?: () => void;
 }) {
   const { colors } = useTheme();
   const url = useImageUrl(path);
@@ -172,96 +166,71 @@ function Hero({
         backgroundColor: colors.cardPressed,
       }}
     >
-      {url ? <Image source={{ uri: url }} style={{ flex: 1 }} contentFit="cover" /> : null}
+      {url ? (
+        <Pressable
+          accessibilityRole={onPress ? 'button' : undefined}
+          accessibilityLabel={onPress ? 'Expand image' : undefined}
+          onPress={onPress}
+          disabled={!onPress}
+          style={{ flex: 1 }}
+        >
+          <Image source={{ uri: url }} style={{ flex: 1 }} contentFit="cover" />
+        </Pressable>
+      ) : null}
+      {/* Bookmark chip sits above the image Pressable so it keeps its own taps. */}
       {path ? <BookmarkChip saved={saved} onPress={onBookmark} style={{ top: 12, right: 12 }} /> : null}
     </View>
   );
 }
 
-function GalleryImage({ path }: { path: string }) {
+function GalleryImage({ path, onPress }: { path: string; onPress?: () => void }) {
   const url = useImageUrl(path);
   const { colors } = useTheme();
+  const surface = {
+    width: 240,
+    height: 180,
+    borderRadius: 8,
+    overflow: 'hidden' as const,
+    backgroundColor: colors.cardPressed,
+  };
+  const inner = url ? (
+    <Image source={{ uri: url }} style={{ flex: 1 }} contentFit="cover" />
+  ) : null;
+  if (!onPress) return <View style={surface}>{inner}</View>;
   return (
-    <View
-      style={{ width: 240, height: 180, borderRadius: 8, overflow: 'hidden', backgroundColor: colors.cardPressed }}
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Expand image"
+      onPress={onPress}
+      style={({ pressed }) => [surface, { opacity: pressed ? 0.7 : 1 }]}
     >
-      {url ? <Image source={{ uri: url }} style={{ flex: 1 }} contentFit="cover" /> : null}
-    </View>
+      {inner}
+    </Pressable>
   );
 }
 
-function VerbatimBlock({ label, text }: { label: string; text: string | null }) {
+/** Clickable original-source link (url/reel captures). */
+function SourceLink({ url }: { url: string }) {
   const { colors } = useTheme();
-  if (!text) return null;
   return (
-    <View style={{ gap: 6 }}>
-      <Eyebrow>{label}</Eyebrow>
-      <Card style={{ backgroundColor: colors.cardPressed }}>
-        <Text
-          selectable
-          style={{ color: colors.text, fontSize: fontSize.base, lineHeight: 24, fontFamily: fonts.ui }}
-        >
-          {text}
-        </Text>
-      </Card>
-    </View>
-  );
-}
-
-function SourceView({ sources }: { sources: SourceRow[] }) {
-  const { colors } = useTheme();
-  // URL and reel captures store the original link; photo/paste/PDF are null.
-  const sourceUrl = sources.find((s) => s.url)?.url ?? null;
-  return (
-    <View style={{ gap: 20 }}>
-      {sourceUrl ? (
-        <View style={{ gap: 4 }}>
-          <Eyebrow>Source</Eyebrow>
-          <Pressable
-            accessibilityRole="link"
-            accessibilityLabel={`Open the original source, ${sourceUrl}`}
-            onPress={() => Linking.openURL(sourceUrl).catch(() => {})}
-            style={({ pressed }) => ({
-              minHeight: minTapTarget,
-              justifyContent: 'center',
-              opacity: pressed ? 0.6 : 1,
-            })}
-          >
-            <Text
-              numberOfLines={1}
-              ellipsizeMode="middle"
-              style={{ color: colors.accent, fontSize: fontSize.base, fontFamily: fonts.uiSemi }}
-            >
-              {sourceUrl}
-            </Text>
-          </Pressable>
-        </View>
-      ) : null}
-      {sources.map((source) => (
-        <View key={source.id} style={{ gap: 12 }}>
-          <Body style={{ fontFamily: fonts.uiSemi }}>{KIND_LABELS[source.kind] ?? source.kind}</Body>
-          {source.url && source.url !== sourceUrl ? <Muted>{source.url}</Muted> : null}
-          <VerbatimBlock label="Pasted text" text={source.verbatim.pasted} />
-          <VerbatimBlock label="Page text" text={source.verbatim.page_text} />
-          <VerbatimBlock label="Caption" text={source.verbatim.caption} />
-          <VerbatimBlock label="Transcript" text={source.verbatim.transcript} />
-          <VerbatimBlock label="On-screen text" text={source.verbatim.overlay_text} />
-          <VerbatimBlock label="Recognized text (OCR)" text={source.verbatim.ocr_text} />
-          <VerbatimBlock
-            label="Structured data (JSON-LD)"
-            text={source.verbatim.json_ld ? JSON.stringify(source.verbatim.json_ld, null, 2) : null}
-          />
-          {source.media_paths.length > 0 ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
-              {source.media_paths.map((path) => (
-                <GalleryImage key={path} path={path} />
-              ))}
-            </ScrollView>
-          ) : null}
-        </View>
-      ))}
-      {sources.length === 0 ? <Muted>No source captured.</Muted> : null}
-    </View>
+    <Pressable
+      accessibilityRole="link"
+      accessibilityLabel={`Open the original source, ${url}`}
+      onPress={() => Linking.openURL(url).catch(() => {})}
+      style={({ pressed }) => ({
+        minHeight: minTapTarget,
+        justifyContent: 'center',
+        opacity: pressed ? 0.6 : 1,
+      })}
+    >
+      <Text
+        numberOfLines={1}
+        ellipsizeMode="middle"
+        style={{ color: colors.accent, fontSize: fontSize.base, fontFamily: fonts.uiSemi }}
+      >
+        {url}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -296,12 +265,13 @@ export default function RecipeSheetScreen() {
   const [recipe, setRecipe] = useState<RecipeDetail | null>(null);
   const [sources, setSources] = useState<SourceRow[]>([]);
   const [images, setImages] = useState<ImageRow[]>([]);
-  const [view, setView] = useState<'recipe' | 'source'>('recipe');
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ title: '', servings: '', prep: '', cook: '' });
   const [saving, setSaving] = useState(false);
   const [inThisWeek, setInThisWeek] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  // Full-screen image viewer for the Original source gallery.
+  const [viewer, setViewer] = useState<{ paths: string[]; index: number } | null>(null);
   // FODMAP flags + match corrections (Phase 2 Task 7)
   const [matches, setMatches] = useState<Map<string, CanonicalIngredient | null>>(new Map());
   const [fodmapPersons, setFodmapPersons] = useState<string[]>([]);
@@ -497,12 +467,21 @@ export default function RecipeSheetScreen() {
         : [];
   const heroPath = galleryPaths[0] ?? null;
   const restPaths = galleryPaths.slice(1);
-  const showAction = view === 'recipe' && !editing;
+  // url/reel captures carry the original link; photo/paste/PDF are null.
+  const sourceUrl = sources.find((s) => s.url)?.url ?? null;
+  const hasSource = galleryPaths.length > 0 || sourceUrl !== null;
+  const showAction = !editing;
   const showPinnedBar = pinnedVisible && showAction;
   const actionBottom = (Platform.OS === 'ios' ? insets.bottom : insets.bottom) + 16;
 
   return (
     <Sheet onDismiss={dismiss}>
+      <ImageLightbox
+        visible={viewer !== null}
+        paths={viewer?.paths ?? []}
+        initialIndex={viewer?.index ?? 0}
+        onClose={() => setViewer(null)}
+      />
       <View
         style={{ flex: 1 }}
         onLayout={(e) => setSheetHeight(e.nativeEvent.layout.height)}
@@ -510,9 +489,19 @@ export default function RecipeSheetScreen() {
         <ScrollView
           onScroll={onScroll}
           scrollEventThrottle={16}
+          showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: showAction ? 140 : 48 }}
         >
-          <Hero path={heroPath} saved={inThisWeek} onBookmark={onBookmark} />
+          <Hero
+            path={heroPath}
+            saved={inThisWeek}
+            onBookmark={onBookmark}
+            onPress={
+              galleryPaths.length > 0
+                ? () => setViewer({ paths: galleryPaths, index: 0 })
+                : undefined
+            }
+          />
 
           <View style={{ padding: screenPadding, gap: 14 }}>
             <Text
@@ -544,21 +533,13 @@ export default function RecipeSheetScreen() {
               ) : null}
             </View>
 
-            <LinkButton
-              label={view === 'recipe' ? 'Original source' : 'Back to the recipe'}
-              onPress={() => setView(view === 'recipe' ? 'source' : 'recipe')}
-              style={{ minHeight: 36 }}
-            />
-
-            {recipe.needs_review && view === 'recipe' && !editing ? (
+            {recipe.needs_review && !editing ? (
               <Button label="Mark as reviewed" kind="secondary" onPress={() => void markReviewed()} />
             ) : null}
 
             <Hairline />
 
-            {view === 'source' ? (
-              <SourceView sources={sources} />
-            ) : editing ? (
+            {editing ? (
               <View style={{ gap: 12 }}>
                 <Eyebrow>Title</Eyebrow>
                 <Field value={draft.title} onChangeText={(v) => setDraft({ ...draft, title: v })} />
@@ -585,16 +566,27 @@ export default function RecipeSheetScreen() {
               </View>
             ) : (
               <View style={{ gap: 18 }}>
-                {restPaths.length > 0 ? (
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={{ gap: 12 }}
-                  >
-                    {restPaths.map((path) => (
-                      <GalleryImage key={path} path={path} />
-                    ))}
-                  </ScrollView>
+                {hasSource ? (
+                  <View style={{ gap: 12 }}>
+                    <Title>Original source</Title>
+                    {sourceUrl ? <SourceLink url={sourceUrl} /> : null}
+                    {restPaths.length > 0 ? (
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={{ gap: 12 }}
+                      >
+                        {restPaths.map((path, i) => (
+                          <GalleryImage
+                            key={path}
+                            path={path}
+                            // restPaths[i] === galleryPaths[i + 1]; hero is index 0.
+                            onPress={() => setViewer({ paths: galleryPaths, index: i + 1 })}
+                          />
+                        ))}
+                      </ScrollView>
+                    ) : null}
+                  </View>
                 ) : null}
 
                 <Title>Ingredients</Title>
@@ -683,7 +675,7 @@ export default function RecipeSheetScreen() {
 
           {/* Steps live in their own content-level container so onLayout gives
               the exact scroll offset for the pinned-ingredients bar (v3.2). */}
-          {view === 'recipe' && !editing ? (
+          {!editing ? (
             <View
               onLayout={(e) => setStepsY(e.nativeEvent.layout.y)}
               style={{ paddingHorizontal: screenPadding, gap: 18 }}
@@ -723,8 +715,7 @@ export default function RecipeSheetScreen() {
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                // Clear the close chevron on the left (must not overlap it).
-                paddingLeft: 64,
+                paddingLeft: screenPadding,
                 paddingRight: screenPadding,
                 backgroundColor: pressed ? colors.cardPressed : colors.bg,
                 borderBottomWidth: StyleSheet.hairlineWidth,
@@ -795,29 +786,6 @@ export default function RecipeSheetScreen() {
             ) : null}
           </View>
         ) : null}
-
-        {/* Persistent close chevron — above the pinned bar, never overlapped */}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Close the recipe"
-          onPress={dismiss}
-          style={({ pressed }) => ({
-            position: 'absolute',
-            top: 8,
-            left: 12,
-            zIndex: 20,
-            width: minTapTarget - 8,
-            height: minTapTarget - 8,
-            borderRadius: (minTapTarget - 8) / 2,
-            backgroundColor: pressed ? colors.cardPressed : colors.card,
-            borderWidth: 1,
-            borderColor: colors.border,
-            alignItems: 'center',
-            justifyContent: 'center',
-          })}
-        >
-          <Ionicons name="chevron-down" size={22} color={colors.text} />
-        </Pressable>
 
         {/* v3.2: primary action floats inside the sheet, above its bottom edge */}
         {showAction ? (

@@ -46,6 +46,7 @@
   },
   "scripts": {
     "start": "expo start",
+    "start:backend": "cd worker && uv run uvicorn mealy_worker.main:app",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
