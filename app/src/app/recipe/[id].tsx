@@ -271,9 +271,6 @@ export default function RecipeSheetScreen() {
   const [recipe, setRecipe] = useState<RecipeDetail | null>(null);
   const [sources, setSources] = useState<SourceRow[]>([]);
   const [images, setImages] = useState<ImageRow[]>([]);
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState({ title: '', servings: '', prep: '', cook: '' });
-  const [saving, setSaving] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [details, setDetails] = useState({ servings: '', prep: '', cook: '' });
   const [inThisWeek, setInThisWeek] = useState(false);
@@ -286,6 +283,8 @@ export default function RecipeSheetScreen() {
   const [expandedRaw, setExpandedRaw] = useState<string | null>(null);
   const [fixRaw, setFixRaw] = useState<string | null>(null);
   const [ingredientsDraft, setIngredientsDraft] = useState<IngredientData[] | null>(null);
+  const [stepsDraft, setStepsDraft] = useState<string[] | null>(null);
+  const [titleDraft, setTitleDraft] = useState<string | null>(null);
   // v3.2 pinned-ingredients state
   const [stepsY, setStepsY] = useState<number | null>(null);
   const [pinnedVisible, setPinnedVisible] = useState(false);
@@ -369,40 +368,6 @@ export default function RecipeSheetScreen() {
     () => new Map((fodmap?.flags ?? []).map((flag) => [flag.raw, flag])),
     [fodmap]
   );
-
-  const startEditing = () => {
-    if (!recipe) return;
-    setDraft({
-      title: recipe.title,
-      servings: recipe.servings?.toString() ?? '',
-      prep: recipe.prep_minutes?.toString() ?? '',
-      cook: recipe.cook_minutes?.toString() ?? '',
-    });
-    setEditing(true);
-  };
-
-  const saveEdits = async () => {
-    if (!recipe) return;
-    setSaving(true);
-    const toInt = (v: string) => {
-      const n = parseInt(v, 10);
-      return Number.isFinite(n) ? n : null;
-    };
-    // Structured layer only — recipe_sources is never touched (spec §3.1).
-    await supabase
-      .from('recipes')
-      .update({
-        title: draft.title.trim() || recipe.title,
-        servings: toInt(draft.servings),
-        prep_minutes: toInt(draft.prep),
-        cook_minutes: toInt(draft.cook),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', recipe.id);
-    setSaving(false);
-    setEditing(false);
-    void load();
-  };
 
   /** Single write path for the structured layer (recipe_sources never touched). */
   const saveRecipe = useCallback(
@@ -512,8 +477,7 @@ export default function RecipeSheetScreen() {
   // url/reel captures carry the original link; photo/paste/PDF are null.
   const sourceUrl = sources.find((s) => s.url)?.url ?? null;
   const hasSource = galleryPaths.length > 0 || sourceUrl !== null;
-  const showAction = !editing;
-  const showPinnedBar = pinnedVisible && showAction;
+  const showPinnedBar = pinnedVisible;
   const actionBottom = (Platform.OS === 'ios' ? insets.bottom : insets.bottom) + 16;
 
   return (
@@ -532,7 +496,7 @@ export default function RecipeSheetScreen() {
           onScroll={onScroll}
           scrollEventThrottle={16}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: showAction ? 140 : 48 }}
+          contentContainerStyle={{ paddingBottom: 140 }}
         >
           <Hero
             path={heroPath}
@@ -546,17 +510,49 @@ export default function RecipeSheetScreen() {
           />
 
           <View style={{ padding: screenPadding, gap: 14 }}>
-            <Text
-              style={{
-                color: colors.text,
-                fontSize: fontSize.heroTitle,
-                lineHeight: Math.round(fontSize.heroTitle * 1.15),
-                letterSpacing: -0.3,
-                fontFamily: fonts.display,
-              }}
-            >
-              {recipe.title}
-            </Text>
+            {titleDraft !== null ? (
+              <View style={{ gap: 12 }}>
+                <Field value={titleDraft} onChangeText={setTitleDraft} />
+                <Button
+                  label="Save"
+                  onPress={() =>
+                    void saveRecipe({ title: titleDraft.trim() || recipe.title }).then(() => setTitleDraft(null))
+                  }
+                />
+                <Button label="Cancel" kind="secondary" onPress={() => setTitleDraft(null)} />
+              </View>
+            ) : (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text
+                  style={{
+                    flex: 1,
+                    color: colors.text,
+                    fontSize: fontSize.heroTitle,
+                    lineHeight: Math.round(fontSize.heroTitle * 1.15),
+                    letterSpacing: -0.3,
+                    fontFamily: fonts.display,
+                  }}
+                >
+                  {recipe.title}
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Edit the title"
+                  onPress={() => setTitleDraft(recipe.title)}
+                  hitSlop={8}
+                  style={({ pressed }) => ({
+                    width: minTapTarget - 8,
+                    height: minTapTarget - 8,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: (minTapTarget - 8) / 2,
+                    backgroundColor: pressed ? colors.cardPressed : 'transparent',
+                  })}
+                >
+                  <Ionicons name="create-outline" size={20} color={colors.textMuted} />
+                </Pressable>
+              </View>
+            )}
 
             {/* Byline-style meta */}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
@@ -592,229 +588,232 @@ export default function RecipeSheetScreen() {
               ) : null}
             </View>
 
-            {recipe.needs_review && !editing ? (
+            {recipe.needs_review ? (
               <Button label="Mark as reviewed" kind="secondary" onPress={() => void markReviewed()} />
             ) : null}
 
             <Hairline />
 
-            {editing ? (
-              <View style={{ gap: 12 }}>
-                <Eyebrow>Title</Eyebrow>
-                <Field value={draft.title} onChangeText={(v) => setDraft({ ...draft, title: v })} />
-                <Eyebrow>Servings</Eyebrow>
-                <Field
-                  value={draft.servings}
-                  onChangeText={(v) => setDraft({ ...draft, servings: v })}
-                  keyboardType="number-pad"
-                />
-                <Eyebrow>Prep (min)</Eyebrow>
-                <Field
-                  value={draft.prep}
-                  onChangeText={(v) => setDraft({ ...draft, prep: v })}
-                  keyboardType="number-pad"
-                />
-                <Eyebrow>Cook (min)</Eyebrow>
-                <Field
-                  value={draft.cook}
-                  onChangeText={(v) => setDraft({ ...draft, cook: v })}
-                  keyboardType="number-pad"
-                />
-                <Button label="Save" onPress={() => void saveEdits()} loading={saving} />
-                <Button label="Cancel" kind="secondary" onPress={() => setEditing(false)} />
-              </View>
-            ) : (
-              <View style={{ gap: 18 }}>
-                {hasSource ? (
-                  <View style={{ gap: 12 }}>
-                    <Title>Original source</Title>
-                    {sourceUrl ? <SourceLink url={sourceUrl} /> : null}
-                    {restPaths.length > 0 ? (
-                      <ScrollView
-                        horizontal
-                        showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={{ gap: 12 }}
-                      >
-                        {restPaths.map((path, i) => (
-                          <GalleryImage
-                            key={path}
-                            path={path}
-                            // restPaths[i] === galleryPaths[i + 1]; hero is index 0.
-                            onPress={() => setViewer({ paths: galleryPaths, index: i + 1 })}
-                          />
-                        ))}
-                      </ScrollView>
-                    ) : null}
-                  </View>
-                ) : null}
-
-                <SectionTitle
-                  title="Ingredients"
-                  editing={ingredientsDraft !== null}
-                  onToggle={() =>
-                    setIngredientsDraft(
-                      ingredientsDraft === null ? recipe.ingredients.map((i) => ({ ...i })) : null
-                    )
-                  }
-                />
-
-                {/* FODMAP summary per FODMAP-mode person (spec §4) */}
-                {fodmap && fodmapPersons.length > 0 && fodmap.hasWarnings ? (
-                  <View style={{ gap: 6 }}>
-                    {fodmapPersons.map((personName) => {
-                      const high = fodmap.flags.filter((f) => f.tier === 'high').map((f) => f.name);
-                      const check = fodmap.flags.filter((f) => f.tier === 'check').map((f) => f.name);
-                      const moderate = fodmap.flags
-                        .filter((f) => f.tier === 'moderate')
-                        .map((f) => f.name);
-                      const partsList = [
-                        high.length > 0 ? `High for ${personName}: ${high.join(', ')}` : null,
-                        moderate.length > 0 ? `Moderate: ${moderate.join(', ')}` : null,
-                        check.length > 0 ? `Check: ${check.join(', ')}` : null,
-                      ].filter(Boolean);
-                      return partsList.length > 0 ? (
-                        <Body key={personName} style={{ fontSize: fontSize.small }}>
-                          {partsList.join(' · ')}
-                        </Body>
-                      ) : null;
-                    })}
-                    {fodmap.stacking.map((warning) => (
-                      <Muted key={warning.group}>
-                        {`Stacking: ${warning.ingredients.join(' + ')} share ${warning.group} — check the combined amount.`}
-                      </Muted>
-                    ))}
-                    <Muted style={{ fontStyle: 'italic' }}>{FODMAP_DISCLAIMER}</Muted>
-                  </View>
-                ) : null}
-
-                {ingredientsDraft !== null ? (
-                  <View style={{ gap: 10 }}>
-                    {ingredientsDraft.map((ing, i) => (
-                      <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Field
-                          value={ing.quantity?.toString() ?? ''}
-                          onChangeText={(v) => {
-                            const n = parseFloat(v.replace(',', '.'));
-                            setIngredientsDraft(
-                              updateItem(ingredientsDraft, i, {
-                                ...ing,
-                                quantity: Number.isFinite(n) ? n : null,
-                              })
-                            );
-                          }}
-                          keyboardType="decimal-pad"
-                          placeholder="qty"
-                          style={{ width: 64 }}
+            <View style={{ gap: 18 }}>
+              {hasSource ? (
+                <View style={{ gap: 12 }}>
+                  <Title>Original source</Title>
+                  {sourceUrl ? <SourceLink url={sourceUrl} /> : null}
+                  {restPaths.length > 0 ? (
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={{ gap: 12 }}
+                    >
+                      {restPaths.map((path, i) => (
+                        <GalleryImage
+                          key={path}
+                          path={path}
+                          // restPaths[i] === galleryPaths[i + 1]; hero is index 0.
+                          onPress={() => setViewer({ paths: galleryPaths, index: i + 1 })}
                         />
+                      ))}
+                    </ScrollView>
+                  ) : null}
+                </View>
+              ) : null}
+
+              <SectionTitle
+                title="Ingredients"
+                editing={ingredientsDraft !== null}
+                onToggle={() =>
+                  setIngredientsDraft(
+                    ingredientsDraft === null ? recipe.ingredients.map((i) => ({ ...i })) : null
+                  )
+                }
+              />
+
+              {/* FODMAP summary per FODMAP-mode person (spec §4) */}
+              {fodmap && fodmapPersons.length > 0 && fodmap.hasWarnings ? (
+                <View style={{ gap: 6 }}>
+                  {fodmapPersons.map((personName) => {
+                    const high = fodmap.flags.filter((f) => f.tier === 'high').map((f) => f.name);
+                    const check = fodmap.flags.filter((f) => f.tier === 'check').map((f) => f.name);
+                    const moderate = fodmap.flags
+                      .filter((f) => f.tier === 'moderate')
+                      .map((f) => f.name);
+                    const partsList = [
+                      high.length > 0 ? `High for ${personName}: ${high.join(', ')}` : null,
+                      moderate.length > 0 ? `Moderate: ${moderate.join(', ')}` : null,
+                      check.length > 0 ? `Check: ${check.join(', ')}` : null,
+                    ].filter(Boolean);
+                    return partsList.length > 0 ? (
+                      <Body key={personName} style={{ fontSize: fontSize.small }}>
+                        {partsList.join(' · ')}
+                      </Body>
+                    ) : null;
+                  })}
+                  {fodmap.stacking.map((warning) => (
+                    <Muted key={warning.group}>
+                      {`Stacking: ${warning.ingredients.join(' + ')} share ${warning.group} — check the combined amount.`}
+                    </Muted>
+                  ))}
+                  <Muted style={{ fontStyle: 'italic' }}>{FODMAP_DISCLAIMER}</Muted>
+                </View>
+              ) : null}
+
+              {ingredientsDraft !== null ? (
+                <View style={{ gap: 10 }}>
+                  {ingredientsDraft.map((ing, i) => (
+                    <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Field
+                        value={ing.quantity?.toString() ?? ''}
+                        onChangeText={(v) => {
+                          const n = parseFloat(v.replace(',', '.'));
+                          setIngredientsDraft(
+                            updateItem(ingredientsDraft, i, {
+                              ...ing,
+                              quantity: Number.isFinite(n) ? n : null,
+                            })
+                          );
+                        }}
+                        keyboardType="decimal-pad"
+                        placeholder="qty"
+                        style={{ width: 64 }}
+                      />
+                      <Field
+                        value={ing.unit ?? ''}
+                        onChangeText={(v) =>
+                          setIngredientsDraft(updateItem(ingredientsDraft, i, { ...ing, unit: v || null }))
+                        }
+                        placeholder="unit"
+                        style={{ width: 64 }}
+                      />
+                      <View style={{ flex: 1 }}>
                         <Field
-                          value={ing.unit ?? ''}
+                          value={ing.name}
                           onChangeText={(v) =>
-                            setIngredientsDraft(updateItem(ingredientsDraft, i, { ...ing, unit: v || null }))
+                            setIngredientsDraft(updateItem(ingredientsDraft, i, { ...ing, name: v }))
                           }
-                          placeholder="unit"
-                          style={{ width: 64 }}
-                        />
-                        <View style={{ flex: 1 }}>
-                          <Field
-                            value={ing.name}
-                            onChangeText={(v) =>
-                              setIngredientsDraft(updateItem(ingredientsDraft, i, { ...ing, name: v }))
-                            }
-                            placeholder="ingredient"
-                          />
-                        </View>
-                        <EditRowControls
-                          index={i}
-                          count={ingredientsDraft.length}
-                          onMove={(from, to) => setIngredientsDraft(moveItem(ingredientsDraft, from, to))}
-                          onRemove={(idx) => setIngredientsDraft(removeItem(ingredientsDraft, idx))}
+                          placeholder="ingredient"
                         />
                       </View>
-                    ))}
-                    <Button
-                      label="Add ingredient"
-                      kind="secondary"
-                      onPress={() =>
-                        setIngredientsDraft([
-                          ...ingredientsDraft,
-                          { raw: '', quantity: null, unit: null, name: '', group: null, fodmap: null },
-                        ])
-                      }
-                    />
-                    <Button
-                      label="Save ingredients"
-                      onPress={() =>
-                        void saveRecipe({
-                          ingredients: ingredientsDraft
-                            .filter((ing) => ing.name.trim())
-                            .map((ing) => ({ ...ing, raw: ing.raw || ing.name.trim(), name: ing.name.trim() })),
-                        }).then(() => setIngredientsDraft(null))
-                      }
-                    />
-                  </View>
-                ) : (
-                  <View>
-                    {recipe.ingredients.map((ing, i) => {
-                      const rawKey = ing.raw || ing.name;
-                      const flag = flagByRaw.get(rawKey);
-                      const canonical = matches.get(rawKey) ?? null;
-                      const isExpanded = expandedRaw === rawKey;
-                      return (
-                        <View key={`${rawKey}-${i}`}>
-                          {i > 0 ? <Hairline /> : null}
-                          <Pressable
-                            accessibilityRole="button"
-                            accessibilityLabel={`Details for ${ing.name}`}
-                            accessibilityState={{ expanded: isExpanded }}
-                            onPress={() => setExpandedRaw(isExpanded ? null : rawKey)}
-                            style={({ pressed }) => ({
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              gap: 10,
-                              backgroundColor: pressed ? colors.cardPressed : 'transparent',
-                            })}
-                          >
-                            <View style={{ flex: 1 }}>
-                              <IngredientRow ingredient={ing} />
-                            </View>
-                            {fodmapPersons.length > 0 && flag ? <TierDot tier={flag.tier} /> : null}
-                          </Pressable>
-                          {isExpanded ? (
-                            <View style={{ paddingBottom: 10, gap: 4 }}>
-                              <Muted>
-                                {canonical
-                                  ? `Matched to ${canonical.name_fr}.`
-                                  : 'Not matched to the ingredient table.'}
-                              </Muted>
-                              {fodmapPersons.length > 0 && flag ? (
-                                <Muted>{`FODMAP ${flag.tier} — ${flag.explanation}`}</Muted>
-                              ) : null}
-                              <LinkButton
-                                label="Correct the match"
-                                onPress={() => setFixRaw(rawKey)}
-                                style={{ minHeight: 36 }}
-                                textStyle={{ fontSize: fontSize.small }}
-                              />
-                            </View>
-                          ) : null}
-                        </View>
-                      );
-                    })}
-                    {recipe.ingredients.length === 0 ? <Muted>No ingredients extracted.</Muted> : null}
-                  </View>
-                )}
-              </View>
-            )}
+                      <EditRowControls
+                        index={i}
+                        count={ingredientsDraft.length}
+                        onMove={(from, to) => setIngredientsDraft(moveItem(ingredientsDraft, from, to))}
+                        onRemove={(idx) => setIngredientsDraft(removeItem(ingredientsDraft, idx))}
+                      />
+                    </View>
+                  ))}
+                  <Button
+                    label="Add ingredient"
+                    kind="secondary"
+                    onPress={() =>
+                      setIngredientsDraft([
+                        ...ingredientsDraft,
+                        { raw: '', quantity: null, unit: null, name: '', group: null, fodmap: null },
+                      ])
+                    }
+                  />
+                  <Button
+                    label="Save ingredients"
+                    onPress={() =>
+                      void saveRecipe({
+                        ingredients: ingredientsDraft
+                          .filter((ing) => ing.name.trim())
+                          .map((ing) => ({ ...ing, raw: ing.raw || ing.name.trim(), name: ing.name.trim() })),
+                      }).then(() => setIngredientsDraft(null))
+                    }
+                  />
+                </View>
+              ) : (
+                <View>
+                  {recipe.ingredients.map((ing, i) => {
+                    const rawKey = ing.raw || ing.name;
+                    const flag = flagByRaw.get(rawKey);
+                    const canonical = matches.get(rawKey) ?? null;
+                    const isExpanded = expandedRaw === rawKey;
+                    return (
+                      <View key={`${rawKey}-${i}`}>
+                        {i > 0 ? <Hairline /> : null}
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`Details for ${ing.name}`}
+                          accessibilityState={{ expanded: isExpanded }}
+                          onPress={() => setExpandedRaw(isExpanded ? null : rawKey)}
+                          style={({ pressed }) => ({
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 10,
+                            backgroundColor: pressed ? colors.cardPressed : 'transparent',
+                          })}
+                        >
+                          <View style={{ flex: 1 }}>
+                            <IngredientRow ingredient={ing} />
+                          </View>
+                          {fodmapPersons.length > 0 && flag ? <TierDot tier={flag.tier} /> : null}
+                        </Pressable>
+                        {isExpanded ? (
+                          <View style={{ paddingBottom: 10, gap: 4 }}>
+                            <Muted>
+                              {canonical
+                                ? `Matched to ${canonical.name_fr}.`
+                                : 'Not matched to the ingredient table.'}
+                            </Muted>
+                            {fodmapPersons.length > 0 && flag ? (
+                              <Muted>{`FODMAP ${flag.tier} — ${flag.explanation}`}</Muted>
+                            ) : null}
+                            <LinkButton
+                              label="Correct the match"
+                              onPress={() => setFixRaw(rawKey)}
+                              style={{ minHeight: 36 }}
+                              textStyle={{ fontSize: fontSize.small }}
+                            />
+                          </View>
+                        ) : null}
+                      </View>
+                    );
+                  })}
+                  {recipe.ingredients.length === 0 ? <Muted>No ingredients extracted.</Muted> : null}
+                </View>
+              )}
+            </View>
           </View>
 
           {/* Steps live in their own content-level container so onLayout gives
               the exact scroll offset for the pinned-ingredients bar (v3.2). */}
-          {!editing ? (
-            <View
-              onLayout={(e) => setStepsY(e.nativeEvent.layout.y)}
-              style={{ paddingHorizontal: screenPadding, gap: 18 }}
-            >
-              <Title>Steps</Title>
+          <View
+            onLayout={(e) => setStepsY(e.nativeEvent.layout.y)}
+            style={{ paddingHorizontal: screenPadding, gap: 18 }}
+          >
+            <SectionTitle
+              title="Steps"
+              editing={stepsDraft !== null}
+              onToggle={() => setStepsDraft(stepsDraft === null ? [...recipe.steps] : null)}
+            />
+            {stepsDraft !== null ? (
+              <View style={{ gap: 10 }}>
+                {stepsDraft.map((step, i) => (
+                  <View key={i} style={{ gap: 4 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Eyebrow>Step {i + 1}</Eyebrow>
+                      <EditRowControls
+                        index={i}
+                        count={stepsDraft.length}
+                        onMove={(from, to) => setStepsDraft(moveItem(stepsDraft, from, to))}
+                        onRemove={(idx) => setStepsDraft(removeItem(stepsDraft, idx))}
+                      />
+                    </View>
+                    <Field value={step} onChangeText={(v) => setStepsDraft(updateItem(stepsDraft, i, v))} multiline />
+                  </View>
+                ))}
+                <Button label="Add step" kind="secondary" onPress={() => setStepsDraft([...stepsDraft, ''])} />
+                <Button
+                  label="Save steps"
+                  onPress={() =>
+                    void saveRecipe({ steps: stepsDraft.map((s) => s.trim()).filter(Boolean) }).then(() =>
+                      setStepsDraft(null)
+                    )
+                  }
+                />
+              </View>
+            ) : (
               <View style={{ gap: 20 }}>
                 {recipe.steps.map((step, i) => (
                   <Pressable
@@ -831,9 +830,8 @@ export default function RecipeSheetScreen() {
                 ))}
                 {recipe.steps.length === 0 ? <Muted>No steps extracted.</Muted> : null}
               </View>
-              <Button label="Edit" kind="secondary" onPress={startEditing} />
-            </View>
-          ) : null}
+            )}
+          </View>
         </ScrollView>
 
         {/* v3.2: pinned ingredients bar while reading steps */}
@@ -922,33 +920,31 @@ export default function RecipeSheetScreen() {
         ) : null}
 
         {/* v3.2: primary action floats inside the sheet, above its bottom edge */}
-        {showAction ? (
-          <View
-            pointerEvents="box-none"
-            style={{
-              position: 'absolute',
-              left: screenPadding,
-              right: screenPadding,
-              bottom: actionBottom,
-              ...Platform.select({
-                ios: {
-                  shadowColor: '#000000',
-                  shadowOpacity: 0.12,
-                  shadowRadius: 16,
-                  shadowOffset: { width: 0, height: 4 },
-                },
-                android: { elevation: 8 },
-                web: { boxShadow: '0 4px 16px rgba(0, 0, 0, 0.12)' } as object,
-                default: {},
-              }),
-            }}
-          >
-            <Button
-              label={inThisWeek ? 'Add again this week' : 'Add to this week'}
-              onPress={() => setSheetOpen(true)}
-            />
-          </View>
-        ) : null}
+        <View
+          pointerEvents="box-none"
+          style={{
+            position: 'absolute',
+            left: screenPadding,
+            right: screenPadding,
+            bottom: actionBottom,
+            ...Platform.select({
+              ios: {
+                shadowColor: '#000000',
+                shadowOpacity: 0.12,
+                shadowRadius: 16,
+                shadowOffset: { width: 0, height: 4 },
+              },
+              android: { elevation: 8 },
+              web: { boxShadow: '0 4px 16px rgba(0, 0, 0, 0.12)' } as object,
+              default: {},
+            }),
+          }}
+        >
+          <Button
+            label={inThisWeek ? 'Add again this week' : 'Add to this week'}
+            onPress={() => setSheetOpen(true)}
+          />
+        </View>
       </View>
 
       <AddToWeekSheet
