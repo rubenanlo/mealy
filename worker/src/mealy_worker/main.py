@@ -13,6 +13,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from .auth import verify_token
+from .fodmap import SwapRequest, SwapResponse, suggest_swaps
 from .images import fetch_validated_image
 from .ingest.media import ingest_images, ingest_pdf
 from .ingest.social import ingest_social
@@ -117,3 +118,11 @@ async def image_fetch_route(
     if data is None:
         raise HTTPException(status_code=422, detail="image failed validation")
     return Response(content=data, media_type="image/jpeg")
+
+
+@app.post("/fodmap/swaps", response_model=SwapResponse)
+async def fodmap_swaps_route(
+    body: SwapRequest, _claims: dict = Depends(verify_token)
+) -> SwapResponse:
+    """Low-FODMAP substitution suggestions (spec Part 8)."""
+    return await suggest_swaps(body)

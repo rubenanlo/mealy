@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from mealy_worker import main
+from mealy_worker.fodmap import SwapResponse
 from mealy_worker.models import CanonicalRecipe, IngestResult, Ingredient, Verbatim
 
 SECRET = "test-secret-key-0123456789abcdef0123456789abcdef"
@@ -216,3 +217,51 @@ def test_image_fetch_422_when_validation_fails(client, monkeypatch):
         "/image/fetch", json={"url": "https://x.com/bad.jpg"}, headers=auth()
     )
     assert response.status_code == 422
+
+
+def test_fodmap_swaps_requires_token(client):
+    body = {
+        "title": "Soupe",
+        "servings": 4,
+        "ingredients": [{"raw": "1 oignon", "name": "oignon"}],
+        "steps": ["Émincer l'oignon.", "Cuire 30 min."],
+        "flagged": ["1 oignon"],
+    }
+    assert client.post("/fodmap/swaps", json=body).status_code == 401
+
+
+def test_fodmap_swaps_dispatches(client, monkeypatch):
+    seen = {}
+
+    async def fake_suggest_swaps(request):
+        seen["request"] = request
+        return SwapResponse(
+            swaps=[
+                {
+                    "raw": "1 oignon",
+                    "replacement": {
+                        "raw": "1 oignon",
+                        "quantity": 2.0,
+                        "unit": None,
+                        "name": "vert de poireau",
+                        "group": None,
+                        "fodmap": "low",
+                    },
+                    "note": "Le vert de poireau est pauvre en FODMAP.",
+                }
+            ],
+            steps=["Émincer le vert de poireau.", "Cuire 30 min."],
+        )
+
+    monkeypatch.setattr(main, "suggest_swaps", fake_suggest_swaps)
+    body = {
+        "title": "Soupe",
+        "servings": 4,
+        "ingredients": [{"raw": "1 oignon", "name": "oignon"}],
+        "steps": ["Émincer l'oignon.", "Cuire 30 min."],
+        "flagged": ["1 oignon"],
+    }
+    response = client.post("/fodmap/swaps", json=body, headers=auth())
+    assert response.status_code == 200
+    assert seen["request"].title == "Soupe"
+    assert response.json()["swaps"][0]["replacement"]["name"] == "vert de poireau"
