@@ -263,6 +263,31 @@ export async function matchIngredients(
 }
 
 // ---------------------------------------------------------------------------
+// Re-extraction from a stored source (Phase 2 Task 13 / spec Part 6).
+// ---------------------------------------------------------------------------
+
+/**
+ * Re-run extraction on a stored verbatim (spec Part 6). force_llm skips the
+ * JSON-LD shortcut so a bad direct-map gets a fresh model pass. Returns null
+ * on any failure — the caller shows "could not re-extract".
+ */
+export async function reExtract(verbatim: Verbatim): Promise<CanonicalRecipe | null> {
+  if (!WORKER_URL) return null;
+  try {
+    const token = await accessToken();
+    const response = await fetch(`${WORKER_URL}/structure`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ verbatim, force_llm: true }),
+    });
+    if (!response.ok) return null;
+    return (await response.json()) as CanonicalRecipe;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Persistence: IngestResult -> Supabase rows (+ media upload).
 // ---------------------------------------------------------------------------
 

@@ -1,6 +1,18 @@
+// reExtract needs a session token — the worker module calls supabase.auth.getSession()
+// via its private accessToken() helper. No other test in this file touches Supabase,
+// so this mock only matters for the reExtract suite below.
+jest.mock('@/lib/supabase', () => ({
+  supabase: {
+    auth: {
+      getSession: jest.fn().mockResolvedValue({ data: { session: { access_token: 'test-token' } } }),
+    },
+  },
+}));
+
 import {
   buildRecipeRows,
   detectCaptureKind,
+  reExtract,
   type IngestResult,
   type Verbatim,
 } from '../worker';
@@ -102,5 +114,21 @@ describe('buildRecipeRows', () => {
 
   it('throws when canonical is null (paste-fallback flow handles that case)', () => {
     expect(() => buildRecipeRows({ ...result, canonical: null }, ctx)).toThrow();
+  });
+});
+
+describe('reExtract', () => {
+  it('POSTs the verbatim with force_llm and returns the canonical', async () => {
+    const canonical = { title: 'Neuf', language: 'fr', servings: 2, prep_minutes: null, cook_minutes: null, dish_type: null, tags: [], ingredients: [], steps: ['Cuire.'], nutrition: null, confidence: 0.9 };
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => canonical }) as jest.Mock;
+    const result = await reExtract({ kind: 'paste', url: null, json_ld: null, page_text: null, caption: null, transcript: null, overlay_text: null, ocr_text: null, pasted: 'x' });
+    expect(result?.title).toBe('Neuf');
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(url).toContain('/structure');
+    expect(JSON.parse(init.body).force_llm).toBe(true);
+  });
+  it('returns null on failure', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: false }) as jest.Mock;
+    expect(await reExtract({ kind: 'paste', url: null, json_ld: null, page_text: null, caption: null, transcript: null, overlay_text: null, ocr_text: null, pasted: 'x' })).toBeNull();
   });
 });

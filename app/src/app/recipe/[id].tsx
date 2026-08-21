@@ -57,7 +57,13 @@ import { rescaleIngredients } from '@/lib/servings';
 import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
 import { useCanonicalIndex } from '@/lib/use-canonical';
-import type { IngredientRow as IngredientData, SourceKind, Verbatim } from '@/lib/worker';
+import {
+  reExtract,
+  type CanonicalRecipe,
+  type IngredientRow as IngredientData,
+  type SourceKind,
+  type Verbatim,
+} from '@/lib/worker';
 
 interface RecipeDetail {
   id: string;
@@ -324,6 +330,12 @@ export default function RecipeSheetScreen() {
   const [ingredientsDraft, setIngredientsDraft] = useState<IngredientData[] | null>(null);
   const [stepsDraft, setStepsDraft] = useState<string[] | null>(null);
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
+  // Re-extract from stored source (confirm-before-replace, spec Part 6).
+  const [reExtracting, setReExtracting] = useState(false);
+  const [reExtractResult, setReExtractResult] = useState<CanonicalRecipe | null>(null);
+  // Tracked separately from reExtractResult so "worker returned null" (show the
+  // failure message) is distinguishable from "sheet closed" (both null).
+  const [reExtractFailed, setReExtractFailed] = useState(false);
   // v3.2 pinned-ingredients state
   const [stepsY, setStepsY] = useState<number | null>(null);
   const [pinnedVisible, setPinnedVisible] = useState(false);
@@ -459,6 +471,39 @@ export default function RecipeSheetScreen() {
     if (!recipe) return;
     await supabase.from('recipes').update({ needs_review: false }).eq('id', recipe.id);
     void load();
+  };
+
+  const runReExtract = async () => {
+    if (sources.length === 0 || reExtracting) return;
+    setReExtracting(true);
+    const result = await reExtract(sources[0].verbatim);
+    setReExtracting(false);
+    setReExtractResult(result); // null → sheet shows the failure message
+    setReExtractFailed(result === null);
+  };
+
+  const closeReExtractSheet = () => {
+    setReExtractResult(null);
+    setReExtractFailed(false);
+  };
+
+  const applyReExtract = async () => {
+    const r = reExtractResult;
+    if (!r) return;
+    setReExtractResult(null);
+    await saveRecipe({
+      title: r.title,
+      language: r.language,
+      servings: r.servings,
+      prep_minutes: r.prep_minutes,
+      cook_minutes: r.cook_minutes,
+      dish_type: r.dish_type,
+      tags: r.tags,
+      ingredients: r.ingredients,
+      steps: r.steps,
+      nutrition: r.nutrition,
+      needs_review: r.confidence < 0.6,
+    });
   };
 
   /** Bookmark chip: plan it, or confirm-remove when already in this week (v3). */
@@ -654,6 +699,13 @@ export default function RecipeSheetScreen() {
 
             {recipe.needs_review ? (
               <Button label="Mark as reviewed" kind="secondary" onPress={() => void markReviewed()} />
+            ) : null}
+
+            {sources.length > 0 ? (
+              <LinkButton
+                label={reExtracting ? 'Re-extracting…' : 'Re-extract from source'}
+                onPress={() => void runReExtract()}
+              />
             ) : null}
 
             <Hairline />
@@ -1140,6 +1192,54 @@ export default function RecipeSheetScreen() {
             ))}
           </ScrollView>
           <Button label="Cancel" kind="secondary" onPress={() => setPickCapturedOpen(false)} />
+        </View>
+      </Modal>
+
+      <Modal
+        visible={reExtractResult !== null || reExtractFailed}
+        transparent
+        animationType="fade"
+        onRequestClose={closeReExtractSheet}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }}
+          onPress={closeReExtractSheet}
+        />
+        <View
+          style={{
+            backgroundColor: colors.bg,
+            padding: screenPadding,
+            paddingBottom: insets.bottom + 16,
+            gap: 12,
+            borderTopLeftRadius: 16,
+            borderTopRightRadius: 16,
+          }}
+        >
+          <Eyebrow>Re-extract from source</Eyebrow>
+          {reExtractFailed ? (
+            <>
+              <Body>Could not re-extract — try again later.</Body>
+              <Button label="Close" kind="secondary" onPress={closeReExtractSheet} />
+            </>
+          ) : reExtractResult ? (
+            <>
+              <Title>{reExtractResult.title}</Title>
+              <Muted>
+                {`${reExtractResult.ingredients.length} ingredients · ${reExtractResult.steps.length} steps`}
+              </Muted>
+              <Muted>
+                {[
+                  reExtractResult.servings ? `${reExtractResult.servings} servings` : null,
+                  reExtractResult.prep_minutes ? `Prep ${reExtractResult.prep_minutes} min` : null,
+                  reExtractResult.cook_minutes ? `Cook ${reExtractResult.cook_minutes} min` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ') || 'No servings or time extracted.'}
+              </Muted>
+              <Button label="Apply" onPress={() => void applyReExtract()} />
+              <Button label="Cancel" kind="secondary" onPress={closeReExtractSheet} />
+            </>
+          ) : null}
         </View>
       </Modal>
 
