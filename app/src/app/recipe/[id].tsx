@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
@@ -312,6 +313,7 @@ export default function RecipeSheetScreen() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [coverMenuOpen, setCoverMenuOpen] = useState(false);
   const [repositionOpen, setRepositionOpen] = useState(false);
+  const [pickCapturedOpen, setPickCapturedOpen] = useState(false);
   // Full-screen image viewer for the Original source gallery.
   const [viewer, setViewer] = useState<{ paths: string[]; index: number } | null>(null);
   // FODMAP flags + match corrections (Phase 2 Task 7)
@@ -418,6 +420,20 @@ export default function RecipeSheetScreen() {
     },
     [recipe, load]
   );
+
+  const pickCoverFromLibrary = async () => {
+    if (!recipe) return;
+    const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.9 });
+    const asset = picked.assets?.[0];
+    if (!asset) return;
+    const path = `${householdId}/${recipe.id}/cover-custom.jpg`;
+    const data = await fetch(asset.uri).then((r) => r.arrayBuffer());
+    const { error } = await supabase.storage
+      .from('recipe-media')
+      .upload(path, data, { contentType: asset.mimeType ?? 'image/jpeg', upsert: true });
+    if (error) return;
+    await saveRecipe({ cover_image_path: path, cover_focal: null });
+  };
 
   const saveDetails = async () => {
     if (!recipe) return;
@@ -543,11 +559,16 @@ export default function RecipeSheetScreen() {
             onEdit={heroPath ? () => setCoverMenuOpen(true) : undefined}
             onPress={
               galleryPaths.length > 0
-                ? () =>
-                    setViewer({
-                      paths: galleryPaths,
-                      index: Math.max(0, galleryPaths.indexOf(heroPath ?? '')),
-                    })
+                ? () => {
+                    // heroPath may be a custom cover not present in recipe_images
+                    // (e.g. library-picked cover-custom.jpg) — fold it into the
+                    // viewer list so tap-to-enlarge still opens on the right image.
+                    const paths =
+                      heroPath && !galleryPaths.includes(heroPath)
+                        ? [heroPath, ...galleryPaths]
+                        : galleryPaths;
+                    setViewer({ paths, index: Math.max(0, paths.indexOf(heroPath ?? '')) });
+                  }
                 : undefined
             }
           />
@@ -1065,10 +1086,60 @@ export default function RecipeSheetScreen() {
               setRepositionOpen(true);
             }}
           />
-          {/* Wired in Task 11. */}
-          <Button label="Choose from captured" kind="secondary" disabled onPress={() => {}} />
-          <Button label="Choose from library" kind="secondary" disabled onPress={() => {}} />
+          <Button
+            label="Choose from captured"
+            kind="secondary"
+            onPress={() => {
+              setCoverMenuOpen(false);
+              setPickCapturedOpen(true);
+            }}
+          />
+          <Button
+            label="Choose from library"
+            kind="secondary"
+            onPress={() => {
+              setCoverMenuOpen(false);
+              void pickCoverFromLibrary();
+            }}
+          />
           <Button label="Cancel" kind="secondary" onPress={() => setCoverMenuOpen(false)} />
+        </View>
+      </Modal>
+
+      <Modal
+        visible={pickCapturedOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPickCapturedOpen(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }}
+          onPress={() => setPickCapturedOpen(false)}
+        />
+        <View
+          style={{
+            backgroundColor: colors.bg,
+            padding: screenPadding,
+            paddingBottom: insets.bottom + 16,
+            gap: 12,
+            borderTopLeftRadius: 16,
+            borderTopRightRadius: 16,
+          }}
+        >
+          <Eyebrow>Choose from captured</Eyebrow>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
+            {galleryPaths.map((path) => (
+              <GalleryImage
+                key={path}
+                path={path}
+                onPress={() => {
+                  setPickCapturedOpen(false);
+                  void saveRecipe({ cover_image_path: path, cover_focal: null });
+                }}
+              />
+            ))}
+          </ScrollView>
+          <Button label="Cancel" kind="secondary" onPress={() => setPickCapturedOpen(false)} />
         </View>
       </Modal>
 
