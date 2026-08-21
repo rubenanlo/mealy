@@ -123,6 +123,19 @@ async def test_incomplete_json_ld_falls_through_to_llm(monkeypatch):
     assert len(fake.calls) == 1
 
 
+async def test_force_llm_skips_json_ld_shortcut(monkeypatch):
+    fake = make_fake(monkeypatch, TOOL_REPLY)
+    json_ld = {
+        "@type": "Recipe", "name": "X",
+        "recipeIngredient": ["1 oignon"], "recipeInstructions": "Cuire.",
+    }
+    recipe = await structure.structure_text(
+        Verbatim(kind="url", url="https://x", json_ld=json_ld), force_llm=True
+    )
+    assert len(fake.calls) == 1, "force_llm must reach the model"
+    assert recipe.title == "Tarte aux poireaux"
+
+
 async def test_structure_images_returns_canonical_and_ocr_text(monkeypatch):
     ocr = "Recette manuscrite : 3 poireaux, 200 g de lardons"
     fake = make_fake(monkeypatch, {**TOOL_REPLY, "ocr_text": ocr})

@@ -149,7 +149,7 @@ async def ingest_url(url: str) -> IngestResult:
             return IngestResult(
                 verbatim=Verbatim(kind="url", url=url, json_ld=json_ld),
                 canonical=canonical,
-                needs_review=False,
+                needs_review=len(canonical.ingredients) < 2 or len(canonical.steps) < 1,
                 image_urls=_json_ld_image_urls(json_ld),
             )
 
@@ -161,7 +161,7 @@ async def ingest_url(url: str) -> IngestResult:
                 kind="url", url=url, json_ld=json_ld, page_text=_readable_text(html) or None
             ),
             canonical=scraped,
-            needs_review=False,
+            needs_review=len(scraped.ingredients) < 2 or len(scraped.steps) < 1,
             image_urls=scraped_images,
         )
 

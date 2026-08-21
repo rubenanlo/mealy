@@ -16,7 +16,7 @@ from .ingest.media import ingest_images, ingest_pdf
 from .ingest.social import ingest_social
 from .ingest.url import ingest_url
 from .matching import IngredientMatch, match_ingredients
-from .models import IngestResult, Verbatim
+from .models import CanonicalRecipe, IngestResult, Verbatim
 from .structure import structure_text
 
 app = FastAPI(title="Mealy Worker", version="0.1.0")
@@ -39,6 +39,11 @@ class MatchResponse(BaseModel):
     matches: list[IngredientMatch]
 
 
+class StructureBody(BaseModel):
+    verbatim: Verbatim
+    force_llm: bool = False
+
+
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok"}
@@ -58,6 +63,14 @@ async def ingest_text_route(body: TextBody, _claims: dict = Depends(verify_token
         canonical=canonical,
         needs_review=canonical.confidence < 0.6,
     )
+
+
+@app.post("/structure", response_model=CanonicalRecipe)
+async def structure_route(
+    body: StructureBody, _claims: dict = Depends(verify_token)
+) -> CanonicalRecipe:
+    """Re-run extraction on a stored verbatim (spec Part 6)."""
+    return await structure_text(body.verbatim, force_llm=body.force_llm)
 
 
 @app.post("/match/ingredients", response_model=MatchResponse)

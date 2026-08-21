@@ -152,6 +152,23 @@ def test_ingest_images_multipart(client, monkeypatch):
     assert seen["media_types"] == ["image/jpeg", "image/png"]
 
 
+def test_structure_route_requires_token(client):
+    body = {"verbatim": {"kind": "paste", "pasted": "x"}}
+    assert client.post("/structure", json=body).status_code == 401
+
+
+def test_structure_route_returns_canonical(client, monkeypatch):
+    async def fake_structure(verbatim, force_llm=False):
+        assert force_llm is True
+        return RESULT.canonical
+
+    monkeypatch.setattr(main, "structure_text", fake_structure)
+    body = {"verbatim": {"kind": "paste", "pasted": "recette"}, "force_llm": True}
+    response = client.post("/structure", json=body, headers=auth())
+    assert response.status_code == 200
+    assert response.json()["title"] == "Soupe"
+
+
 def test_ingest_pdf_multipart(client, monkeypatch):
     seen = {}
 

@@ -187,15 +187,16 @@ def _tool_input(response: Any) -> dict:
 # --- public API --------------------------------------------------------------
 
 
-async def structure_text(verbatim: Verbatim) -> CanonicalRecipe:
+async def structure_text(verbatim: Verbatim, force_llm: bool = False) -> CanonicalRecipe:
     """Turn a verbatim capture into a canonical recipe.
 
-    Complete schema.org JSON-LD is mapped directly without an LLM call;
-    everything else goes through one forced tool-use call to Claude.
+    Complete schema.org JSON-LD is mapped directly without an LLM call —
+    unless ``force_llm`` (re-extraction) demands a fresh model pass.
     """
-    direct = recipe_from_json_ld(verbatim.json_ld)
-    if direct is not None:
-        return direct
+    if not force_llm:
+        direct = recipe_from_json_ld(verbatim.json_ld)
+        if direct is not None:
+            return direct
 
     bundle = build_text_bundle(verbatim)
     client = get_anthropic_client()
