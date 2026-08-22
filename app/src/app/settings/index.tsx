@@ -184,6 +184,22 @@ export default function SettingsScreen() {
         {/* Household */}
         <View style={{ gap: 10 }}>
           <Eyebrow>Household</Eyebrow>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Family members and invites"
+            onPress={() => router.push('/settings/family')}
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              minHeight: controlHeight + 4,
+              gap: 10,
+              backgroundColor: pressed ? colors.cardPressed : 'transparent',
+            })}
+          >
+            <Body style={{ flex: 1 }}>Family members &amp; invites</Body>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </Pressable>
+          <Hairline />
           <View>
             {persons.map((person, index) => (
               <View key={person.id}>
