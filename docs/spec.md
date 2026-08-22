@@ -16,7 +16,7 @@ Mealy is a mobile-first meal planner for one household plus a small circle of fa
 | Mobile client | Expo (SDK 52+) / React Native + expo-router. TestFlight (iOS) + internal APK (Android). `expo-share-intent` for share-sheet capture (requires EAS dev client — share extensions do not work in Expo Go). |
 | Worker | Small Python (3.12) FastAPI service for ingestion + AI orchestration (`recipe-scrapers`, `yt-dlp`, transcription, LLM calls). One container (Fly.io / Railway / Cloud Run). |
 | LLM keys | Server-side only, never in the app. |
-| Auth | Invite-only. Magic-link / email OTP (Supabase Auth). Optional email+password if ever wanted. Optional device-level app lock (Face ID / passcode). |
+| Auth | Open self-signup: a user creates their family (household) or joins one via email invite. Email OTP + Google + Apple (Supabase Auth); email+password kept as an option. Optional device-level app lock (Face ID / passcode). See `docs/superpowers/specs/2026-08-22-family-signup-design.md`. |
 | Grocery | Mon Marché **deep-links only** (`https://www.mon-marche.fr/recherche?q=<item>`). No cart automation, ever, unless explicitly revisited. |
 | Planner AI | Hybrid: rules/SQL filter → embedding score → one LLM arrange call → **code validator has the final word**. |
 | Embeddings | OpenAI `text-embedding-3-small` behind a swappable backend function; pgvector HNSW, cosine. Upgrade path: Voyage `voyage-3` or self-hosted `bge-m3`. |
@@ -29,7 +29,7 @@ Mealy is a mobile-first meal planner for one household plus a small circle of fa
 
 - One **household** contains **persons**. A person is anyone the planner cooks for (including children and the employee's beneficiaries); a **user** is a person with an app account. Not every person has an account.
 - Settings asks for the number of family members and creates a person + editable profile for each.
-- Invite-only: accounts are created only via invitation from the household owner.
+- Signup: anyone can create a family (becoming its `owner`); further accounts join via email invite from any member. All members have equal access; the employee is never an app user (token link, §10).
 - Row-Level Security scopes all data to the household.
 
 ### DietProfile (one per person)
@@ -181,7 +181,7 @@ Per-recipe **12-month suitability curve** (not a binary flag).
 
 ## 12. Security
 
-- Invite-only accounts (no open signup). Magic-link/OTP auth; email+password available as an option. RLS on every table. LLM/API keys server-side only. TLS everywhere. Unguessable `noindex` share tokens, revocable. Optional device app lock (Face ID/passcode) in the mobile app. Supabase managed backups; verify a restore once.
+- Open self-signup (2026-08-22): creating an account creates or joins exactly one family; all data remains RLS-scoped to it. OTP/Google/Apple auth; email+password available as an option. RLS on every table. LLM/API keys server-side only. TLS everywhere. Unguessable `noindex` share tokens, revocable. Optional device app lock (Face ID/passcode) in the mobile app. Supabase managed backups; verify a restore once.
 
 ---
 
