@@ -1,8 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Image, KeyboardAvoidingView, Platform, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Body, Button, Eyebrow, Field, Muted } from '@/components/ui';
+import {
+  appleAvailable,
+  googleAvailable,
+  signInWithApple,
+  signInWithGoogle,
+} from '@/lib/social-auth';
 import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, screenPadding, useTheme } from '@/lib/theme';
 
@@ -14,6 +20,21 @@ export default function SignInScreen() {
   const [step, setStep] = useState<'email' | 'code' | 'password'>('email');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [appleReady, setAppleReady] = useState(false);
+  const googleReady = googleAvailable();
+
+  useEffect(() => {
+    appleAvailable().then(setAppleReady);
+  }, []);
+
+  const withProvider = async (run: () => Promise<{ error: string | null }>) => {
+    setBusy(true);
+    setError(null);
+    const { error: err } = await run();
+    setBusy(false);
+    if (err) setError(err);
+    // On success the auth listener re-routes (same as OTP).
+  };
 
   const sendCode = async () => {
     setBusy(true);
@@ -79,6 +100,7 @@ export default function SignInScreen() {
             Mealy
           </Text>
           <Eyebrow>The family cooking notebook</Eyebrow>
+          <Muted>Sign in or create your family&apos;s account.</Muted>
         </View>
 
         {step === 'email' ? (
@@ -105,6 +127,27 @@ export default function SignInScreen() {
               onPress={() => setStep('password')}
               disabled={!email.includes('@')}
             />
+            {googleReady || appleReady ? (
+              <View style={{ gap: 12, marginTop: 8 }}>
+                <Muted style={{ textAlign: 'center' }}>or</Muted>
+                {googleReady ? (
+                  <Button
+                    label="Continue with Google"
+                    kind="secondary"
+                    onPress={() => void withProvider(signInWithGoogle)}
+                    disabled={busy}
+                  />
+                ) : null}
+                {appleReady ? (
+                  <Button
+                    label="Continue with Apple"
+                    kind="secondary"
+                    onPress={() => void withProvider(signInWithApple)}
+                    disabled={busy}
+                  />
+                ) : null}
+              </View>
+            ) : null}
           </View>
         ) : step === 'password' ? (
           <View style={{ gap: 12 }}>
