@@ -8,37 +8,22 @@ import {
   type ReactNode,
 } from 'react';
 
+import { resolveMembership, type Membership } from '@/lib/membership';
 import { supabase } from '@/lib/supabase';
 
-export interface Membership {
-  householdId: string;
-  personId: string | null;
-  role: 'owner' | 'member';
-}
+export type { Membership } from '@/lib/membership';
 
 export interface AuthState {
   /** undefined while restoring the persisted session. */
   session: Session | null | undefined;
-  /** undefined while loading; null when the user has no household (not invited). */
+  /** undefined while loading; null when the user has no family yet. */
   membership: Membership | null | undefined;
   signOut: () => Promise<void>;
+  /** Re-resolve membership (claims pending invites); used by onboarding. */
+  refreshMembership: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
-
-async function fetchMembership(userId: string): Promise<Membership | null> {
-  const { data, error } = await supabase
-    .from('household_members')
-    .select('household_id, person_id, role')
-    .eq('user_id', userId)
-    .maybeSingle();
-  if (error || !data) return null;
-  return {
-    householdId: data.household_id as string,
-    personId: (data.person_id as string | null) ?? null,
-    role: data.role as 'owner' | 'member',
-  };
-}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
@@ -59,7 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setMembership(undefined);
       return;
     }
-    fetchMembership(userId).then((m) => {
+    resolveMembership(userId).then((m) => {
       if (!cancelled) setMembership(m);
     });
     return () => {
@@ -71,8 +56,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
   }, []);
 
+  const refreshMembership = useCallback(async () => {
+    if (!userId) return;
+    setMembership(await resolveMembership(userId));
+  }, [userId]);
+
   return (
-    <AuthContext.Provider value={{ session, membership, signOut }}>
+    <AuthContext.Provider value={{ session, membership, signOut, refreshMembership }}>
       {children}
     </AuthContext.Provider>
   );
