@@ -46,7 +46,7 @@ function RootStack() {
         <Stack.Screen name="(auth)/sign-in" />
       </Stack.Protected>
       <Stack.Protected guard={signedIn && !hasHousehold}>
-        <Stack.Screen name="no-access" />
+        <Stack.Screen name="onboarding" />
       </Stack.Protected>
       <Stack.Protected guard={hasHousehold}>
         <Stack.Screen name="(tabs)" />
