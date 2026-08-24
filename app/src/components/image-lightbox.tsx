@@ -149,11 +149,14 @@ export function ImageLightbox({
   paths,
   initialIndex = 0,
   onClose,
+  onDelete,
 }: {
   visible: boolean;
   paths: string[];
   initialIndex?: number;
   onClose: () => void;
+  /** When set, a trash button deletes the image on screen (caller confirms). */
+  onDelete?: (path: string) => void;
 }) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -178,6 +181,8 @@ export function ImageLightbox({
   };
 
   if (paths.length === 0) return null;
+  // Deleting the last page leaves a stale index until state catches up.
+  const safeIndex = Math.min(index, paths.length - 1);
 
   return (
     <Modal
@@ -231,6 +236,29 @@ export function ImageLightbox({
             <Ionicons name="close" size={26} color="#FFFFFF" />
           </Pressable>
 
+          {onDelete ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Delete this image"
+              onPress={() => onDelete(paths[safeIndex])}
+              hitSlop={12}
+              style={({ pressed }) => ({
+                position: 'absolute',
+                top: insets.top + 8,
+                right: 12,
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: 'rgba(0,0,0,0.5)',
+                opacity: pressed ? 0.6 : 1,
+              })}
+            >
+              <Ionicons name="trash-outline" size={22} color="#FFFFFF" />
+            </Pressable>
+          ) : null}
+
           {paths.length > 1 ? (
             <View
               style={{
@@ -250,7 +278,7 @@ export function ImageLightbox({
                     width: 6,
                     height: 6,
                     borderRadius: 3,
-                    backgroundColor: i === index ? '#FFFFFF' : 'rgba(255,255,255,0.4)',
+                    backgroundColor: i === safeIndex ? '#FFFFFF' : 'rgba(255,255,255,0.4)',
                   }}
                 />
               ))}

@@ -345,7 +345,12 @@ export default function RecipeSheetScreen() {
   const webCoverFetchingRef = useRef(false);
   const [webCoverFetching, setWebCoverFetching] = useState(false);
   // Full-screen image viewer for the Original source gallery.
-  const [viewer, setViewer] = useState<{ paths: string[]; index: number } | null>(null);
+  const [viewer, setViewer] = useState<{
+    paths: string[];
+    index: number;
+    /** Source-gallery viewer allows per-image deletion; the hero view doesn't. */
+    deletable?: boolean;
+  } | null>(null);
   // FODMAP flags + match corrections (Phase 2 Task 7)
   const [matches, setMatches] = useState<Map<string, CanonicalIngredient | null>>(new Map());
   const [fodmapPersons, setFodmapPersons] = useState<string[]>([]);
@@ -533,6 +538,42 @@ export default function RecipeSheetScreen() {
       webCoverFetchingRef.current = false;
       setWebCoverFetching(false);
     }
+  };
+
+  /** Trash button in the source-image viewer: delete one gallery image. */
+  const deleteSourceImage = (path: string) => {
+    Alert.alert('Delete this image?', 'It is removed from the original source for everyone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            if (!recipe) return;
+            const row = images.find((img) => img.storage_path === path);
+            if (row) await supabase.from('recipe_images').delete().eq('id', row.id);
+            await supabase.storage.from('recipe-media').remove([path]);
+            // The cover falls back to the next gallery image when it
+            // pointed at the deleted file.
+            if (recipe.cover_image_path === path) {
+              const next =
+                images.find((img) => img.storage_path !== path)?.storage_path ?? null;
+              await supabase
+                .from('recipes')
+                .update({ cover_image_path: next, cover_focal: null })
+                .eq('id', recipe.id);
+            }
+            setViewer((prev) => {
+              if (!prev) return prev;
+              const paths = prev.paths.filter((p) => p !== path);
+              if (paths.length === 0) return null;
+              return { ...prev, paths, index: Math.min(prev.index, paths.length - 1) };
+            });
+            void load();
+          })();
+        },
+      },
+    ]);
   };
 
   /** Tap the byline badge: pick the FODMAP level in place. */
@@ -794,6 +835,7 @@ export default function RecipeSheetScreen() {
         paths={viewer?.paths ?? []}
         initialIndex={viewer?.index ?? 0}
         onClose={() => setViewer(null)}
+        onDelete={viewer?.deletable ? deleteSourceImage : undefined}
       />
       <View
         style={{ flex: 1 }}
@@ -996,7 +1038,11 @@ export default function RecipeSheetScreen() {
                           // heroPath may not be galleryPaths[0] (cover_image_path wins), so
                           // look up this image's real position for the lightbox.
                           onPress={() =>
-                            setViewer({ paths: galleryPaths, index: galleryPaths.indexOf(path) })
+                            setViewer({
+                              paths: galleryPaths,
+                              index: galleryPaths.indexOf(path),
+                              deletable: true,
+                            })
                           }
                         />
                       ))}
