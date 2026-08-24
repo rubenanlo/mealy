@@ -1,0 +1,173 @@
+import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { Alert, Pressable, ScrollView, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { RecipeRow, type RecipeListItem } from '@/components/recipe-cards';
+import { Body, Button, Field, Hairline, Muted, Title } from '@/components/ui';
+import { useAuth } from '@/lib/auth';
+import { supabase } from '@/lib/supabase';
+import { fonts, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
+
+/** One folder's recipes (spec 2026-08-24). Owner renames/deletes; family views. */
+export default function FolderScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const { colors } = useTheme();
+  const router = useRouter();
+  const { session } = useAuth();
+
+  const [name, setName] = useState('');
+  const [ownerId, setOwnerId] = useState<string | null>(null);
+  const [ownerEmail, setOwnerEmail] = useState<string | null>(null);
+  const [recipes, setRecipes] = useState<RecipeListItem[]>([]);
+  const [renaming, setRenaming] = useState(false);
+
+  const isMine = ownerId !== null && ownerId === session?.user.id;
+
+  const load = useCallback(async () => {
+    if (!id) return;
+    const { data: folder } = await supabase
+      .from('folders')
+      .select('name, owner_id')
+      .eq('id', id)
+      .single();
+    if (!folder) return;
+    setName(folder.name);
+    setOwnerId(folder.owner_id);
+    const [{ data: links }, { data: member }] = await Promise.all([
+      supabase
+        .from('folder_recipes')
+        .select('recipe_id, added_at')
+        .eq('folder_id', id)
+        .order('added_at', { ascending: false }),
+      supabase
+        .from('household_members')
+        .select('email')
+        .eq('user_id', folder.owner_id)
+        .maybeSingle(),
+    ]);
+    setOwnerEmail(member?.email ?? null);
+    const ids = ((links ?? []) as { recipe_id: string }[]).map((l) => l.recipe_id);
+    if (ids.length === 0) {
+      setRecipes([]);
+      return;
+    }
+    const { data: recipeRows } = await supabase
+      .from('recipes')
+      .select(
+        'id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes, created_at, ingredients'
+      )
+      .in('id', ids);
+    const order = new Map(ids.map((rid, i) => [rid, i]));
+    setRecipes(
+      ((recipeRows as RecipeListItem[]) ?? [])
+        .slice()
+        .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
+    );
+  }, [id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load])
+  );
+
+  const rename = async () => {
+    const trimmed = name.trim();
+    if (!trimmed || !id) return;
+    const { error } = await supabase.from('folders').update({ name: trimmed }).eq('id', id);
+    if (error) {
+      Alert.alert(
+        'Could not rename',
+        error.code === '23505' ? 'You already have a folder with that name.' : 'Try again.'
+      );
+      return;
+    }
+    setRenaming(false);
+  };
+
+  const removeFolder = () => {
+    Alert.alert('Delete this folder?', `“${name}” will be deleted. Recipes stay in your library.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            await supabase.from('folders').delete().eq('id', id);
+            router.back();
+          })();
+        },
+      },
+    ]);
+  };
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
+      <ScrollView
+        contentContainerStyle={{ padding: screenPadding, gap: 16, paddingBottom: 48 }}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          onPress={() => router.back()}
+          style={({ pressed }) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 4,
+            minHeight: minTapTarget,
+            alignSelf: 'flex-start',
+            opacity: pressed ? 0.7 : 1,
+          })}
+        >
+          <Ionicons name="chevron-back" size={20} color={colors.text} />
+          <Body style={{ fontFamily: fonts.uiSemi }}>Back</Body>
+        </Pressable>
+
+        {renaming ? (
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <Field
+              value={name}
+              onChangeText={setName}
+              style={{ flex: 1 }}
+              onSubmitEditing={() => void rename()}
+              autoFocus
+            />
+            <Button label="Save" kind="secondary" onPress={() => void rename()} />
+          </View>
+        ) : (
+          <Title>{name || 'Folder'}</Title>
+        )}
+        <Muted>
+          {recipes.length} {recipes.length === 1 ? 'recipe' : 'recipes'}
+          {!isMine && ownerEmail ? ` · ${ownerEmail}` : ''}
+        </Muted>
+
+        <View>
+          {recipes.map((recipe, i) => (
+            <View key={recipe.id}>
+              {i > 0 ? <Hairline /> : null}
+              <RecipeRow recipe={recipe} onPress={() => router.push(`/recipe/${recipe.id}`)} />
+            </View>
+          ))}
+          {recipes.length === 0 ? (
+            <Muted>
+              Nothing saved here yet{isMine ? ' — use the bookmark on any recipe.' : '.'}
+            </Muted>
+          ) : null}
+        </View>
+
+        {isMine ? (
+          <View style={{ gap: 10 }}>
+            {!renaming ? (
+              <Button label="Rename folder" kind="secondary" onPress={() => setRenaming(true)} />
+            ) : null}
+            <Button label="Delete folder" kind="danger" onPress={removeFolder} />
+          </View>
+        ) : null}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}

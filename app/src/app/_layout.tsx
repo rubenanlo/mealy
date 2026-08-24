@@ -6,6 +6,7 @@ import {
   useFonts,
 } from '@expo-google-fonts/libre-franklin';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useKeepAwake } from 'expo-keep-awake';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
@@ -20,6 +21,9 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 function RootStack() {
   const { colors } = useTheme();
   const { session, membership } = useAuth();
+  // Cooking with the recipe up: never let the screen sleep while the app is
+  // foregrounded (the OS restores normal sleep once we're backgrounded).
+  useKeepAwake();
 
   const restoring = session === undefined || (!!session && membership === undefined);
   if (restoring) {
@@ -51,6 +55,7 @@ function RootStack() {
       <Stack.Protected guard={hasHousehold}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="settings" />
+        <Stack.Screen name="folder/[id]" />
         <Stack.Screen name="capture" options={{ presentation: 'modal' }} />
         {/* v3.2 bottom-sheet recipe page. iOS: native pageSheet (peek +
             rounded top + swipe-down). Android/web: transparent modal — the
