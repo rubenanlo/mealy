@@ -77,7 +77,7 @@ export default function SearchScreen() {
       supabase
         .from('recipes')
         .select(
-          'id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes, ingredients'
+          'id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes, ingredients, fodmap_override'
         )
         .eq('household_id', householdId)
         .order('created_at', { ascending: false })

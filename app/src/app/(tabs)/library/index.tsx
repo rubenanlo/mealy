@@ -136,7 +136,7 @@ export default function HomeScreen() {
       supabase
         .from("recipes")
         .select(
-          "id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes, created_at, ingredients",
+          "id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes, created_at, ingredients, fodmap_override",
         )
         .eq("household_id", householdId)
         .order("created_at", { ascending: false }),

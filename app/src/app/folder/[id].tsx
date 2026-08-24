@@ -56,7 +56,7 @@ export default function FolderScreen() {
     const { data: recipeRows } = await supabase
       .from('recipes')
       .select(
-        'id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes, created_at, ingredients'
+        'id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes, created_at, ingredients, fodmap_override'
       )
       .in('id', ids);
     const order = new Map(ids.map((rid, i) => [rid, i]));

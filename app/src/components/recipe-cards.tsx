@@ -27,6 +27,8 @@ export interface RecipeListItem {
   created_at?: string;
   /** Present where a screen selects it — enables ingredient-derived category. */
   ingredients?: IngredientData[];
+  /** Manual FODMAP level; null/absent = derive from ingredients. */
+  fodmap_override?: 'low' | 'moderate' | 'high' | null;
 }
 
 export function totalMinutes(recipe: RecipeListItem): number | null {
@@ -48,9 +50,11 @@ export function MetaLine({
   const index = useCanonicalIndex();
   const category = resolveProteinCategory(recipe.tags, recipe.ingredients, index);
   const minutes = totalMinutes(recipe);
-  // Recipe-level FODMAP tier from local matching only; 'check' stays silent
-  // on cards — the recipe page carries the detail.
+  // Recipe-level FODMAP tier: a manual override wins; otherwise local
+  // matching only. 'check' stays silent on cards — the recipe page carries
+  // the detail.
   const fodmapTier = useMemo(() => {
+    if (recipe.fodmap_override) return recipe.fodmap_override;
     if (!index || !recipe.ingredients || recipe.ingredients.length === 0) return null;
     const result = computeRecipeFodmap(
       recipe.ingredients.map((ing) => ({

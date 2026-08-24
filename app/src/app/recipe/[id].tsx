@@ -61,7 +61,7 @@ import { useReducedMotion } from '@/lib/motion';
 import { weekStart } from '@/lib/plan';
 import { rescaleIngredients } from '@/lib/servings';
 import { supabase } from '@/lib/supabase';
-import { fonts, fontSize, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
+import { fonts, fontSize, minTapTarget, radius, screenPadding, useTheme } from '@/lib/theme';
 import { useCanonicalIndex } from '@/lib/use-canonical';
 import {
   fetchWebImage,
@@ -88,6 +88,8 @@ interface RecipeDetail {
   needs_review: boolean;
   cover_image_path: string | null;
   cover_focal: { x: number; y: number } | null;
+  /** Manual FODMAP level; null = derived from ingredients. */
+  fodmap_override: 'low' | 'moderate' | 'high' | null;
 }
 
 interface SourceRow {
@@ -323,7 +325,12 @@ export default function RecipeSheetScreen() {
   const [sources, setSources] = useState<SourceRow[]>([]);
   const [images, setImages] = useState<ImageRow[]>([]);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [details, setDetails] = useState({ servings: '', prep: '', cook: '' });
+  const [details, setDetails] = useState<{
+    servings: string;
+    prep: string;
+    cook: string;
+    fodmap: 'auto' | 'low' | 'moderate' | 'high';
+  }>({ servings: '', prep: '', cook: '', fodmap: 'auto' });
   const [inThisWeek, setInThisWeek] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [coverMenuOpen, setCoverMenuOpen] = useState(false);
@@ -447,7 +454,10 @@ export default function RecipeSheetScreen() {
     );
   }, [recipe, matches, canonicalIndex]);
 
-  const recipeTier = useMemo(() => (fodmap ? recipeFodmapTier(fodmap) : null), [fodmap]);
+  const recipeTier = useMemo(
+    () => recipe?.fodmap_override ?? (fodmap ? recipeFodmapTier(fodmap) : null),
+    [recipe, fodmap]
+  );
 
   const flagByRaw = useMemo(
     () => new Map((fodmap?.flags ?? []).map((flag) => [flag.raw, flag])),
@@ -534,6 +544,7 @@ export default function RecipeSheetScreen() {
       servings: newServings,
       prep_minutes: toInt(details.prep),
       cook_minutes: toInt(details.cook),
+      fodmap_override: details.fodmap === 'auto' ? null : details.fodmap,
     };
     // Servings change rescales parsed quantities (spec Part 3).
     if (newServings && recipe.servings && newServings !== recipe.servings) {
@@ -869,6 +880,7 @@ export default function RecipeSheetScreen() {
                     servings: recipe.servings?.toString() ?? '',
                     prep: recipe.prep_minutes?.toString() ?? '',
                     cook: recipe.cook_minutes?.toString() ?? '',
+                    fodmap: recipe.fodmap_override ?? 'auto',
                   });
                   setDetailsOpen(true);
                 }}
@@ -1340,6 +1352,52 @@ export default function RecipeSheetScreen() {
             onChangeText={(v) => setDetails({ ...details, cook: v })}
             keyboardType="number-pad"
           />
+          <Eyebrow>FODMAP level</Eyebrow>
+          <Muted>Auto derives it from the ingredients; pick a level to override.</Muted>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {(
+              [
+                ['auto', 'Auto'],
+                ['low', 'Low'],
+                ['moderate', 'Mod.'],
+                ['high', 'High'],
+              ] as ['auto' | 'low' | 'moderate' | 'high', string][]
+            ).map(([value, label]) => {
+              const selected = details.fodmap === value;
+              return (
+                <Pressable
+                  key={value}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  onPress={() => setDetails({ ...details, fodmap: value })}
+                  style={({ pressed }) => ({
+                    flex: 1,
+                    minHeight: 40,
+                    borderRadius: radius.control,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderWidth: selected ? 0 : 1,
+                    borderColor: colors.border,
+                    backgroundColor: selected
+                      ? colors.text
+                      : pressed
+                        ? colors.cardPressed
+                        : 'transparent',
+                  })}
+                >
+                  <Text
+                    style={{
+                      color: selected ? colors.bg : colors.text,
+                      fontSize: fontSize.small,
+                      fontFamily: fonts.uiMedium,
+                    }}
+                  >
+                    {label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
           <Button label="Save" onPress={() => void saveDetails()} />
           <Button label="Cancel" kind="secondary" onPress={() => setDetailsOpen(false)} />
         </View>
