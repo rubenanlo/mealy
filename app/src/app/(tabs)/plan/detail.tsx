@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { FlatList, Modal, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, FlatList, Modal, Platform, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PersonChip } from '@/components/person-chip';
@@ -18,8 +18,11 @@ import {
   Title,
 } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
+import { autoFillWeek, type AutoCandidate } from '@/lib/auto-plan';
+import { matchCanonical, normalizeRaw } from '@/lib/canonical';
 import { resolveProteinCategory, type ProteinCategory } from '@/lib/category';
 import { normalizeDietProfile } from '@/lib/diet';
+import { computeRecipeFodmap, recipeFodmapTier } from '@/lib/fodmap';
 import { useImageUrl } from '@/lib/media';
 import {
   DAY_LABELS,
@@ -63,6 +66,8 @@ interface RecipeLite {
   tags: string[];
   cover_image_path: string | null;
   ingredients?: IngredientData[];
+  servings?: number | null;
+  fodmap_override?: 'low' | 'moderate' | 'high' | null;
 }
 
 interface MealPlanRow {
@@ -202,7 +207,7 @@ export default function PlanScreen() {
             .order('created_at'),
           supabase
             .from('recipes')
-            .select('id, title, tags, cover_image_path, ingredients')
+            .select('id, title, tags, cover_image_path, ingredients, servings, fodmap_override')
             .eq('household_id', householdId)
             .order('title'),
         ]);
@@ -253,6 +258,109 @@ export default function PlanScreen() {
     }
     return chips;
   }, [eaters, entries, recipes, index]);
+
+  // "Choose for us" auto-fill (intermediary sheet asks about low-FODMAP).
+  const [autoOpen, setAutoOpen] = useState(false);
+  const [autoLowFodmap, setAutoLowFodmap] = useState(false);
+  const [autoBusy, setAutoBusy] = useState(false);
+
+  const emptyCells = useMemo(() => {
+    const cells: { day: number; slot: MealSlot }[] = [];
+    for (let day = 0; day < 7; day += 1) {
+      for (const slot of ['lunch', 'dinner'] as MealSlot[]) {
+        if (slotEntries(entries, day, slot).length === 0) cells.push({ day, slot });
+      }
+    }
+    return cells;
+  }, [entries]);
+
+  const runAutoFill = async () => {
+    if (autoBusy || emptyCells.length === 0) return;
+    setAutoBusy(true);
+    try {
+      // Cool-down window: same rule as "Suggested for you".
+      const [{ data: hh }, { data: recentRows }] = await Promise.all([
+        supabase.from('households').select('suggested_rest_weeks').eq('id', householdId).single(),
+        supabase
+          .from('plan_entries')
+          .select('recipe_id, meal_plans!inner(household_id, week_start)')
+          .eq('meal_plans.household_id', householdId),
+      ]);
+      const cutoff = addWeeks(weekStart(new Date()), -(hh?.suggested_rest_weeks ?? 3));
+      const recentIds = new Set(
+        (
+          (recentRows ?? []) as unknown as {
+            recipe_id: string | null;
+            meal_plans: { week_start: string };
+          }[]
+        )
+          .filter((e) => e.meal_plans.week_start >= cutoff)
+          .map((e) => e.recipe_id)
+          .filter((id): id is string => id !== null)
+      );
+
+      const candidates: AutoCandidate[] = recipes.map((r) => {
+        const lines = (r.ingredients ?? []).map((ing) => ({
+          raw: ing.raw || ing.name,
+          name: ing.name,
+          quantity: ing.quantity,
+          unit: ing.unit,
+        }));
+        const computed =
+          index && lines.length > 0
+            ? recipeFodmapTier(
+                computeRecipeFodmap(lines, r.servings ?? null, (line) =>
+                  matchCanonical(normalizeRaw(line.raw), index)?.ingredient ?? null
+                )
+              )
+            : 'check';
+        return {
+          id: r.id,
+          category: resolveProteinCategory(r.tags, r.ingredients, index),
+          fodmapTier: r.fodmap_override ?? computed,
+          plannedRecently: recentIds.has(r.id),
+        };
+      });
+
+      const { assignments, unfilled } = autoFillWeek(emptyCells, candidates, {
+        lowFodmapOnly: autoLowFodmap,
+      });
+      if (assignments.length === 0) {
+        setAutoOpen(false);
+        Alert.alert(
+          'No recipes to pick from',
+          autoLowFodmap
+            ? 'No low-FODMAP recipes found in your library.'
+            : 'Add some recipes to your library first.'
+        );
+        return;
+      }
+      const mealPlanId = await ensurePlan();
+      await supabase.from('plan_entries').insert(
+        assignments.map((a) =>
+          upsertEntryPayload({
+            mealPlanId,
+            day: a.day,
+            slot: a.slot,
+            recipeId: a.recipeId,
+            personIds: [], // empty = whole household
+            assignedCook: 'family',
+            position: 0,
+          })
+        )
+      );
+      setAutoOpen(false);
+      await loadWeek(weekIso);
+      if (unfilled.length > 0) {
+        Alert.alert(
+          'Week partly filled',
+          `${unfilled.length} ${unfilled.length === 1 ? 'meal' : 'meals'} left empty — not enough ${autoLowFodmap ? 'low-FODMAP ' : ''}recipes.`
+        );
+      }
+    } finally {
+      setAutoBusy(false);
+    }
+  };
 
   const ensurePlan = async (): Promise<string> => {
     if (plan) return plan.id;
@@ -418,6 +526,19 @@ export default function PlanScreen() {
           {quotaChips.map((chip) => (
             <QuotaChip key={chip.category} {...chip} />
           ))}
+        </View>
+      ) : null}
+
+      {emptyCells.length > 0 ? (
+        <View style={{ paddingHorizontal: screenPadding, paddingBottom: 12 }}>
+          <Button
+            label="Choose for us"
+            kind="secondary"
+            onPress={() => {
+              setAutoLowFodmap(false);
+              setAutoOpen(true);
+            }}
+          />
         </View>
       ) : null}
 
@@ -735,6 +856,51 @@ export default function PlanScreen() {
             <Button label="Close" kind="secondary" onPress={() => setPickerCell(null)} />
           </View>
         </SafeAreaView>
+      </Modal>
+
+      {/* Choose-for-us intermediary: confirm + low-FODMAP toggle. */}
+      <Modal
+        visible={autoOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAutoOpen(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }}
+          onPress={() => setAutoOpen(false)}
+        />
+        <View
+          style={{
+            backgroundColor: colors.bg,
+            padding: screenPadding,
+            paddingBottom: insets.bottom + 16,
+            gap: 14,
+            borderTopLeftRadius: 16,
+            borderTopRightRadius: 16,
+          }}
+        >
+          <Eyebrow>Choose for us</Eyebrow>
+          <Muted>
+            {`Fills the ${emptyCells.length} empty ${emptyCells.length === 1 ? 'meal' : 'meals'} for the whole household — recipes that haven't been cooked recently, varying the type from meal to meal. You can swap anything afterwards.`}
+          </Muted>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              minHeight: 52,
+            }}
+          >
+            <Body style={{ flex: 1 }}>Low-FODMAP for every family member</Body>
+            <Switch
+              value={autoLowFodmap}
+              onValueChange={setAutoLowFodmap}
+              trackColor={{ true: colors.accent }}
+            />
+          </View>
+          <Button label="Fill the week" onPress={() => void runAutoFill()} loading={autoBusy} />
+          <Button label="Cancel" kind="secondary" onPress={() => setAutoOpen(false)} />
+        </View>
       </Modal>
     </SafeAreaView>
   );
