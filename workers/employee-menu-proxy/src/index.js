@@ -10,8 +10,8 @@ const ORIGIN = 'https://fcqtywqwhddlyirhwbzq.supabase.co/functions/v1/employee-m
 
 export default {
   async fetch(request) {
-    const token = new URL(request.url).searchParams.get('token') ?? '';
-    const upstream = await fetch(`${ORIGIN}?token=${encodeURIComponent(token)}`);
+    // Forward the full query string (token + detail-view params).
+    const upstream = await fetch(`${ORIGIN}${new URL(request.url).search}`);
     const body = await upstream.text();
     return new Response(body, {
       status: upstream.status,
