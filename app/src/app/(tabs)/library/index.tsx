@@ -1,6 +1,7 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Image, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import {
   SafeAreaView,
@@ -51,6 +52,10 @@ import {
 } from "@/lib/theme";
 import { useCanonicalIndex } from "@/lib/use-canonical";
 
+/** Persisted folders-section layout (NYT Recipe Box has both). */
+type FolderView = "grid" | "list";
+const FOLDER_VIEW_KEY = "mealy.folder-view";
+
 export default function HomeScreen() {
   const { colors } = useTheme();
   const router = useRouter();
@@ -70,6 +75,26 @@ export default function HomeScreen() {
   const [memberEmails, setMemberEmails] = useState<Map<string, string>>(
     new Map(),
   );
+  const [folderView, setFolderView] = useState<FolderView>("grid");
+
+  useEffect(() => {
+    let cancelled = false;
+    AsyncStorage.getItem(FOLDER_VIEW_KEY)
+      .then((stored) => {
+        if (!cancelled && (stored === "grid" || stored === "list")) {
+          setFolderView(stored);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const changeFolderView = (view: FolderView) => {
+    setFolderView(view);
+    AsyncStorage.setItem(FOLDER_VIEW_KEY, view).catch(() => {});
+  };
   const [activeFilters, setActiveFilters] = useState<Set<QuickFilter>>(
     new Set(),
   );
@@ -553,33 +578,74 @@ export default function HomeScreen() {
 
             {/* Recipe Box (spec 2026-08-24): my folders, then the family's. */}
             <View style={{ paddingTop: 24, gap: 12 }}>
-              <SectionHeader
-                title="Your folders"
-                linkLabel="+ New"
-                onLinkPress={createFolderPrompt}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <SectionHeader
+                    title="Your folders"
+                    linkLabel="+ New"
+                    onLinkPress={createFolderPrompt}
+                  />
+                </View>
+                {(
+                  [
+                    ["grid", "grid"],
+                    ["list", "list"],
+                  ] as [FolderView, keyof typeof Ionicons.glyphMap][]
+                ).map(([view, icon]) => {
+                  const selected = folderView === view;
+                  return (
+                    <Pressable
+                      key={view}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${view === "grid" ? "Grid" : "List"} view`}
+                      accessibilityState={{ selected }}
+                      onPress={() => changeFolderView(view)}
+                      hitSlop={4}
+                      style={({ pressed }) => ({
+                        width: 36,
+                        height: 36,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        borderRadius: 8,
+                        backgroundColor:
+                          pressed || selected
+                            ? colors.cardPressed
+                            : "transparent",
+                      })}
+                    >
+                      <Ionicons
+                        name={icon}
+                        size={18}
+                        color={selected ? colors.text : colors.textMuted}
+                      />
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <FolderCollection
+                folders={myFolders}
+                view={folderView}
+                coverByRecipe={coverByRecipe}
+                onOpen={(id) => router.push(`/folder/${id}`)}
               />
-              {myFolders.map((f) => (
-                <FolderRowItem
-                  key={f.id}
-                  folder={f}
-                  covers={collageCovers(f, coverByRecipe)}
-                  onPress={() => router.push(`/folder/${f.id}`)}
-                />
-              ))}
               {myFolders.length === 0 ? (
                 <Muted>Save any recipe with the bookmark to start a folder.</Muted>
               ) : null}
               {otherFolders.map((group) => (
                 <View key={group.ownerId} style={{ gap: 12, paddingTop: 8 }}>
                   <Eyebrow>{memberEmails.get(group.ownerId) ?? "Family member"}</Eyebrow>
-                  {group.folders.map((f) => (
-                    <FolderRowItem
-                      key={f.id}
-                      folder={f}
-                      covers={collageCovers(f, coverByRecipe)}
-                      onPress={() => router.push(`/folder/${f.id}`)}
-                    />
-                  ))}
+                  <FolderCollection
+                    folders={group.folders}
+                    view={folderView}
+                    coverByRecipe={coverByRecipe}
+                    onOpen={(id) => router.push(`/folder/${id}`)}
+                  />
                 </View>
               ))}
             </View>
@@ -614,6 +680,112 @@ export default function HomeScreen() {
         />
       ) : null}
     </SafeAreaView>
+  );
+}
+
+/** Grid/list renderer for a set of folders (NYT Recipe Box views). */
+function FolderCollection({
+  folders,
+  view,
+  coverByRecipe,
+  onOpen,
+}: {
+  folders: FolderSummary[];
+  view: FolderView;
+  coverByRecipe: Map<string, string | null>;
+  onOpen: (id: string) => void;
+}) {
+  if (view === "list") {
+    return (
+      <View>
+        {folders.map((f) => (
+          <FolderRowItem
+            key={f.id}
+            folder={f}
+            covers={collageCovers(f, coverByRecipe)}
+            onPress={() => onOpen(f.id)}
+          />
+        ))}
+      </View>
+    );
+  }
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        flexWrap: "wrap",
+        justifyContent: "space-between",
+        rowGap: 20,
+      }}
+    >
+      {folders.map((f) => (
+        <FolderGridItem
+          key={f.id}
+          folder={f}
+          covers={collageCovers(f, coverByRecipe)}
+          onPress={() => onOpen(f.id)}
+        />
+      ))}
+    </View>
+  );
+}
+
+/** NYT Recipe Box grid tile: large 2×2 collage over name + count. */
+function FolderGridItem({
+  folder,
+  covers,
+  onPress,
+}: {
+  folder: FolderSummary;
+  covers: (string | null)[];
+  onPress: () => void;
+}) {
+  const { colors } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Open folder ${folder.name}`}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        width: "47.5%",
+        opacity: pressed ? 0.7 : 1,
+      })}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          flexWrap: "wrap",
+          aspectRatio: 1,
+          borderRadius: 8,
+          overflow: "hidden",
+        }}
+      >
+        {covers.map((path, i) => (
+          <RecipeImage
+            key={i}
+            path={path}
+            style={{ width: "50%", height: "50%" }}
+            iconSize={20}
+          />
+        ))}
+      </View>
+      <View style={{ paddingTop: 8, gap: 2 }}>
+        <Text
+          numberOfLines={1}
+          style={{
+            color: colors.text,
+            fontSize: fontSize.cardTitle,
+            fontFamily: fonts.displaySemi,
+          }}
+        >
+          {folder.name}
+        </Text>
+        <Muted>
+          {folder.recipeIds.length}{" "}
+          {folder.recipeIds.length === 1 ? "recipe" : "recipes"}
+        </Muted>
+      </View>
+    </Pressable>
   );
 }
 
