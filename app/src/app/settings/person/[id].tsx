@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, Switch, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Share, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Body, Button, Eyebrow, Field, Hairline, Muted, Title } from '@/components/ui';
@@ -79,6 +79,7 @@ export default function PersonScreen() {
 
   const [name, setName] = useState('');
   const [isEmployee, setIsEmployee] = useState(false);
+  const [shareToken, setShareToken] = useState<string | null>(null);
   const [profile, setProfile] = useState<DietProfile | null>(null);
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
@@ -88,13 +89,14 @@ export default function PersonScreen() {
     if (!id) return;
     supabase
       .from('persons')
-      .select('name, is_employee, diet_profile, other_requirements')
+      .select('name, is_employee, diet_profile, other_requirements, share_token')
       .eq('id', id)
       .single()
       .then(({ data }) => {
         if (!data) return;
         setName(data.name);
         setIsEmployee(data.is_employee);
+        setShareToken(data.share_token ?? null);
         setProfile(normalizeDietProfile(data.diet_profile));
         setNotes(data.other_requirements ?? '');
         setLoaded(true);
@@ -188,6 +190,24 @@ export default function PersonScreen() {
           </View>
           <Hairline />
         </View>
+
+        {isEmployee && shareToken ? (
+          <View style={{ gap: 10 }}>
+            <Eyebrow>Web access</Eyebrow>
+            <Muted>
+              A private link with every meal assigned to the employee cook, this week onward —
+              ingredients and steps included, no account needed. Anyone with the link can read it.
+            </Muted>
+            <Button
+              label="Share cooking link"
+              kind="secondary"
+              onPress={() => {
+                const url = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/employee-menu?token=${shareToken}`;
+                void Share.share({ message: url, url });
+              }}
+            />
+          </View>
+        ) : null}
 
         <View style={{ gap: 10 }}>
           <Eyebrow>FODMAP</Eyebrow>
