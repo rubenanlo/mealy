@@ -454,10 +454,12 @@ export default function RecipeSheetScreen() {
     );
   }, [recipe, matches, canonicalIndex]);
 
-  const recipeTier = useMemo(
-    () => recipe?.fodmap_override ?? (fodmap ? recipeFodmapTier(fodmap) : null),
-    [recipe, fodmap]
-  );
+  // Always present once the recipe loads ('check' → "FODMAP ?") so the
+  // byline badge stays a tap target for setting the level manually.
+  const recipeTier = useMemo(() => {
+    if (!recipe) return null;
+    return recipe.fodmap_override ?? (fodmap ? recipeFodmapTier(fodmap) : 'check');
+  }, [recipe, fodmap]);
 
   const flagByRaw = useMemo(
     () => new Map((fodmap?.flags ?? []).map((flag) => [flag.raw, flag])),
@@ -531,6 +533,32 @@ export default function RecipeSheetScreen() {
       webCoverFetchingRef.current = false;
       setWebCoverFetching(false);
     }
+  };
+
+  /** Tap the byline badge: pick the FODMAP level in place. */
+  const editFodmapLevel = () => {
+    if (!recipe) return;
+    const current = recipe.fodmap_override ?? 'auto';
+    const mark = (v: string, label: string) => (current === v ? `${label} ✓` : label);
+    Alert.alert('FODMAP level', 'Auto derives it from the ingredients.', [
+      {
+        text: mark('auto', 'Auto'),
+        onPress: () => void saveRecipe({ fodmap_override: null }),
+      },
+      {
+        text: mark('low', 'Low'),
+        onPress: () => void saveRecipe({ fodmap_override: 'low' }),
+      },
+      {
+        text: mark('moderate', 'Moderate'),
+        onPress: () => void saveRecipe({ fodmap_override: 'moderate' }),
+      },
+      {
+        text: mark('high', 'High'),
+        onPress: () => void saveRecipe({ fodmap_override: 'high' }),
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   };
 
   const saveDetails = async () => {
@@ -845,33 +873,41 @@ export default function RecipeSheetScreen() {
                   <Muted>{CATEGORY_LABELS[category]}</Muted>
                 </View>
               ) : null}
-              {recipeTier && recipeTier !== 'check' ? (
+              {recipeTier ? (
                 <>
                   {category ? <Muted>·</Muted> : null}
-                  <Text
-                    accessibilityLabel={`FODMAP level ${recipeTier}`}
-                    style={{
-                      color:
-                        recipeTier === 'high'
-                          ? colors.danger
-                          : recipeTier === 'moderate'
-                            ? colors.saffron
-                            : colors.spineVeg,
-                      fontSize: fontSize.meta,
-                      fontFamily: fonts.uiSemi,
-                    }}
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`FODMAP level ${recipeTier} — tap to change`}
+                    onPress={editFodmapLevel}
+                    hitSlop={8}
                   >
-                    {recipeTier === 'high'
-                      ? 'High FODMAP'
-                      : recipeTier === 'moderate'
-                        ? 'Moderate FODMAP'
-                        : 'Low FODMAP'}
-                  </Text>
+                    <Text
+                      style={{
+                        color:
+                          recipeTier === 'high'
+                            ? colors.danger
+                            : recipeTier === 'moderate'
+                              ? colors.saffron
+                              : recipeTier === 'low'
+                                ? colors.spineVeg
+                                : colors.textMuted,
+                        fontSize: fontSize.meta,
+                        fontFamily: fonts.uiSemi,
+                      }}
+                    >
+                      {recipeTier === 'high'
+                        ? 'High FODMAP'
+                        : recipeTier === 'moderate'
+                          ? 'Moderate FODMAP'
+                          : recipeTier === 'low'
+                            ? 'Low FODMAP'
+                            : 'FODMAP ?'}
+                    </Text>
+                  </Pressable>
                 </>
               ) : null}
-              {(category || (recipeTier && recipeTier !== 'check')) && metaParts.length > 0 ? (
-                <Muted>·</Muted>
-              ) : null}
+              {(category || recipeTier) && metaParts.length > 0 ? <Muted>·</Muted> : null}
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Edit servings and times"
