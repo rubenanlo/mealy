@@ -63,11 +63,24 @@ export type CaptureKind = 'url' | 'social' | 'text';
 const SOCIAL_HOSTS = ['instagram.com', 'tiktok.com'];
 
 /** Auto-detect what a pasted string is: a social URL, a plain URL, or recipe text. */
+/**
+ * Pull a single URL out of pasted input, tolerating share-sheet cruft
+ * ("Check this out! https://… 🍲") as long as the non-URL remainder is
+ * short. Real recipe text stays text: it is far longer than the allowance.
+ */
+export function extractCaptureUrl(input: string): string | null {
+  const match = input.match(/https?:\/\/\S+/i);
+  if (!match) return null;
+  const remainder = input.replace(match[0], '').trim();
+  if (remainder.length > 24) return null;
+  return match[0];
+}
+
 export function detectCaptureKind(input: string): CaptureKind {
-  const trimmed = input.trim();
-  if (!/^https?:\/\/\S+$/i.test(trimmed)) return 'text';
+  const url = extractCaptureUrl(input);
+  if (!url) return 'text';
   try {
-    const host = new URL(trimmed).hostname.toLowerCase();
+    const host = new URL(url).hostname.toLowerCase();
     if (SOCIAL_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))) return 'social';
   } catch {
     return 'text';
@@ -440,10 +453,11 @@ async function captureCommon(
   return { recipeId, result };
 }
 
-export async function captureFromUrl(url: string, ctx: RecipeRowsContext): Promise<CaptureOutcome> {
-  const kind = detectCaptureKind(url);
-  const result = kind === 'social' ? await ingestSocial(url.trim()) : await ingestUrl(url.trim());
-  return captureCommon(result, ctx, [], url.trim());
+export async function captureFromUrl(input: string, ctx: RecipeRowsContext): Promise<CaptureOutcome> {
+  const kind = detectCaptureKind(input);
+  const url = extractCaptureUrl(input) ?? input.trim();
+  const result = kind === 'social' ? await ingestSocial(url) : await ingestUrl(url);
+  return captureCommon(result, ctx, [], url);
 }
 
 export async function captureFromText(text: string, ctx: RecipeRowsContext): Promise<CaptureOutcome> {

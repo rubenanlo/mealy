@@ -227,3 +227,21 @@ describe('fetchWebImage', () => {
     expect(await fetchWebImage('https://example.com/photo.jpg')).toBeNull();
   });
 });
+
+describe('extractCaptureUrl / cruft-tolerant kind detection', () => {
+  const { extractCaptureUrl } = jest.requireActual('../worker');
+  it('extracts a URL surrounded by share-sheet cruft', () => {
+    expect(extractCaptureUrl('https://cooking.nytimes.com/recipes/761573409-basil-tofu an')).toBe(
+      'https://cooking.nytimes.com/recipes/761573409-basil-tofu'
+    );
+    expect(extractCaptureUrl('Check this! https://example.com/r 🍲')).toBe('https://example.com/r');
+  });
+  it('long pasted recipe text containing a link stays text', () => {
+    const text = `Tofu recipe: mix everything and bake. Serve warm with rice and basil leaves. Source: https://example.com/r`;
+    expect(extractCaptureUrl(text)).toBeNull();
+    expect(detectCaptureKind(text)).toBe('text');
+  });
+  it('cruft around a URL still routes as url capture', () => {
+    expect(detectCaptureKind('https://cooking.nytimes.com/recipes/1 an')).toBe('url');
+  });
+});
