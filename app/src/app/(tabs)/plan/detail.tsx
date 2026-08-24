@@ -698,7 +698,6 @@ export default function PlanScreen() {
                                   fontFamily: fonts.uiMedium,
                                 }}
                               >
-                                {entry.assigned_cook === 'employee' ? '👩‍🍳 ' : ''}
                                 {entry.custom_title ?? recipe?.title ?? 'Recipe'}
                               </Text>
                               <View
@@ -713,6 +712,29 @@ export default function PlanScreen() {
                                     return person ? <PersonChip key={pid} person={person} /> : null;
                                   })
                                 )}
+                                {entry.assigned_cook === 'employee' ? (
+                                  <View
+                                    style={{
+                                      flexDirection: 'row',
+                                      alignItems: 'center',
+                                      borderWidth: 1,
+                                      borderColor: colors.border,
+                                      borderRadius: 999,
+                                      paddingHorizontal: 8,
+                                      paddingVertical: 2,
+                                    }}
+                                  >
+                                    <Text
+                                      style={{
+                                        fontSize: fontSize.eyebrow,
+                                        fontFamily: fonts.uiSemi,
+                                        color: colors.textMuted,
+                                      }}
+                                    >
+                                      👩‍🍳 Employee cooks
+                                    </Text>
+                                  </View>
+                                ) : null}
                               </View>
                             </View>
                             </Pressable>
