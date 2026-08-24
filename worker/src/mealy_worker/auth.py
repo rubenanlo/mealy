@@ -1,7 +1,9 @@
 """Supabase JWT verification (Task 8).
 
-Tokens are Supabase access tokens: HS256, audience ``authenticated``, signed
-with the project's JWT secret (env ``SUPABASE_JWT_SECRET``). Everything except
+Tokens are Supabase access tokens with audience ``authenticated``. Projects
+on the new asymmetric signing keys issue ES256 tokens verified against the
+project JWKS (env ``MEALY_SUPABASE_URL``); legacy HS256 tokens verify with
+the shared secret (env ``SUPABASE_JWT_SECRET``). Everything except
 ``/health`` requires a valid token.
 """
 
@@ -13,10 +15,10 @@ import jwt
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-ALGORITHM = "HS256"
 AUDIENCE = "authenticated"
 
 _bearer = HTTPBearer(auto_error=False)
+_jwks_client: jwt.PyJWKClient | None = None
 
 
 def get_jwt_secret() -> str:
@@ -24,6 +26,25 @@ def get_jwt_secret() -> str:
     if not secret:
         raise HTTPException(status_code=500, detail="SUPABASE_JWT_SECRET not configured")
     return secret
+
+
+def _get_jwks_client() -> jwt.PyJWKClient:
+    """Cached JWKS client; PyJWKClient caches the keys themselves too."""
+    global _jwks_client
+    if _jwks_client is None:
+        base = os.environ.get("MEALY_SUPABASE_URL") or os.environ.get("SUPABASE_URL")
+        if not base:
+            raise HTTPException(status_code=500, detail="MEALY_SUPABASE_URL not configured")
+        _jwks_client = jwt.PyJWKClient(f"{base.rstrip('/')}/auth/v1/.well-known/jwks.json")
+    return _jwks_client
+
+
+def _unauthorized() -> HTTPException:
+    return HTTPException(
+        status_code=401,
+        detail="Invalid token",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
 
 
 async def verify_token(
@@ -36,16 +57,21 @@ async def verify_token(
             detail="Missing bearer token",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    token = credentials.credentials
     try:
-        return jwt.decode(
-            credentials.credentials,
-            get_jwt_secret(),
-            algorithms=[ALGORITHM],
-            audience=AUDIENCE,
-        )
+        alg = jwt.get_unverified_header(token).get("alg")
     except jwt.PyJWTError:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise _unauthorized()
+
+    if alg == "HS256":
+        try:
+            return jwt.decode(token, get_jwt_secret(), algorithms=["HS256"], audience=AUDIENCE)
+        except jwt.PyJWTError:
+            raise _unauthorized()
+    if alg == "ES256":
+        try:
+            key = _get_jwks_client().get_signing_key_from_jwt(token).key
+            return jwt.decode(token, key, algorithms=["ES256"], audience=AUDIENCE)
+        except jwt.PyJWTError:
+            raise _unauthorized()
+    raise _unauthorized()

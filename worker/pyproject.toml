@@ -14,7 +14,7 @@ dependencies = [
     "httpx",
     "extruct",
     "python-multipart",
-    "pyjwt",
+    "pyjwt[crypto]",
     "pypdf",
     "pypdfium2",
     "pillow",

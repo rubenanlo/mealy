@@ -265,3 +265,58 @@ def test_fodmap_swaps_dispatches(client, monkeypatch):
     assert response.status_code == 200
     assert seen["request"].title == "Soupe"
     assert response.json()["swaps"][0]["replacement"]["name"] == "vert de poireau"
+
+
+def test_es256_token_verifies_against_jwks(client, monkeypatch):
+    """New asymmetric Supabase tokens (ES256) verify via the project JWKS."""
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    from mealy_worker import auth as auth_mod
+
+    private_key = ec.generate_private_key(ec.SECP256R1())
+
+    class FakeSigningKey:
+        key = private_key.public_key()
+
+    class FakeJwksClient:
+        def get_signing_key_from_jwt(self, token):
+            return FakeSigningKey()
+
+    monkeypatch.setattr(auth_mod, "_get_jwks_client", lambda: FakeJwksClient())
+
+    async def fake_ingest_url(url):
+        return RESULT
+
+    monkeypatch.setattr(main, "ingest_url", fake_ingest_url)
+    token = jwt.encode(
+        {"sub": "user-123", "aud": "authenticated", "exp": int(time.time()) + 3600},
+        private_key,
+        algorithm="ES256",
+    )
+    response = client.post("/ingest/url", json={"url": "https://x.com"}, headers=auth(token))
+    assert response.status_code == 200
+
+
+def test_es256_token_with_wrong_key_is_401(client, monkeypatch):
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    from mealy_worker import auth as auth_mod
+
+    signer = ec.generate_private_key(ec.SECP256R1())
+    other = ec.generate_private_key(ec.SECP256R1())
+
+    class FakeSigningKey:
+        key = other.public_key()
+
+    class FakeJwksClient:
+        def get_signing_key_from_jwt(self, token):
+            return FakeSigningKey()
+
+    monkeypatch.setattr(auth_mod, "_get_jwks_client", lambda: FakeJwksClient())
+    token = jwt.encode(
+        {"sub": "user-123", "aud": "authenticated", "exp": int(time.time()) + 3600},
+        signer,
+        algorithm="ES256",
+    )
+    response = client.post("/ingest/url", json={"url": "https://x.com"}, headers=auth(token))
+    assert response.status_code == 401
