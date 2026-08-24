@@ -434,22 +434,31 @@ export default function WeeksScreen() {
             ) : (
               <>
                 {employeeNotes.length > 0 ? (
-                  <View>
-                    {employeeNotes.map((note, i) => (
-                      <View key={`${i}-${note}`}>
-                        {i > 0 ? <Hairline /> : null}
-                        <View style={{ minHeight: 40, justifyContent: 'center' }}>
-                          <Body>{note}</Body>
-                        </View>
-                      </View>
-                    ))}
-                  </View>
-                ) : null}
-                <LinkButton
-                  label={employeeNotes.length > 0 ? 'Edit instructions' : '+ Add more instructions'}
-                  onPress={openNotesEditor}
-                  style={{ alignSelf: 'flex-start', minHeight: 32 }}
-                />
+                  // Collapsed: first line only, ellipsized; tap to edit.
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Edit instructions"
+                    onPress={openNotesEditor}
+                    style={({ pressed }) => ({
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 8,
+                      minHeight: 40,
+                      opacity: pressed ? 0.7 : 1,
+                    })}
+                  >
+                    <Body numberOfLines={1} style={{ flex: 1 }}>
+                      {employeeNotes.join(' · ')}
+                    </Body>
+                    <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+                  </Pressable>
+                ) : (
+                  <LinkButton
+                    label="+ Add more instructions"
+                    onPress={openNotesEditor}
+                    style={{ alignSelf: 'flex-start', minHeight: 32 }}
+                  />
+                )}
               </>
             )}
           </View>

@@ -151,10 +151,19 @@ export function Eyebrow({
   );
 }
 
-export function Body({ children, style }: { children: ReactNode; style?: StyleProp<TextStyle> }) {
+export function Body({
+  children,
+  style,
+  numberOfLines,
+}: {
+  children: ReactNode;
+  style?: StyleProp<TextStyle>;
+  numberOfLines?: number;
+}) {
   const { colors } = useTheme();
   return (
     <Text
+      numberOfLines={numberOfLines}
       style={[
         { color: colors.text, fontSize: fontSize.base, lineHeight: 24, fontFamily: fonts.ui },
         style,
