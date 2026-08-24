@@ -15,6 +15,8 @@ export interface PlanEntry {
   person_ids: string[];
   assigned_cook: CookType;
   position: number;
+  /** True when "Choose for us" inserted it (migration 0014). */
+  auto_picked?: boolean;
 }
 
 export const DAY_LABELS = [

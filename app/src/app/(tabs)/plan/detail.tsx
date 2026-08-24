@@ -267,13 +267,9 @@ export default function PlanScreen() {
   const [autoOpen, setAutoOpen] = useState(false);
   const [autoLowFodmap, setAutoLowFodmap] = useState(false);
   const [autoBusy, setAutoBusy] = useState(false);
-  /** Last auto-fill's inserts (per week), so "Choose again" replaces only them. */
-  const [autoPicks, setAutoPicks] = useState<{
-    week: string;
-    entryIds: string[];
-    recipeIds: string[];
-  } | null>(null);
-  const canReroll = autoPicks !== null && autoPicks.week === weekIso;
+  /** Durable provenance: entries the auto-planner inserted (auto_picked). */
+  const autoEntries = useMemo(() => entries.filter((e) => e.auto_picked), [entries]);
+  const canReroll = autoEntries.length > 0;
 
   const emptyCells = useMemo(() => {
     const cells: { day: number; slot: MealSlot }[] = [];
@@ -289,12 +285,13 @@ export default function PlanScreen() {
     if (autoBusy || (emptyCells.length === 0 && !canReroll)) return;
     setAutoBusy(true);
     try {
-      // "Choose again": clear last round's auto-picked entries first so their
-      // slots re-open; manual picks are never touched.
+      // "Choose again": clear the auto-picked entries first so their slots
+      // re-open; manual picks are never touched.
       let currentEntries = entries;
-      if (canReroll && autoPicks) {
-        await supabase.from('plan_entries').delete().in('id', autoPicks.entryIds);
-        currentEntries = entries.filter((e) => !autoPicks.entryIds.includes(e.id));
+      if (canReroll) {
+        const ids = autoEntries.map((e) => e.id);
+        await supabase.from('plan_entries').delete().in('id', ids);
+        currentEntries = entries.filter((e) => !e.auto_picked);
       }
       const openCells: { day: number; slot: MealSlot }[] = [];
       for (let day = 0; day < 7; day += 1) {
@@ -378,11 +375,12 @@ export default function PlanScreen() {
         lowFodmapOnly: autoLowFodmap,
         quotas,
         existingCounts,
-        avoidIds: canReroll && autoPicks ? autoPicks.recipeIds : [],
+        avoidIds: autoEntries
+          .map((e) => e.recipe_id)
+          .filter((id): id is string => id !== null),
       });
       if (assignments.length === 0) {
         setAutoOpen(false);
-        setAutoPicks(null);
         await loadWeek(weekIso);
         Alert.alert(
           'No recipes to pick from',
@@ -393,27 +391,20 @@ export default function PlanScreen() {
         return;
       }
       const mealPlanId = await ensurePlan();
-      const { data: inserted } = await supabase
-        .from('plan_entries')
-        .insert(
-          assignments.map((a) =>
-            upsertEntryPayload({
-              mealPlanId,
-              day: a.day,
-              slot: a.slot,
-              recipeId: a.recipeId,
-              personIds: [], // empty = whole household
-              assignedCook: 'family',
-              position: 0,
-            })
-          )
-        )
-        .select('id');
-      setAutoPicks({
-        week: weekIso,
-        entryIds: ((inserted ?? []) as { id: string }[]).map((r) => r.id),
-        recipeIds: assignments.map((a) => a.recipeId),
-      });
+      await supabase.from('plan_entries').insert(
+        assignments.map((a) => ({
+          ...upsertEntryPayload({
+            mealPlanId,
+            day: a.day,
+            slot: a.slot,
+            recipeId: a.recipeId,
+            personIds: [], // empty = whole household
+            assignedCook: 'family',
+            position: 0,
+          }),
+          auto_picked: true,
+        }))
+      );
       setAutoOpen(false);
       await loadWeek(weekIso);
       if (unfilled.length > 0) {
