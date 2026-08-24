@@ -1,8 +1,16 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Image, Platform, Pressable, ScrollView, Text, View } from "react-native";
+import {
+  Alert,
+  Image,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -24,7 +32,13 @@ import {
   type WeekStripItem,
 } from "@/components/recipe-cards";
 import { SaveSheet } from "@/components/save-sheet";
-import { EmptyState, Eyebrow, Hairline, Muted, SectionHeader } from "@/components/ui";
+import {
+  EmptyState,
+  Eyebrow,
+  Hairline,
+  Muted,
+  SectionHeader,
+} from "@/components/ui";
 import { useAuth, useHousehold } from "@/lib/auth";
 import { matchCanonical, normalizeRaw } from "@/lib/canonical";
 import type { ProteinCategory } from "@/lib/category";
@@ -46,6 +60,7 @@ import {
   fonts,
   fontSize,
   minTapTarget,
+  radius,
   screenPadding,
   tabBarClearance,
   useTheme,
@@ -118,33 +133,33 @@ export default function HomeScreen() {
       { data: linkRows },
       { data: memberRows },
     ] = await Promise.all([
-        supabase
-          .from("recipes")
-          .select(
-            "id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes, created_at, ingredients",
-          )
-          .eq("household_id", householdId)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("plan_entries")
-          .select("recipe_id, meal_plans!inner(household_id)")
-          .eq("meal_plans.household_id", householdId),
-        supabase
-          .from("meal_plans")
-          .select("id")
-          .eq("household_id", householdId)
-          .eq("week_start", weekIso)
-          .maybeSingle(),
-        supabase
-          .from("folders")
-          .select("id, household_id, owner_id, name, created_at")
-          .eq("household_id", householdId),
-        supabase.from("folder_recipes").select("folder_id, recipe_id, added_at"),
-        supabase
-          .from("household_members")
-          .select("user_id, email")
-          .eq("household_id", householdId),
-      ]);
+      supabase
+        .from("recipes")
+        .select(
+          "id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes, created_at, ingredients",
+        )
+        .eq("household_id", householdId)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("plan_entries")
+        .select("recipe_id, meal_plans!inner(household_id)")
+        .eq("meal_plans.household_id", householdId),
+      supabase
+        .from("meal_plans")
+        .select("id")
+        .eq("household_id", householdId)
+        .eq("week_start", weekIso)
+        .maybeSingle(),
+      supabase
+        .from("folders")
+        .select("id, household_id, owner_id, name, created_at")
+        .eq("household_id", householdId),
+      supabase.from("folder_recipes").select("folder_id, recipe_id, added_at"),
+      supabase
+        .from("household_members")
+        .select("user_id, email")
+        .eq("household_id", householdId),
+    ]);
     if (recipeRows) setRecipes(recipeRows as RecipeListItem[]);
     setFolders(
       summarizeFolders(
@@ -373,7 +388,11 @@ export default function HomeScreen() {
         if (!trimmed) return;
         void supabase
           .from("folders")
-          .insert({ household_id: householdId, owner_id: userId, name: trimmed })
+          .insert({
+            household_id: householdId,
+            owner_id: userId,
+            name: trimmed,
+          })
           .then(() => void load());
       });
     } else {
@@ -692,11 +711,15 @@ export default function HomeScreen() {
                 onMenu={folderMenu}
               />
               {myFolders.length === 0 ? (
-                <Muted>Save any recipe with the bookmark to start a folder.</Muted>
+                <Muted>
+                  Save any recipe with the bookmark to start a folder.
+                </Muted>
               ) : null}
               {otherFolders.map((group) => (
                 <View key={group.ownerId} style={{ gap: 12, paddingTop: 8 }}>
-                  <Eyebrow>{memberEmails.get(group.ownerId) ?? "Family member"}</Eyebrow>
+                  <Eyebrow>
+                    {memberEmails.get(group.ownerId) ?? "Family member"}
+                  </Eyebrow>
                   <FolderCollection
                     folders={group.folders}
                     view={folderView}
@@ -844,13 +867,15 @@ function FolderGridItem({
           justifyContent: "space-between",
           alignContent: "space-between",
           aspectRatio: 1,
+          borderRadius: radius.card,
+          overflow: "hidden",
         }}
       >
         {covers.map((path, i) => (
           <RecipeImage
             key={i}
             path={path}
-            style={{ width: "48.5%", height: "48.5%", borderRadius: 2 }}
+            style={{ width: "48.5%", height: "48.5%" }}
             iconSize={20}
           />
         ))}
@@ -868,7 +893,9 @@ function FolderGridItem({
           >
             {folder.name}
           </Text>
-          {onMenu ? <FolderMenuButton name={folder.name} onPress={onMenu} /> : null}
+          {onMenu ? (
+            <FolderMenuButton name={folder.name} onPress={onMenu} />
+          ) : null}
         </View>
         <Muted>
           {folder.recipeIds.length}{" "}
