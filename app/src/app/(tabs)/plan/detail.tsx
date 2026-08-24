@@ -6,6 +6,7 @@ import { Alert, FlatList, Modal, Platform, Pressable, ScrollView, Switch, Text, 
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PersonChip } from '@/components/person-chip';
+import { RecipeRow } from '@/components/recipe-cards';
 import {
   Body,
   Button,
@@ -64,9 +65,12 @@ interface RecipeLite {
   id: string;
   title: string;
   tags: string[];
+  needs_review: boolean;
   cover_image_path: string | null;
   ingredients?: IngredientData[];
-  servings?: number | null;
+  prep_minutes: number | null;
+  cook_minutes: number | null;
+  servings: number | null;
   fodmap_override?: 'low' | 'moderate' | 'high' | null;
   /** Planner classification; null is treated as 'main'. */
   meal_type?: 'main' | 'breakfast' | 'dessert' | 'side' | null;
@@ -210,7 +214,7 @@ export default function PlanScreen() {
           supabase
             .from('recipes')
             .select(
-              'id, title, tags, cover_image_path, ingredients, servings, fodmap_override, meal_type'
+              'id, title, tags, needs_review, cover_image_path, ingredients, prep_minutes, cook_minutes, servings, fodmap_override, meal_type'
             )
             .eq('household_id', householdId)
             .order('title'),
@@ -807,26 +811,9 @@ export default function PlanScreen() {
                   data={filteredRecipes}
                   keyExtractor={(r) => r.id}
                   ItemSeparatorComponent={Hairline}
-                  renderItem={({ item }) => {
-                    const category = resolveProteinCategory(item.tags, item.ingredients, index);
-                    return (
-                      <Pressable
-                        accessibilityRole="button"
-                        onPress={() => setPickedRecipe(item)}
-                        style={({ pressed }) => ({
-                          minHeight: minTapTarget,
-                          justifyContent: 'center',
-                          paddingHorizontal: 4,
-                          backgroundColor: pressed ? colors.cardPressed : 'transparent',
-                        })}
-                      >
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                          {category ? <CategoryDot category={category} /> : <View style={{ width: 8 }} />}
-                          <Body>{item.title}</Body>
-                        </View>
-                      </Pressable>
-                    );
-                  }}
+                  renderItem={({ item }) => (
+                    <RecipeRow recipe={item} onPress={() => setPickedRecipe(item)} />
+                  )}
                   ListEmptyComponent={<Muted>No recipes yet. Capture one first.</Muted>}
                 />
               </>
