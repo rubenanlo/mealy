@@ -39,7 +39,10 @@ function page(title: string, body: string): Response {
   li{margin:3px 0;line-height:1.45}
   .meta{color:#72716D;font-size:13px;margin:0 0 6px}
 </style></head><body>${body}</body></html>`;
-  return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+  const headers = new Headers();
+  headers.set('Content-Type', 'text/html; charset=utf-8');
+  headers.set('Cache-Control', 'no-store');
+  return new Response(html, { status: 200, headers });
 }
 
 Deno.serve(async (req) => {

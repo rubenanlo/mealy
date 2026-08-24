@@ -207,7 +207,9 @@ export default function PersonScreen() {
               label="Share cooking link"
               kind="secondary"
               onPress={() => {
-                const url = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/employee-menu?token=${shareToken}`;
+                // Served from workers.dev: supabase.co refuses to render HTML
+                // to unauthenticated browsers (anti-phishing rewrite).
+                const url = `https://mealy-menu.mealy-rubenanlo.workers.dev/?token=${shareToken}`;
                 void Share.share({ message: url, url });
               }}
             />
