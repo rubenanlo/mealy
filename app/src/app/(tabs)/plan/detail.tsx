@@ -6,7 +6,7 @@ import { Alert, FlatList, Modal, Platform, Pressable, ScrollView, Switch, Text, 
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PersonChip } from '@/components/person-chip';
-import { RecipeRow } from '@/components/recipe-cards';
+import { MetaLine, RecipeImage, RecipeRow, type RecipeListItem } from '@/components/recipe-cards';
 import {
   Body,
   Button,
@@ -831,12 +831,41 @@ export default function PlanScreen() {
                 />
               </>
             ) : (
-              <View style={{ gap: 16 }}>
-                <Body style={{ fontFamily: fonts.uiSemi }}>
-                  {pickedRecipe?.title ?? pickedCustom}
-                </Body>
-                <Muted>Who eats? No selection means the whole household.</Muted>
-                <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
+              <View style={{ flex: 1, gap: 20 }}>
+                {/* The picked meal, presented like everywhere else in the app. */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                  {pickedRecipe ? (
+                    <RecipeImage
+                      path={pickedRecipe.cover_image_path}
+                      style={{ width: 96, height: 72, borderRadius: radius.thumb }}
+                      iconSize={24}
+                    />
+                  ) : null}
+                  <View style={{ flex: 1, gap: 4 }}>
+                    <Text
+                      numberOfLines={2}
+                      style={{
+                        color: colors.text,
+                        fontSize: fontSize.cardTitle,
+                        lineHeight: 22,
+                        fontFamily: fonts.displaySemi,
+                      }}
+                    >
+                      {pickedRecipe?.title ?? pickedCustom}
+                    </Text>
+                    {pickedRecipe ? (
+                      <MetaLine recipe={pickedRecipe as RecipeListItem} />
+                    ) : (
+                      <Muted>Custom meal</Muted>
+                    )}
+                  </View>
+                </View>
+                <Hairline />
+
+                <View style={{ gap: 10 }}>
+                  <Eyebrow>Who eats</Eyebrow>
+                  <Muted>Nobody selected means the whole household.</Muted>
+                  <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
                   {eaters.map((person) => (
                     <PersonChip
                       key={person.id}
@@ -851,9 +880,12 @@ export default function PlanScreen() {
                       }
                     />
                   ))}
+                  </View>
                 </View>
-                <Muted>Who cooks?</Muted>
-                <View style={{ flexDirection: 'row', gap: 10 }}>
+
+                <View style={{ gap: 10 }}>
+                  <Eyebrow>Who cooks</Eyebrow>
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
                   {(
                     [
                       ['family', 'Family'],
@@ -894,15 +926,26 @@ export default function PlanScreen() {
                       </Pressable>
                     );
                   })}
+                  </View>
                 </View>
-                <Button label="Add to the week" onPress={() => void confirmAdd()} loading={busy} />
+
+                <View style={{ flex: 1 }} />
                 <Button
+                  label={
+                    pickerCell
+                      ? `Add to ${DAY_LABELS[pickerCell.day]} ${SLOT_LABELS[pickerCell.slot].toLowerCase()}`
+                      : 'Add to the week'
+                  }
+                  onPress={() => void confirmAdd()}
+                  loading={busy}
+                />
+                <LinkButton
                   label="Pick something else"
-                  kind="secondary"
                   onPress={() => {
                     setPickedRecipe(null);
                     setPickedCustom(null);
                   }}
+                  style={{ alignSelf: 'center' }}
                 />
               </View>
             )}
