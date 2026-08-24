@@ -1112,28 +1112,33 @@ export default function PlanScreen() {
                 </View>
 
                 <View style={{ flex: 1 }} />
-                <Button
-                  label={
-                    editingEntryId
-                      ? 'Save changes'
-                      : pickerCell
-                        ? `Add to ${DAY_LABELS[pickerCell.day]} ${SLOT_LABELS[pickerCell.slot].toLowerCase()}`
-                        : 'Add to the week'
-                  }
-                  onPress={() => void confirmAdd()}
-                  loading={busy}
-                />
-                <LinkButton
-                  label="Pick something else"
-                  onPress={() => {
-                    setPickedRecipe(null);
-                    setPickedCustom(null);
-                  }}
-                  style={{ alignSelf: 'center' }}
-                />
+                <View style={{ gap: 8 }}>
+                  <LinkButton
+                    label="Pick something else"
+                    onPress={() => {
+                      setPickedRecipe(null);
+                      setPickedCustom(null);
+                    }}
+                    style={{ alignSelf: 'center', paddingVertical: 4 }}
+                  />
+                  <Button
+                    label={
+                      editingEntryId
+                        ? 'Save changes'
+                        : pickerCell
+                          ? `Add to ${DAY_LABELS[pickerCell.day]} ${SLOT_LABELS[pickerCell.slot].toLowerCase()}`
+                          : 'Add to the week'
+                    }
+                    onPress={() => void confirmAdd()}
+                    loading={busy}
+                  />
+                  <Button label="Close" kind="secondary" onPress={closePicker} />
+                </View>
               </View>
             )}
-            <Button label="Close" kind="secondary" onPress={closePicker} />
+            {!pickedRecipe && !pickedCustom ? (
+              <Button label="Close" kind="secondary" onPress={closePicker} />
+            ) : null}
           </View>
         </View>
       </Modal>
