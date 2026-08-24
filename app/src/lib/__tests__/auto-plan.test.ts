@@ -59,3 +59,38 @@ describe('autoFillWeek', () => {
     expect(assignments[2].recipeId).toBe('a');
   });
 });
+
+describe('quota-aware fill', () => {
+  it('prioritizes categories under their weekly minimum', () => {
+    const { assignments } = autoFillWeek(
+      [cell(0)],
+      [cand('veg1', { category: 'vegetarian' }), cand('fish1', { category: 'fish' })],
+      { lowFodmapOnly: false, quotas: [{ category: 'fish', min: 2, max: null }] }
+    );
+    expect(assignments[0].recipeId).toBe('fish1');
+  });
+
+  it('never exceeds a category maximum, counting already-planned meals', () => {
+    const { assignments } = autoFillWeek(
+      [cell(0), cell(1)],
+      [cand('meat1', { category: 'meat' }), cand('meat2', { category: 'meat' }), cand('veg1', { category: 'vegetarian' })],
+      {
+        lowFodmapOnly: false,
+        quotas: [{ category: 'meat', min: 0, max: 2 }],
+        existingCounts: { meat: 1 },
+      }
+    );
+    // Only one meat slot remains (1 already planned, max 2); the rest go veg.
+    expect(assignments.filter((a) => a.recipeId.startsWith('meat'))).toHaveLength(1);
+    expect(assignments.filter((a) => a.recipeId === 'veg1')).toHaveLength(1);
+  });
+
+  it('leaves cells unfilled when every candidate category is capped out', () => {
+    const { unfilled } = autoFillWeek(
+      [cell(0)],
+      [cand('meat1', { category: 'meat' })],
+      { lowFodmapOnly: false, quotas: [{ category: 'meat', min: 0, max: 0 }] }
+    );
+    expect(unfilled).toHaveLength(1);
+  });
+});

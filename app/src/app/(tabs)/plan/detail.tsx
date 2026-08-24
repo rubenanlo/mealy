@@ -68,6 +68,8 @@ interface RecipeLite {
   ingredients?: IngredientData[];
   servings?: number | null;
   fodmap_override?: 'low' | 'moderate' | 'high' | null;
+  /** Planner classification; null is treated as 'main'. */
+  meal_type?: 'main' | 'breakfast' | 'dessert' | 'side' | null;
 }
 
 interface MealPlanRow {
@@ -207,7 +209,9 @@ export default function PlanScreen() {
             .order('created_at'),
           supabase
             .from('recipes')
-            .select('id, title, tags, cover_image_path, ingredients, servings, fodmap_override')
+            .select(
+              'id, title, tags, cover_image_path, ingredients, servings, fodmap_override, meal_type'
+            )
             .eq('household_id', householdId)
             .order('title'),
         ]);
@@ -299,7 +303,9 @@ export default function PlanScreen() {
           .filter((id): id is string => id !== null)
       );
 
-      const candidates: AutoCandidate[] = recipes.map((r) => {
+      // Only lunch/dinner recipes belong on the week grid (null = main).
+      const mains = recipes.filter((r) => (r.meal_type ?? 'main') === 'main');
+      const candidates: AutoCandidate[] = mains.map((r) => {
         const lines = (r.ingredients ?? []).map((ing) => ({
           raw: ing.raw || ing.name,
           name: ing.name,
@@ -322,8 +328,36 @@ export default function PlanScreen() {
         };
       });
 
+      // Household weekly quotas: one shared meal feeds everyone, so the
+      // strictest bounds across eaters apply (highest min, lowest max).
+      const quotaMap = new Map<string, { min: number; max: number | null }>();
+      for (const person of eaters) {
+        const profile = normalizeDietProfile(person.diet_profile);
+        for (const target of profile.proteinQuotas.targets) {
+          const agg = quotaMap.get(target.category) ?? { min: 0, max: null };
+          agg.min = Math.max(agg.min, target.min ?? 0);
+          if (target.max !== null) {
+            agg.max = agg.max === null ? target.max : Math.min(agg.max, target.max);
+          }
+          quotaMap.set(target.category, agg);
+        }
+      }
+      const quotas = [...quotaMap.entries()].map(([category, q]) => ({ category, ...q }));
+
+      // Meals already on this week's grid count toward the quotas.
+      const categoryById = new Map(
+        recipes.map((r) => [r.id, resolveProteinCategory(r.tags, r.ingredients, index)])
+      );
+      const existingCounts: Record<string, number> = {};
+      for (const entry of entries) {
+        const cat = entry.recipe_id ? categoryById.get(entry.recipe_id) : null;
+        if (cat) existingCounts[cat] = (existingCounts[cat] ?? 0) + 1;
+      }
+
       const { assignments, unfilled } = autoFillWeek(emptyCells, candidates, {
         lowFodmapOnly: autoLowFodmap,
+        quotas,
+        existingCounts,
       });
       if (assignments.length === 0) {
         setAutoOpen(false);

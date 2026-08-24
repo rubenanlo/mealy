@@ -96,6 +96,8 @@ interface RecipeDetail {
   cover_focal: { x: number; y: number } | null;
   /** Manual FODMAP level; null = derived from ingredients. */
   fodmap_override: 'low' | 'moderate' | 'high' | null;
+  /** Planner classification; null is treated as 'main' (lunch/dinner). */
+  meal_type: 'main' | 'breakfast' | 'dessert' | 'side' | null;
 }
 
 interface SourceRow {
@@ -605,6 +607,25 @@ export default function RecipeSheetScreen() {
     ]);
   };
 
+  /** Tap the byline meal chip: main (lunch/dinner) / breakfast / dessert / side. */
+  const editMealType = () => {
+    if (!recipe) return;
+    const current = recipe.meal_type ?? 'main';
+    const options: ['main' | 'breakfast' | 'dessert' | 'side', string][] = [
+      ['main', 'Lunch / dinner'],
+      ['breakfast', 'Breakfast'],
+      ['dessert', 'Dessert'],
+      ['side', 'Side'],
+    ];
+    Alert.alert('Meal type', '"Choose for us" only plans lunch/dinner recipes.', [
+      ...options.map(([value, label]) => ({
+        text: current === value ? `${label} ✓` : label,
+        onPress: () => void saveRecipe({ meal_type: value }),
+      })),
+      { text: 'Cancel', style: 'cancel' as const },
+    ]);
+  };
+
   /** Tap the byline badge: pick the FODMAP level in place. */
   const editFodmapLevel = () => {
     if (!recipe) return;
@@ -995,6 +1016,30 @@ export default function RecipeSheetScreen() {
                   </Pressable>
                 </>
               ) : null}
+              <Muted>·</Muted>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Meal type — tap to change"
+                onPress={editMealType}
+                hitSlop={8}
+                style={({ pressed }) => ({
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 2,
+                  opacity: pressed ? 0.6 : 1,
+                })}
+              >
+                <Muted>
+                  {recipe.meal_type === 'breakfast'
+                    ? 'Breakfast'
+                    : recipe.meal_type === 'dessert'
+                      ? 'Dessert'
+                      : recipe.meal_type === 'side'
+                        ? 'Side'
+                        : 'Lunch/dinner'}
+                </Muted>
+                <Ionicons name="chevron-down" size={12} color={colors.textMuted} />
+              </Pressable>
               {metaParts.length > 0 ? <Muted>·</Muted> : null}
               <Pressable
                 accessibilityRole="button"
