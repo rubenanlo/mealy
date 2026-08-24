@@ -21,7 +21,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: carrot named a low FODMAP vegetable. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "pomme-de-terre",
@@ -45,7 +46,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: potato named a low FODMAP vegetable. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "patate-douce",
@@ -68,7 +70,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash low FODMAP shopping list: sweet potato low at 1 standard serve (75 g); larger serves carry polyols (mannitol) per Monash education. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "oignon",
@@ -95,7 +98,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/all-about-onion-garlic-and-infused-oils-on-the-low-fodmap-diet/",
     "source_note": "Monash blog: 'Both onion and garlic are high in the FODMAP subgroup fructans'. Fructans are water- but not fat-soluble (infused oil is low FODMAP). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "oignon-nouveau",
+      "ciboulette"
+    ]
   },
   {
     "slug": "oignon-rouge",
@@ -118,7 +125,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/all-about-onion-garlic-and-infused-oils-on-the-low-fodmap-diet/",
     "source_note": "Monash blog: onion (all varieties) high in fructans. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "oignon-nouveau",
+      "ciboulette"
+    ]
   },
   {
     "slug": "echalote",
@@ -143,7 +154,11 @@
     "density_g_per_ml": null,
     "source_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC3966170/",
     "source_note": "Magge & Lembo 2012 (Gastroenterol Hepatol NY, PMC3966170) Table 1: shallot listed high FODMAP (fructans). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "oignon-nouveau",
+      "ciboulette"
+    ]
   },
   {
     "slug": "ail",
@@ -170,7 +185,10 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/all-about-onion-garlic-and-infused-oils-on-the-low-fodmap-diet/",
     "source_note": "Monash blog: garlic high in fructans; garlic-infused oil is low FODMAP (fructans not fat-soluble). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "ciboulette"
+    ]
   },
   {
     "slug": "oignon-nouveau",
@@ -196,7 +214,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/cooking-with-onion-and-garlic-myths-and/",
     "source_note": "Monash blog: green parts of spring onion are a low FODMAP onion replacement; the white bulb contains fructans (avoid).",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "poireau",
@@ -234,7 +253,10 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: leek named high FODMAP (fructans). Fructan content quantified in Muir et al. 2009 (pubmed 19123815). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "oignon-nouveau"
+    ]
   },
   {
     "slug": "tomate",
@@ -271,7 +293,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.ibsdiets.org/fodmap-diet/fodmap-food-list/",
     "source_note": "IBS Diets published FODMAP list: tomato low; Monash shopping list also names canned tomato low. Larger serves may carry excess fructose. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "courgette",
@@ -308,7 +331,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.ibsdiets.org/fodmap-diet/fodmap-food-list/",
     "source_note": "IBS Diets published FODMAP list: courgette low at 65 g; fructans at larger serves. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "aubergine",
@@ -342,7 +366,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: eggplant/aubergine named a low FODMAP vegetable (1 serve = 75 g per Monash shopping list). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "poivron-vert",
@@ -377,7 +402,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: green capsicum (bell pepper) named low FODMAP. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "poivron-rouge",
@@ -413,7 +439,10 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: red capsicum (bell pepper) named high FODMAP (excess fructose at larger serves). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "poivron-vert"
+    ]
   },
   {
     "slug": "concombre",
@@ -447,7 +476,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: cucumber named low FODMAP. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "laitue",
@@ -485,7 +515,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: lettuce named low FODMAP. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "mache",
@@ -520,7 +551,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.ibsdiets.org/fodmap-diet/fodmap-food-list/",
     "source_note": "Leafy salad greens listed low in published FODMAP lists (IBS Diets; Monash shopping list names lettuce/spinach/kale).",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "roquette",
@@ -554,7 +586,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.ibsdiets.org/fodmap-diet/fodmap-food-list/",
     "source_note": "Leafy salad greens listed low in published FODMAP lists (IBS Diets).",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "epinard",
@@ -590,7 +623,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash low FODMAP shopping list: spinach low at 1 standard serve (75 g).",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "chou-kale",
@@ -624,7 +658,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash low FODMAP shopping list: kale low at 1 standard serve (75 g).",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "brocoli",
@@ -661,7 +696,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash low FODMAP shopping list: broccoli heads low at 1 standard serve (75 g); stalks carry more excess fructose per Monash education.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "chou-fleur",
@@ -699,7 +735,11 @@
     "density_g_per_ml": null,
     "source_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC3966170/",
     "source_note": "Magge & Lembo 2012 Table 1: cauliflower listed high FODMAP (polyols/mannitol). Note: 2025 Monash retest reportedly lowered it — pending public confirmation. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "brocoli",
+      "chou-blanc"
+    ]
   },
   {
     "slug": "chou-blanc",
@@ -737,7 +777,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash low FODMAP shopping list: red or white cabbage low at 1 standard serve (75 g). Savoy cabbage is more fructan-rich per Monash education.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "chou-de-bruxelles",
@@ -773,7 +814,11 @@
     "density_g_per_ml": null,
     "source_url": "https://monashfodmap.com/blog/reintroduction-update/",
     "source_note": "Monash reintroduction update blog: Brussels sprouts no longer a fructan challenge food (insufficient fructans at a normal serve); published low serve ~2 sprouts; larger serves moderate. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "brocoli",
+      "chou-kale"
+    ]
   },
   {
     "slug": "haricot-vert",
@@ -807,7 +852,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: green beans named low FODMAP (1 serve = 75 g per Monash shopping list).",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "petit-pois",
@@ -845,7 +891,10 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: green peas named high FODMAP; Magge & Lembo 2012 lists peas under oligosaccharides (fructans/GOS).",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "haricot-vert"
+    ]
   },
   {
     "slug": "asperge",
@@ -884,7 +933,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: asparagus named high FODMAP; Magge & Lembo 2012 lists asparagus under oligosaccharides; excess fructose per Monash education. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "haricot-vert",
+      "courgette"
+    ]
   },
   {
     "slug": "artichaut",
@@ -922,7 +975,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: artichoke named high FODMAP (fructans; also in Magge & Lembo 2012 Table 1). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "haricot-vert",
+      "aubergine"
+    ]
   },
   {
     "slug": "betterave",
@@ -960,7 +1017,11 @@
     "density_g_per_ml": null,
     "source_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC3966170/",
     "source_note": "Magge & Lembo 2012 Table 1: beetroot listed high FODMAP (oligosaccharides). Pickled/canned beetroot listed low on Monash shopping list. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "carotte",
+      "radis"
+    ]
   },
   {
     "slug": "celeri-branche",
@@ -998,7 +1059,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.ibsdiets.org/fodmap-diet/fodmap-food-list/",
     "source_note": "IBS Diets published FODMAP list: celery low only below ~5 cm of stalk, high above (mannitol). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "concombre",
+      "radis"
+    ]
   },
   {
     "slug": "celeri-rave",
@@ -1033,7 +1098,8 @@
     "density_g_per_ml": null,
     "source_url": null,
     "source_note": "no public source found (celeriac not in verified public lists); treat as check. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "fenouil",
@@ -1070,7 +1136,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.ibsdiets.org/fodmap-diet/fodmap-food-list/",
     "source_note": "IBS Diets published list: fennel bulb low up to 75 g; Magge & Lembo 2012 lists fennel under high-FODMAP oligosaccharides at larger serves. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "courgette",
+      "poivron-vert"
+    ]
   },
   {
     "slug": "champignon-de-paris",
@@ -1095,7 +1165,10 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/what-are-polyols/",
     "source_note": "Monash polyols blog: mushrooms named a mannitol source; Magge & Lembo 2012 lists mushroom high (polyols). Canned champignons and oyster mushrooms are low (Monash shopping list). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "pleurote"
+    ]
   },
   {
     "slug": "pleurote",
@@ -1116,7 +1189,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash low FODMAP shopping list: oyster mushroom named the low FODMAP mushroom option.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "potimarron",
@@ -1151,7 +1225,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.ibsdiets.org/fodmap-diet/fodmap-food-list/",
     "source_note": "IBS Diets published list: pumpkin low up to ~63 g (kabocha-type pumpkin also low on Monash shopping list); larger serves moderate. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "courge-butternut",
@@ -1186,7 +1261,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.ibsdiets.org/fodmap-diet/fodmap-food-list/",
     "source_note": "IBS Diets published list: butternut squash low only at ~1/4 cup (≈45 g); moderate beyond. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "potimarron",
+      "patate-douce"
+    ]
   },
   {
     "slug": "radis",
@@ -1221,7 +1300,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.ibsdiets.org/fodmap-diet/fodmap-food-list/",
     "source_note": "IBS Diets published FODMAP list: radish low. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "navet",
@@ -1255,7 +1335,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.ibsdiets.org/fodmap-diet/fodmap-food-list/",
     "source_note": "IBS Diets published FODMAP list: turnip low at ~1/2 turnip. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "panais",
@@ -1289,7 +1370,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.ibsdiets.org/fodmap-diet/fodmap-food-list/",
     "source_note": "IBS Diets published FODMAP list: parsnip low. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "endive",
@@ -1324,7 +1406,8 @@
     "density_g_per_ml": null,
     "source_url": null,
     "source_note": "no public source found (Belgian endive/witlof not in verified public lists). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "mais-doux",
@@ -1363,7 +1446,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash shopping list: canned corn kernels low; fresh sweet corn is serve-limited (~1/2 cob) with sorbitol/fructans per Monash education and published lists.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "patate-douce",
+      "carotte"
+    ]
   },
   {
     "slug": "avocat",
@@ -1386,7 +1473,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/avocado-and-fodmaps-a-smashing-new-discovery/",
     "source_note": "Monash avocado blog: avocado very high in polyols (sorbitol/perseitol); Magge & Lembo 2012 lists avocado under polyols. Small serves (~1/8) tolerated per Monash education. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "gingembre",
@@ -1408,7 +1496,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/cooking-with-onion-and-garlic-myths-and/",
     "source_note": "Monash blog: ginger named a low FODMAP flavour; IBS Diets list: ginger low. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "pomme",
@@ -1447,7 +1536,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: apple named high FODMAP; Magge & Lembo 2012: apple under excess fructose and polyols (sorbitol). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "kiwi",
+      "orange"
+    ]
   },
   {
     "slug": "poire",
@@ -1485,7 +1578,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: pear named high FODMAP; Magge & Lembo 2012: pear under excess fructose and polyols. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "myrtille",
+      "kiwi"
+    ]
   },
   {
     "slug": "banane",
@@ -1509,7 +1606,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash shopping list: firm banana low FODMAP; ripe bananas develop fructans (serve-limited) per Monash education. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "orange",
@@ -1544,7 +1642,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: orange named low FODMAP. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "clementine",
@@ -1580,7 +1679,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: mandarin named low FODMAP. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "citron",
@@ -1603,7 +1703,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/cooking-with-onion-and-garlic-myths-and/",
     "source_note": "Monash blog: lemon juice named a low FODMAP flavour. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "citron-vert",
@@ -1625,7 +1726,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/cooking-with-onion-and-garlic-myths-and/",
     "source_note": "Monash blog: lime juice named a low FODMAP flavour. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "fraise",
@@ -1659,7 +1761,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash shopping list: strawberry named low FODMAP. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "framboise",
@@ -1693,7 +1796,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash shopping list: raspberry named low FODMAP.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "myrtille",
@@ -1727,7 +1831,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: blueberry named low FODMAP.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "raisin",
@@ -1764,7 +1869,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.ibsdiets.org/fodmap-diet/fodmap-food-list/",
     "source_note": "IBS Diets published FODMAP list: grapes (red and white) listed low (serve-limited). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "peche",
@@ -1801,7 +1907,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: peach named high FODMAP; Monash polyols blog names stone fruits sorbitol sources; Magge & Lembo 2012: peach under polyols. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "orange",
+      "myrtille"
+    ]
   },
   {
     "slug": "nectarine",
@@ -1839,7 +1949,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: nectarine named high FODMAP (sorbitol; stone fruit per Monash polyols blog). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "orange",
+      "myrtille"
+    ]
   },
   {
     "slug": "abricot",
@@ -1875,7 +1989,11 @@
     "density_g_per_ml": null,
     "source_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC3966170/",
     "source_note": "Magge & Lembo 2012 Table 1: apricot listed under polyols (sorbitol); stone fruit per Monash polyols blog. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "orange",
+      "ananas"
+    ]
   },
   {
     "slug": "prune",
@@ -1913,7 +2031,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: plum named high FODMAP; Magge & Lembo 2012: plum/prune under polyols. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "myrtille",
+      "orange"
+    ]
   },
   {
     "slug": "cerise",
@@ -1950,7 +2072,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: cherries named high FODMAP; Magge & Lembo 2012: cherry under polyols; excess fructose per Monash education. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "myrtille",
+      "fraise"
+    ]
   },
   {
     "slug": "melon",
@@ -1985,7 +2111,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: cantaloupe named low FODMAP. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "pasteque",
@@ -2024,7 +2151,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: watermelon named high FODMAP; Magge & Lembo 2012 lists watermelon under excess fructose and polyols.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "melon",
+      "fraise"
+    ]
   },
   {
     "slug": "kiwi",
@@ -2058,7 +2189,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: kiwifruit named low FODMAP. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "ananas",
@@ -2079,7 +2211,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: pineapple named low FODMAP. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "mangue",
@@ -2102,7 +2235,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: mango named high FODMAP; Magge & Lembo 2012: mango under excess fructose. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "ananas",
+      "melon"
+    ]
   },
   {
     "slug": "figue",
@@ -2136,7 +2273,8 @@
     "density_g_per_ml": null,
     "source_url": null,
     "source_note": "no public source found with a verifiable classification (commonly described high/excess fructose, but not in the verified public lists). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "raisin-sec",
@@ -2158,7 +2296,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: dried fruit named high FODMAP.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "raisin",
+      "myrtille"
+    ]
   },
   {
     "slug": "abricot-sec",
@@ -2179,7 +2321,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: dried fruit named high FODMAP (stone fruit polyols per Monash polyols blog).",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "myrtille",
+      "ananas"
+    ]
   },
   {
     "slug": "saumon",
@@ -2202,7 +2348,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: plain cooked meats/poultry/seafood are low FODMAP (protein foods contain no fermentable carbohydrates). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "cabillaud",
@@ -2225,7 +2372,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: plain cooked meats/poultry/seafood are low FODMAP (protein foods contain no fermentable carbohydrates). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "thon-frais",
@@ -2247,7 +2395,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: plain cooked meats/poultry/seafood are low FODMAP (protein foods contain no fermentable carbohydrates). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "crevette",
@@ -2270,7 +2419,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: plain cooked meats/poultry/seafood are low FODMAP (protein foods contain no fermentable carbohydrates). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "moule",
@@ -2292,7 +2442,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: plain cooked meats/poultry/seafood are low FODMAP (protein foods contain no fermentable carbohydrates).",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "sardine",
@@ -2313,7 +2464,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: plain cooked meats/poultry/seafood are low FODMAP (protein foods contain no fermentable carbohydrates). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "truite",
@@ -2335,7 +2487,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: plain cooked meats/poultry/seafood are low FODMAP (protein foods contain no fermentable carbohydrates). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "dorade",
@@ -2357,7 +2510,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: plain cooked meats/poultry/seafood are low FODMAP (protein foods contain no fermentable carbohydrates). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "thon-boite",
@@ -2380,7 +2534,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: plain seafood low FODMAP; drained canned tuna (in brine/oil) carries no fermentable carbohydrates. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "poulet",
@@ -2405,7 +2560,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: plain cooked meats/poultry are low FODMAP (no fermentable carbohydrates). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "dinde",
@@ -2427,7 +2583,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: plain cooked meats/poultry are low FODMAP (no fermentable carbohydrates). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "boeuf-hache",
@@ -2451,7 +2608,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: plain cooked meats/poultry are low FODMAP (no fermentable carbohydrates). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "boeuf-steak",
@@ -2475,7 +2633,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: plain cooked meats/poultry are low FODMAP (no fermentable carbohydrates). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "veau",
@@ -2498,7 +2657,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: plain cooked meats/poultry are low FODMAP (no fermentable carbohydrates). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "agneau",
@@ -2521,7 +2681,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: plain cooked meats/poultry are low FODMAP (no fermentable carbohydrates). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "porc",
@@ -2546,7 +2707,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: plain cooked meats/poultry are low FODMAP (no fermentable carbohydrates). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "canard",
@@ -2569,7 +2731,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: plain cooked meats/poultry are low FODMAP (no fermentable carbohydrates). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "jambon-blanc",
@@ -2592,7 +2755,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: plain meats low, but 'some processed meats' are high — check labels for onion/garlic and additives. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "lardons",
@@ -2615,7 +2779,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: plain meats low; cured pork carries no fermentable carbs — check labels of processed products. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "saucisse",
@@ -2640,7 +2805,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: 'some processed meats' are high FODMAP — sausages frequently contain onion/garlic (fructans); check label.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "chorizo",
@@ -2664,7 +2830,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: 'some processed meats' are high FODMAP — chorizo typically contains garlic (fructans); check label.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "oeuf",
@@ -2689,7 +2856,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: eggs named low FODMAP. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "tofu-ferme",
@@ -2710,7 +2878,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: firm tofu named low FODMAP (silken tofu is higher — GOS in whole soybeans).",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "lait",
@@ -2735,7 +2904,11 @@
     "density_g_per_ml": 1.03,
     "source_url": "https://www.monashfodmap.com/blog/what-difference-between-dairy-and-lactose/",
     "source_note": "Monash dairy/lactose blog: milk is a higher-lactose food; most people tolerate 12-15 g lactose/day ≈ 250 ml regular milk. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "lait-sans-lactose",
+      "lait-coco"
+    ]
   },
   {
     "slug": "lait-sans-lactose",
@@ -2756,7 +2929,8 @@
     "density_g_per_ml": 1.03,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: lactose-free milk named low FODMAP. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "beurre",
@@ -2779,7 +2953,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/what-difference-between-dairy-and-lactose/",
     "source_note": "Monash dairy/lactose blog: 'many dairy products are very low in lactose (such as hard cheeses and butter)'. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "creme-fraiche",
@@ -2803,7 +2978,8 @@
     "density_g_per_ml": 1.0,
     "source_url": null,
     "source_note": "no public source found with a threshold for cultured cream; contains lactose (dairy) — small serves generally tolerated per Monash lactose education. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "creme-liquide",
@@ -2828,7 +3004,8 @@
     "density_g_per_ml": 1.0,
     "source_url": null,
     "source_note": "no public source found with a threshold for cream; contains lactose (dairy). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "yaourt-nature",
@@ -2853,7 +3030,10 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: yoghurt named high FODMAP (lactose); lactose-free varieties low; small serves tolerated per Monash lactose blog. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "lait-sans-lactose"
+    ]
   },
   {
     "slug": "fromage-blanc",
@@ -2877,7 +3057,8 @@
     "density_g_per_ml": null,
     "source_url": null,
     "source_note": "no public source found for fromage blanc specifically; fresh unripened cheeses retain lactose (closest published analogue: ricotta low at 40 g, moderate at 80 g — IBS Dietitian cheese guide).",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "comte",
@@ -2900,7 +3081,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/what-difference-between-dairy-and-lactose/",
     "source_note": "Monash dairy/lactose blog + public food list: hard/matured cheeses are very low in lactose (low FODMAP). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "emmental",
@@ -2922,7 +3104,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: hard cheeses named low FODMAP. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "parmesan",
@@ -2944,7 +3127,8 @@
     "density_g_per_ml": null,
     "source_url": "https://theibsdietitian.com/blog/low-fodmap-cheese",
     "source_note": "IBS Dietitian published cheese guide: parmesan explicitly low FODMAP; hard mature cheeses lowest in lactose (Monash dairy blog).",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "mozzarella",
@@ -2966,7 +3150,8 @@
     "density_g_per_ml": null,
     "source_url": "https://theibsdietitian.com/blog/low-fodmap-cheese",
     "source_note": "IBS Dietitian published cheese guide: mozzarella listed low FODMAP. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "camembert",
@@ -2987,7 +3172,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: brie/camembert cheese named low FODMAP. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "brie",
@@ -3008,7 +3194,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: brie/camembert cheese named low FODMAP.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "feta",
@@ -3030,7 +3217,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: feta cheese named low FODMAP.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "chevre",
@@ -3055,7 +3243,8 @@
     "density_g_per_ml": null,
     "source_url": null,
     "source_note": "no public source found for goat cheese specifically (not classified in the verified public cheese lists); ripened goat cheeses are likely low in lactose like other matured cheeses. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "ricotta",
@@ -3076,7 +3265,11 @@
     "density_g_per_ml": null,
     "source_url": "https://theibsdietitian.com/blog/low-fodmap-cheese",
     "source_note": "IBS Dietitian published cheese guide: '40g of ricotta cheese is considered to be low FODMAP and moderate at 80g'.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "feta",
+      "brie"
+    ]
   },
   {
     "slug": "lentille-verte",
@@ -3102,7 +3295,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/including-legumes-on-low-fodmap-diet/",
     "source_note": "Monash legumes blog: legumes are naturally high in oligos (GOS and fructans); canned/boiled-and-drained legumes are lower (oligos leach into water).",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "quinoa",
+      "tofu-ferme"
+    ]
   },
   {
     "slug": "lentille-corail",
@@ -3126,7 +3323,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/including-legumes-on-low-fodmap-diet/",
     "source_note": "Monash legumes blog: legumes naturally high in oligos (GOS/fructans); boiled and drained servings are lower.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "quinoa",
+      "tofu-ferme"
+    ]
   },
   {
     "slug": "pois-chiche",
@@ -3150,7 +3351,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/including-legumes-on-low-fodmap-diet/",
     "source_note": "Monash legumes blog: legumes high in oligos; canned drained chickpeas low at ~1/4 cup (42 g), a small can (125 g) usable in stir-fries/curries.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "tofu-ferme",
+      "quinoa"
+    ]
   },
   {
     "slug": "haricot-rouge",
@@ -3173,7 +3378,11 @@
     "density_g_per_ml": null,
     "source_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC3966170/",
     "source_note": "Magge & Lembo 2012 Table 1: red kidney bean listed high FODMAP (oligosaccharides/GOS); canning and draining reduces oligos (Monash legumes blog).",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "tofu-ferme",
+      "quinoa"
+    ]
   },
   {
     "slug": "haricot-blanc",
@@ -3199,7 +3408,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/including-legumes-on-low-fodmap-diet/",
     "source_note": "Monash legumes blog: legumes high in oligos; canned butter beans low at ~1/4 cup (35 g); Magge & Lembo 2012 lists baked beans high.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "tofu-ferme",
+      "quinoa"
+    ]
   },
   {
     "slug": "flageolet",
@@ -3223,7 +3436,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/including-legumes-on-low-fodmap-diet/",
     "source_note": "Class-level evidence only: Monash legumes blog — legumes are naturally high in oligos (GOS/fructans); no variety-specific public data for flageolets.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "tofu-ferme",
+      "haricot-vert"
+    ]
   },
   {
     "slug": "riz",
@@ -3247,7 +3464,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash shopping list: rice named a low FODMAP grain.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "pates-ble",
@@ -3275,7 +3493,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/avoiding-wheat-how-strict-on-low-fodmap_10/",
     "source_note": "Monash wheat blog: wheat pasta named a fructan-rich food to avoid in the restrictive phase (small serves may be tolerated); fructans quantified in Biesiekierski 2011 (pubmed 21332832).",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "riz",
+      "quinoa"
+    ]
   },
   {
     "slug": "farine-ble",
@@ -3300,7 +3522,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/avoiding-wheat-how-strict-on-low-fodmap_10/",
     "source_note": "Monash wheat blog: wheat contains high levels of fructans; grain fructans quantified in Biesiekierski 2011.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "sarrasin",
+      "flocons-avoine"
+    ]
   },
   {
     "slug": "semoule-couscous",
@@ -3325,7 +3551,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/avoiding-wheat-how-strict-on-low-fodmap_10/",
     "source_note": "Wheat-semolina product: Monash wheat blog — wheat is fructan-rich; Monash shopping list offers gluten-free couscous as the low alternative.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "quinoa",
+      "polenta"
+    ]
   },
   {
     "slug": "boulgour",
@@ -3349,7 +3579,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/avoiding-wheat-how-strict-on-low-fodmap_10/",
     "source_note": "Wheat product: Monash wheat blog — wheat is fructan-rich (small serves may be tolerated); fructans in processed grains quantified in Biesiekierski 2011.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "quinoa",
+      "sarrasin"
+    ]
   },
   {
     "slug": "quinoa",
@@ -3371,7 +3605,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: quinoa named a low FODMAP grain.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "flocons-avoine",
@@ -3393,7 +3628,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list + shopping list: oats/rolled oats named low FODMAP.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "sarrasin",
@@ -3416,7 +3652,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.ibsdiets.org/fodmap-diet/fodmap-food-list/",
     "source_note": "IBS Diets published FODMAP list: buckwheat low.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "polenta",
@@ -3438,7 +3675,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.ibsdiets.org/fodmap-diet/fodmap-food-list/",
     "source_note": "IBS Diets published FODMAP list: polenta low.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "baguette",
@@ -3463,7 +3701,10 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: wheat-based breads named high FODMAP (fructans); sourdough/spelt options are the published low alternatives. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "pain-epeautre-levain"
+    ]
   },
   {
     "slug": "pain-complet",
@@ -3487,7 +3728,10 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/avoiding-wheat-how-strict-on-low-fodmap_10/",
     "source_note": "Monash wheat blog: wholegrain/wholemeal wheat bread named fructan-rich.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "pain-epeautre-levain"
+    ]
   },
   {
     "slug": "pain-de-mie",
@@ -3511,7 +3755,10 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: wheat-based breads high FODMAP (a single slice of white wheat bread is serve-limited per Monash education). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "pain-epeautre-levain"
+    ]
   },
   {
     "slug": "pain-epeautre-levain",
@@ -3534,7 +3781,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/avoiding-wheat-how-strict-on-low-fodmap_10/",
     "source_note": "Monash wheat blog: spelt sourdough bread low FODMAP at 2 slices (sourdough fermentation reduces fructans).",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "huile-olive",
@@ -3555,7 +3803,8 @@
     "density_g_per_ml": 0.92,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash shopping list (fats & oils): oils are low FODMAP — pure fats contain no fermentable carbohydrates; garlic/onion-infused oils recommended. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "huile-tournesol",
@@ -3577,7 +3826,8 @@
     "density_g_per_ml": 0.92,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash shopping list (fats & oils): oils are low FODMAP (no fermentable carbohydrates). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "vinaigre-vin",
@@ -3600,7 +3850,8 @@
     "density_g_per_ml": 1.01,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash shopping list (sauces): vinegar named low FODMAP. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "vinaigre-balsamique",
@@ -3621,7 +3872,8 @@
     "density_g_per_ml": 1.05,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash shopping list (sauces): vinegar named low FODMAP; balsamic is serve-limited (small amounts) per published lists. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "sauce-soja",
@@ -3642,7 +3894,8 @@
     "density_g_per_ml": 1.15,
     "source_url": "https://www.ibsdiets.org/fodmap-diet/fodmap-food-list/",
     "source_note": "IBS Diets published FODMAP list: soy sauce low. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "moutarde",
@@ -3664,7 +3917,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash shopping list (spreads): mustard named low FODMAP.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "mayonnaise",
@@ -3685,7 +3939,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash shopping list (spreads): mayonnaise named low FODMAP — check labels for added garlic/onion.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "ketchup",
@@ -3706,7 +3961,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.ibsdiets.org/fodmap-diet/fodmap-food-list/",
     "source_note": "IBS Diets published FODMAP list: ketchup low only at ~1 sachet (≈10 g); larger amounts carry fructose (HFCS in some brands).",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "moutarde",
+      "sauce-tomate"
+    ]
   },
   {
     "slug": "sauce-tomate",
@@ -3730,7 +3989,8 @@
     "density_g_per_ml": 1.03,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash shopping list: canned tomato named low FODMAP — plain passata only; jarred pasta sauces often contain onion/garlic (check label). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "concentre-tomate",
@@ -3751,7 +4011,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Closest public claim: canned tomato low (Monash shopping list); paste is concentrated, so large amounts may add fructose — used in small quantities.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "olives",
@@ -3773,7 +4034,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.ibsdiets.org/fodmap-diet/fodmap-food-list/",
     "source_note": "IBS Diets published FODMAP list: olives low. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "cornichons",
@@ -3794,7 +4056,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.ibsdiets.org/fodmap-diet/fodmap-food-list/",
     "source_note": "IBS Diets published FODMAP list: pickled gherkins low.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "capres",
@@ -3815,7 +4078,8 @@
     "density_g_per_ml": null,
     "source_url": null,
     "source_note": "no public source found for capers in the verified lists; used in very small quantities.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "bouillon-cube",
@@ -3841,7 +4105,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/all-about-onion-garlic-and-infused-oils-on-the-low-fodmap-diet/",
     "source_note": "Stock cubes commonly contain onion and garlic powder (fructans — high per Monash onion/garlic blog); fructans also leach into broth. Check label; onion/garlic-free stocks exist.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "lait-coco",
@@ -3864,7 +4129,8 @@
     "density_g_per_ml": 0.98,
     "source_url": "https://www.ibsdiets.org/fodmap-diet/fodmap-food-list/",
     "source_note": "IBS Diets published FODMAP list: coconut milk low at 125 ml; larger serves carry polyols (sorbitol). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "sel",
@@ -3887,7 +4153,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Pure mineral — contains no carbohydrates, FODMAP-free by composition (Monash shopping list: most seasonings low).",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "poivre",
@@ -3910,7 +4177,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash shopping list: spices — most varieties low FODMAP (excluding garlic and onion powders).",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "sucre",
@@ -3934,7 +4202,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: table sugar (sucrose) named low FODMAP.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "miel",
@@ -3958,7 +4227,11 @@
     "density_g_per_ml": 1.42,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: honey named high FODMAP (excess fructose). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "sirop-erable",
+      "sucre"
+    ]
   },
   {
     "slug": "sirop-erable",
@@ -3977,7 +4250,8 @@
     "density_g_per_ml": 1.32,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: maple syrup named a low FODMAP sweetener. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "confiture",
@@ -3999,7 +4273,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash shopping list (spreads): jams named low FODMAP — check labels for high-fructose corn syrup and high-FODMAP fruits.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "chocolat-noir",
@@ -4021,7 +4296,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: dark chocolate named low FODMAP; IBS Diets list: low at ~5 squares (≈30 g).",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "amande",
@@ -4046,7 +4322,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.ibsdiets.org/fodmap-diet/fodmap-food-list/",
     "source_note": "IBS Diets published FODMAP list: almonds low at ~10 nuts (≈12 g); larger serves higher (GOS). Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "cacahuete",
+      "noix"
+    ]
   },
   {
     "slug": "noisette",
@@ -4070,7 +4350,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.ibsdiets.org/fodmap-diet/fodmap-food-list/",
     "source_note": "IBS Diets published FODMAP list: hazelnuts low serve-limited (~20 nuts); larger serves higher. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "cacahuete",
+      "noix"
+    ]
   },
   {
     "slug": "noix",
@@ -4091,7 +4375,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: walnuts named low FODMAP. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "cacahuete",
@@ -4113,7 +4398,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: peanuts named low FODMAP (peanut butter low per Monash shopping list).",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "pistache",
@@ -4134,7 +4420,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: pistachios named high FODMAP.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "cacahuete",
+      "noix"
+    ]
   },
   {
     "slug": "noix-cajou",
@@ -4155,7 +4445,11 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/about-fodmap-and-ibs/high-and-low-fodmap-foods/",
     "source_note": "Monash public food list: cashews named high FODMAP.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": [
+      "cacahuete",
+      "noix"
+    ]
   },
   {
     "slug": "persil",
@@ -4178,7 +4472,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash shopping list: fresh and dried herbs are low FODMAP.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "basilic",
@@ -4200,7 +4495,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash shopping list: fresh and dried herbs are low FODMAP.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "coriandre",
@@ -4222,7 +4518,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash shopping list: fresh and dried herbs are low FODMAP.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "menthe",
@@ -4244,7 +4541,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash shopping list: fresh and dried herbs are low FODMAP.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "ciboulette",
@@ -4265,7 +4563,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/cooking-with-onion-and-garlic-myths-and/",
     "source_note": "Monash blog: chives named a low FODMAP replacement for onion flavour.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "thym",
@@ -4287,7 +4586,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash shopping list: fresh and dried herbs are low FODMAP.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "romarin",
@@ -4308,7 +4608,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash shopping list: fresh and dried herbs are low FODMAP.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "laurier",
@@ -4330,7 +4631,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash shopping list: fresh and dried herbs are low FODMAP.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "cumin",
@@ -4352,7 +4654,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash shopping list: spices — most varieties low FODMAP (excluding garlic/onion powders).",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "paprika",
@@ -4374,7 +4677,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash shopping list: spices — most varieties low FODMAP.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "curcuma",
@@ -4395,7 +4699,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash shopping list: spices — most varieties low FODMAP.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "cannelle",
@@ -4417,7 +4722,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash shopping list: spices — most varieties low FODMAP.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "curry-poudre",
@@ -4441,7 +4747,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash shopping list: most spices low EXCLUDING garlic and onion — curry powder blends frequently contain both; check label.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "herbes-provence",
@@ -4462,7 +4769,8 @@
     "density_g_per_ml": null,
     "source_url": "https://www.monashfodmap.com/blog/low-fodmap-shopping-list/",
     "source_note": "Monash shopping list: dried herbs low FODMAP.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "vin-blanc",
@@ -4484,7 +4792,8 @@
     "density_g_per_ml": 0.99,
     "source_url": "https://www.ibsdiets.org/fodmap-diet/fodmap-food-list/",
     "source_note": "IBS Diets published FODMAP list: wine low, limited to one drink. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   },
   {
     "slug": "vin-rouge",
@@ -4505,6 +4814,7 @@
     "density_g_per_ml": 0.99,
     "source_url": "https://www.ibsdiets.org/fodmap-diet/fodmap-food-list/",
     "source_note": "IBS Diets published FODMAP list: wine low, limited to one drink. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
-    "verified": false
+    "verified": false,
+    "fodmap_swaps": []
   }
 ]

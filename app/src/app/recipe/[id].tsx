@@ -49,7 +49,12 @@ import { CATEGORY_LABELS, resolveProteinCategory } from '@/lib/category';
 import { focalToContentPosition } from '@/lib/cover-focal';
 import { normalizeDietProfile } from '@/lib/diet';
 import { moveItem, removeItem, updateItem } from '@/lib/edit-list';
-import { computeRecipeFodmap, FODMAP_DISCLAIMER, type RecipeFodmap } from '@/lib/fodmap';
+import {
+  computeRecipeFodmap,
+  FODMAP_DISCLAIMER,
+  recipeFodmapTier,
+  type RecipeFodmap,
+} from '@/lib/fodmap';
 import { resolveMatches } from '@/lib/matching';
 import { useImageUrl } from '@/lib/media';
 import { useReducedMotion } from '@/lib/motion';
@@ -437,9 +442,12 @@ export default function RecipeSheetScreen() {
         unit: ing.unit,
       })),
       recipe.servings,
-      (line) => matches.get(line.raw) ?? null
+      (line) => matches.get(line.raw) ?? null,
+      (slug) => canonicalIndex?.bySlug.get(slug) ?? null
     );
-  }, [recipe, matches]);
+  }, [recipe, matches, canonicalIndex]);
+
+  const recipeTier = useMemo(() => (fodmap ? recipeFodmapTier(fodmap) : null), [fodmap]);
 
   const flagByRaw = useMemo(
     () => new Map((fodmap?.flags ?? []).map((flag) => [flag.raw, flag])),
@@ -826,7 +834,33 @@ export default function RecipeSheetScreen() {
                   <Muted>{CATEGORY_LABELS[category]}</Muted>
                 </View>
               ) : null}
-              {category && metaParts.length > 0 ? <Muted>·</Muted> : null}
+              {recipeTier && recipeTier !== 'check' ? (
+                <>
+                  {category ? <Muted>·</Muted> : null}
+                  <Text
+                    accessibilityLabel={`FODMAP level ${recipeTier}`}
+                    style={{
+                      color:
+                        recipeTier === 'high'
+                          ? colors.danger
+                          : recipeTier === 'moderate'
+                            ? colors.saffron
+                            : colors.spineVeg,
+                      fontSize: fontSize.meta,
+                      fontFamily: fonts.uiSemi,
+                    }}
+                  >
+                    {recipeTier === 'high'
+                      ? 'High FODMAP'
+                      : recipeTier === 'moderate'
+                        ? 'Moderate FODMAP'
+                        : 'Low FODMAP'}
+                  </Text>
+                </>
+              ) : null}
+              {(category || (recipeTier && recipeTier !== 'check')) && metaParts.length > 0 ? (
+                <Muted>·</Muted>
+              ) : null}
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Edit servings and times"
@@ -946,6 +980,19 @@ export default function RecipeSheetScreen() {
                       </Body>
                     ) : null;
                   })}
+                  {[
+                    ...new Map(
+                      fodmap.flags
+                        .filter(
+                          (f) => (f.tier === 'high' || f.tier === 'moderate') && f.swaps.length > 0
+                        )
+                        .map((f) => [f.name, f])
+                    ).values(),
+                  ].map((flag) => (
+                    <Muted key={`swap-${flag.name}`}>
+                      {`Swap ${flag.name} → ${flag.swaps.join(' or ')}`}
+                    </Muted>
+                  ))}
                   {fodmap.stacking.map((warning) => (
                     <Muted key={warning.group}>
                       {`Stacking: ${warning.ingredients.join(' + ')} share ${warning.group} — check the combined amount.`}

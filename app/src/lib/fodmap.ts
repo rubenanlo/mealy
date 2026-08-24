@@ -25,6 +25,8 @@ export interface FodmapFlag {
   portionG: number | null;
   /** Transparency line: which serving/threshold drove this (spec §4). */
   explanation: string;
+  /** Low-FODMAP alternates (display names) for high/moderate flags. */
+  swaps: string[];
 }
 
 export interface StackingWarning {
@@ -102,7 +104,8 @@ function capitalize(s: string): string {
 export function computeRecipeFodmap(
   lines: FodmapLine[],
   servings: number | null,
-  match: (line: FodmapLine) => CanonicalIngredient | null
+  match: (line: FodmapLine) => CanonicalIngredient | null,
+  resolveSlug?: (slug: string) => CanonicalIngredient | null
 ): RecipeFodmap {
   const flags: FodmapFlag[] = [];
 
@@ -114,6 +117,12 @@ export function computeRecipeFodmap(
       if (grams !== null) portionG = grams / servings;
     }
     const { tier, explanation } = flagIngredient(canonical, portionG);
+    const swaps =
+      (tier === 'high' || tier === 'moderate') && canonical && resolveSlug
+        ? (canonical.fodmap_swaps ?? [])
+            .map((slug) => resolveSlug(slug)?.name_fr)
+            .filter((name): name is string => !!name)
+        : [];
     flags.push({
       name: canonical?.name_fr ?? line.name,
       raw: line.raw,
@@ -121,6 +130,7 @@ export function computeRecipeFodmap(
       groups: canonical?.fodmap_groups ?? [],
       portionG: portionG === null ? null : round(portionG),
       explanation,
+      swaps,
     });
   }
 
@@ -140,4 +150,17 @@ export function computeRecipeFodmap(
 
   const hasWarnings = stacking.length > 0 || flags.some((f) => f.tier !== 'low');
   return { flags, stacking, hasWarnings };
+}
+
+/**
+ * Recipe-level tier = the worst ingredient flag: any high → high, else any
+ * moderate → moderate, else any unknown → check, else low. An empty recipe
+ * (no ingredient lines) is unknowable → check.
+ */
+export function recipeFodmapTier(fodmap: RecipeFodmap): FodmapTier {
+  if (fodmap.flags.length === 0) return 'check';
+  if (fodmap.flags.some((f) => f.tier === 'high')) return 'high';
+  if (fodmap.flags.some((f) => f.tier === 'moderate')) return 'moderate';
+  if (fodmap.flags.some((f) => f.tier === 'check')) return 'check';
+  return 'low';
 }

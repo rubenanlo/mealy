@@ -15,6 +15,7 @@ const ing = (over: Partial<CanonicalIngredient> & { slug: string; name_fr: strin
   season: null,
   fodmap_tier: 'check',
   fodmap_groups: [],
+  fodmap_swaps: [],
   low_serving_g: null,
   high_serving_g: null,
   avg_unit_weight_g: null,

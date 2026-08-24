@@ -18,6 +18,8 @@ export interface CanonicalIngredient {
   season: number[] | null;
   fodmap_tier: FodmapTier;
   fodmap_groups: string[];
+  /** Slugs of low-FODMAP alternates (Monash public list, migration 0009). */
+  fodmap_swaps: string[];
   low_serving_g: number | null;
   high_serving_g: number | null;
   avg_unit_weight_g: number | null;
@@ -196,13 +198,17 @@ export interface CanonicalIndex {
   exact: Map<string, CanonicalIngredient>;
   /** normalized phrase → ingredient, from aliases. */
   alias: Map<string, CanonicalIngredient>;
+  /** slug → ingredient (resolves fodmap_swaps references). */
+  bySlug: Map<string, CanonicalIngredient>;
 }
 
 /** Build the lookup index once per table load. */
 export function buildCanonicalIndex(table: CanonicalIngredient[]): CanonicalIndex {
   const exact = new Map<string, CanonicalIngredient>();
   const alias = new Map<string, CanonicalIngredient>();
+  const bySlug = new Map<string, CanonicalIngredient>();
   for (const ing of table) {
+    bySlug.set(ing.slug, ing);
     for (const phrase of [slugAsPhrase(ing.slug), normalizeRaw(ing.name_fr), normalizeRaw(ing.name_en), normalizeRaw(ing.name_es)]) {
       if (phrase && !exact.has(phrase)) exact.set(phrase, ing);
     }
@@ -211,7 +217,7 @@ export function buildCanonicalIndex(table: CanonicalIngredient[]): CanonicalInde
       if (phrase && !alias.has(phrase)) alias.set(phrase, ing);
     }
   }
-  return { exact, alias };
+  return { exact, alias, bySlug };
 }
 
 /**

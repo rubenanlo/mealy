@@ -1,5 +1,11 @@
 import type { CanonicalIngredient } from '../canonical';
-import { computeRecipeFodmap, FODMAP_DISCLAIMER, flagIngredient, type FodmapLine } from '../fodmap';
+import {
+  computeRecipeFodmap,
+  FODMAP_DISCLAIMER,
+  flagIngredient,
+  recipeFodmapTier,
+  type FodmapLine,
+} from '../fodmap';
 
 const canonical = (
   over: Partial<CanonicalIngredient> & { slug: string }
@@ -14,6 +20,7 @@ const canonical = (
   season: null,
   fodmap_tier: 'low',
   fodmap_groups: [],
+  fodmap_swaps: [],
   low_serving_g: null,
   high_serving_g: null,
   avg_unit_weight_g: null,
@@ -135,5 +142,61 @@ describe('computeRecipeFodmap', () => {
 
   it('ships the disclaimer copy', () => {
     expect(FODMAP_DISCLAIMER).toBe('Best-effort guidance, not medical advice.');
+  });
+});
+
+describe('swap suggestions', () => {
+  const chives = canonical({ slug: 'ciboulette', name_fr: 'ciboulette' });
+  const onion = canonical({
+    slug: 'oignon',
+    name_fr: 'oignon',
+    fodmap_tier: 'high',
+    fodmap_groups: ['fructan'],
+    fodmap_swaps: ['ciboulette', 'inconnu'],
+  });
+  const line: FodmapLine = { raw: 'oignon', name: 'oignon', quantity: null, unit: null };
+  const resolve = (slug: string) => (slug === 'ciboulette' ? chives : null);
+
+  it('resolves swap slugs to display names, dropping unknown slugs', () => {
+    const result = computeRecipeFodmap([line], 4, () => onion, resolve);
+    expect(result.flags[0].swaps).toEqual(['ciboulette']);
+  });
+
+  it('low-tier flags carry no swaps even when the table lists some', () => {
+    const lowOnion = canonical({ ...onion, slug: 'oignon-low', fodmap_tier: 'low' });
+    const result = computeRecipeFodmap([line], 4, () => lowOnion, resolve);
+    expect(result.flags[0].swaps).toEqual([]);
+  });
+
+  it('without a resolver, swaps stay empty', () => {
+    const result = computeRecipeFodmap([line], 4, () => onion);
+    expect(result.flags[0].swaps).toEqual([]);
+  });
+});
+
+describe('recipeFodmapTier', () => {
+  const make = (tiers: ('low' | 'moderate' | 'high' | 'check')[]) => ({
+    flags: tiers.map((tier, i) => ({
+      name: `ing-${i}`,
+      raw: `ing-${i}`,
+      tier,
+      groups: [],
+      portionG: null,
+      explanation: '',
+      swaps: [],
+    })),
+    stacking: [],
+    hasWarnings: tiers.some((t) => t !== 'low'),
+  });
+
+  it('takes the worst flag: high > moderate > check > low', () => {
+    expect(recipeFodmapTier(make(['low', 'check', 'moderate', 'high']))).toBe('high');
+    expect(recipeFodmapTier(make(['low', 'check', 'moderate']))).toBe('moderate');
+    expect(recipeFodmapTier(make(['low', 'check']))).toBe('check');
+    expect(recipeFodmapTier(make(['low', 'low']))).toBe('low');
+  });
+
+  it('no ingredient lines is unknowable, not low', () => {
+    expect(recipeFodmapTier(make([]))).toBe('check');
   });
 });

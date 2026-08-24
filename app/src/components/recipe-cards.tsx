@@ -1,9 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import { useMemo } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { BookmarkChip, CalendarChip, CategoryDot, Hairline, Muted } from '@/components/ui';
+import { matchCanonical, normalizeRaw } from '@/lib/canonical';
 import { CATEGORY_LABELS, resolveProteinCategory } from '@/lib/category';
+import { computeRecipeFodmap, recipeFodmapTier } from '@/lib/fodmap';
 import { useCanonicalIndex } from '@/lib/use-canonical';
 import { useImageUrl } from '@/lib/media';
 import { fonts, fontSize, radius, screenPadding, useTheme } from '@/lib/theme';
@@ -45,6 +48,23 @@ export function MetaLine({
   const index = useCanonicalIndex();
   const category = resolveProteinCategory(recipe.tags, recipe.ingredients, index);
   const minutes = totalMinutes(recipe);
+  // Recipe-level FODMAP tier from local matching only; 'check' stays silent
+  // on cards — the recipe page carries the detail.
+  const fodmapTier = useMemo(() => {
+    if (!index || !recipe.ingredients || recipe.ingredients.length === 0) return null;
+    const result = computeRecipeFodmap(
+      recipe.ingredients.map((ing) => ({
+        raw: ing.raw || ing.name,
+        name: ing.name,
+        quantity: ing.quantity,
+        unit: ing.unit,
+      })),
+      recipe.servings,
+      (line) => matchCanonical(normalizeRaw(line.raw), index)?.ingredient ?? null
+    );
+    return recipeFodmapTier(result);
+  }, [index, recipe]);
+  const showTier = fodmapTier !== null && fodmapTier !== 'check';
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
       {minutes ? <Muted>{minutes} min</Muted> : null}
@@ -54,6 +74,30 @@ export function MetaLine({
           <CategoryDot category={category} />
           <Muted>{CATEGORY_LABELS[category]}</Muted>
         </View>
+      ) : null}
+      {showTier ? (
+        <>
+          {minutes || category ? <Muted>·</Muted> : null}
+          <Text
+            accessibilityLabel={`FODMAP level ${fodmapTier}`}
+            style={{
+              color:
+                fodmapTier === 'high'
+                  ? colors.danger
+                  : fodmapTier === 'moderate'
+                    ? colors.saffron
+                    : colors.spineVeg,
+              fontSize: fontSize.meta,
+              fontFamily: fonts.uiSemi,
+            }}
+          >
+            {fodmapTier === 'high'
+              ? 'High FODMAP'
+              : fodmapTier === 'moderate'
+                ? 'Mod. FODMAP'
+                : 'Low FODMAP'}
+          </Text>
+        </>
       ) : null}
       {showServings && recipe.servings ? (
         <>

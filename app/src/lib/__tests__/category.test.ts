@@ -38,7 +38,7 @@ describe('spineColor', () => {
 function ing(slug: string, category: string | null, name_fr = slug): CanonicalIngredient {
   return {
     id: slug, slug, name_en: slug, name_fr, name_es: slug, aliases: [],
-    category, aisle: null, season: null, fodmap_tier: 'low', fodmap_groups: [],
+    category, aisle: null, season: null, fodmap_tier: 'low', fodmap_groups: [], fodmap_swaps: [],
     low_serving_g: null, high_serving_g: null, avg_unit_weight_g: null,
     density_g_per_ml: null, verified: true,
   };

@@ -1,8 +1,8 @@
-import { Ionicons } from '@expo/vector-icons';
-import { Pressable, View } from 'react-native';
+import { Ionicons } from "@expo/vector-icons";
+import { Pressable, View } from "react-native";
 
-import { Title } from '@/components/ui';
-import { minTapTarget, useTheme } from '@/lib/theme';
+import { Title } from "@/components/ui";
+import { minTapTarget, useTheme } from "@/lib/theme";
 
 /** Section title with a pencil toggle (spec Part 5). */
 export function SectionTitle({
@@ -16,7 +16,13 @@ export function SectionTitle({
 }) {
   const { colors } = useTheme();
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+      }}
+    >
       <Title>{title}</Title>
       <Pressable
         accessibilityRole="button"
@@ -26,13 +32,17 @@ export function SectionTitle({
         style={({ pressed }) => ({
           width: minTapTarget - 8,
           height: minTapTarget - 8,
-          alignItems: 'center',
-          justifyContent: 'center',
+          alignItems: "center",
+          justifyContent: "center",
           borderRadius: (minTapTarget - 8) / 2,
-          backgroundColor: pressed ? colors.cardPressed : 'transparent',
+          backgroundColor: pressed ? colors.cardPressed : "transparent",
         })}
       >
-        <Ionicons name={editing ? 'close-outline' : 'create-outline'} size={20} color={colors.textMuted} />
+        <Ionicons
+          name={editing ? "close-outline" : "create-outline"}
+          size={20}
+          color={colors.textMuted}
+        />
       </Pressable>
     </View>
   );
@@ -55,7 +65,7 @@ export function EditRowControls({
     label: string,
     icon: keyof typeof Ionicons.glyphMap,
     onPress: () => void,
-    disabled = false
+    disabled = false,
   ) => (
     <Pressable
       accessibilityRole="button"
@@ -69,10 +79,20 @@ export function EditRowControls({
     </Pressable>
   );
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-      {iconButton('Move up', 'chevron-up', () => onMove(index, index - 1), index === 0)}
-      {iconButton('Move down', 'chevron-down', () => onMove(index, index + 1), index === count - 1)}
-      {iconButton('Remove', 'trash-outline', () => onRemove(index))}
+    <View style={{ flexDirection: "row", alignItems: "center" }}>
+      {iconButton(
+        "Move up",
+        "chevron-up",
+        () => onMove(index, index - 1),
+        index === 0,
+      )}
+      {iconButton(
+        "Move down",
+        "chevron-down",
+        () => onMove(index, index + 1),
+        index === count - 1,
+      )}
+      {iconButton("Remove", "trash-outline", () => onRemove(index))}
     </View>
   );
 }
