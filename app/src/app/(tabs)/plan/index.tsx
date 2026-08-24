@@ -31,6 +31,7 @@ interface EntryRow {
   slot: MealSlot;
   recipe_id: string | null;
   custom_title: string | null;
+  assigned_cook: 'family' | 'employee';
 }
 
 interface RecipeLite {
@@ -88,6 +89,7 @@ export default function WeeksScreen() {
   const [entries, setEntries] = useState<EntryRow[]>([]);
   const [recipesById, setRecipesById] = useState<Map<string, RecipeLite>>(new Map());
   const [mealTimes, setMealTimes] = useState<MealTimes>(normalizeMealTimes(null));
+  const [employeeNames, setEmployeeNames] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   const currentWeek = weekStart(new Date());
@@ -100,6 +102,16 @@ export default function WeeksScreen() {
         .eq('household_id', householdId)
         .order('week_start', { ascending: false }),
       supabase.from('households').select('meal_times').eq('id', householdId).single(),
+      supabase
+        .from('persons')
+        .select('name')
+        .eq('household_id', householdId)
+        .eq('is_employee', true)
+        .order('created_at')
+        .then((res) => {
+          setEmployeeNames(((res.data ?? []) as { name: string }[]).map((p) => p.name));
+          return res;
+        }),
     ]);
     if (hh) setMealTimes(normalizeMealTimes(hh.meal_times));
     const allPlans = (planRows as PlanRow[]) ?? [];
@@ -111,7 +123,7 @@ export default function WeeksScreen() {
     }
     const { data: entryRows } = await supabase
       .from('plan_entries')
-      .select('meal_plan_id, day, slot, recipe_id, custom_title')
+      .select('meal_plan_id, day, slot, recipe_id, custom_title, assigned_cook')
       .in(
         'meal_plan_id',
         allPlans.map((p) => p.id)
@@ -155,6 +167,16 @@ export default function WeeksScreen() {
       isMealUpcoming(c.day, c.slot, todayIndex, nowMinutes, mealTimes)
     );
   }, [plans, entries, recipesById, currentWeek, mealTimes]);
+
+  /** This week's meals the employee cooks (whole week, not just upcoming). */
+  const employeeCells = useMemo(() => {
+    const plan = plans.find((p) => p.week_start === currentWeek);
+    if (!plan) return [];
+    return buildCells(
+      entries.filter((e) => e.meal_plan_id === plan.id && e.assigned_cook === 'employee'),
+      recipesById
+    );
+  }, [plans, entries, recipesById, currentWeek]);
 
   /** Past weeks with a plan, newest first. */
   const pastWeeks = useMemo(
@@ -305,6 +327,54 @@ export default function WeeksScreen() {
             </Pressable>
           )}
         </View>
+
+        {/* The employee's cooking list for this week (mirrors her web link). */}
+        {employeeNames.length > 0 && employeeCells.length > 0 ? (
+          <View style={{ gap: 12, paddingTop: 8 }}>
+            <SectionHeader title={`Assigned to ${employeeNames.join(' & ')}`} />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ marginHorizontal: -screenPadding }}
+              contentContainerStyle={{ gap: 14, paddingHorizontal: screenPadding }}
+            >
+              {employeeCells.map((cell) => (
+                <Pressable
+                  key={`emp-${cell.day}-${cell.slot}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${DAY_LABELS[cell.day]} ${SLOT_LABELS[cell.slot]}: ${cell.titles.join(', ')}`}
+                  onPress={() =>
+                    cell.recipeIds.length === 1
+                      ? router.push(`/recipe/${cell.recipeIds[0]}`)
+                      : openWeek(currentWeek)
+                  }
+                  style={({ pressed }) => ({ width: 150, opacity: pressed ? 0.7 : 1 })}
+                >
+                  <RecipeImage
+                    path={cell.covers[0] ?? null}
+                    style={{ width: 150, height: 110, borderRadius: radius.card }}
+                  />
+                  <View style={{ paddingTop: 8, gap: 2 }}>
+                    <Eyebrow>
+                      {`${cell.day === todayIndex ? 'Today' : DAY_LABELS[cell.day]} · ${SLOT_LABELS[cell.slot]}`}
+                    </Eyebrow>
+                    <Text
+                      numberOfLines={2}
+                      style={{
+                        color: colors.text,
+                        fontSize: fontSize.cardTitle,
+                        lineHeight: 21,
+                        fontFamily: fonts.displaySemi,
+                      }}
+                    >
+                      {cell.titles.join(' · ')}
+                    </Text>
+                  </View>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
 
         {/* Past weeks grid; the first tile creates a new plan. */}
         <View style={{ gap: 12, paddingTop: 8 }}>
