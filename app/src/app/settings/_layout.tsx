@@ -9,6 +9,8 @@ import { useTheme } from '@/lib/theme';
 export default function SettingsStack() {
   const { colors } = useTheme();
   return (
-    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }} />
+    <Stack
+      screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bgGrouped } }}
+    />
   );
 }

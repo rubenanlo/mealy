@@ -1,14 +1,18 @@
-import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
-import { Image, Pressable, ScrollView, Text, View } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useMemo, useState } from "react";
+import { Image, Pressable, ScrollView, Text, View } from "react-native";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 import {
   AddToWeekSheet,
   confirmRemoveFromWeek,
   removeRecipeFromCurrentWeek,
-} from '@/components/add-to-week';
+} from "@/components/add-to-week";
+import { QuickFilters } from "@/components/quick-filters";
 import {
   CarouselCard,
   Hero,
@@ -16,19 +20,25 @@ import {
   ThisWeekCard,
   type RecipeListItem,
   type WeekStripItem,
-} from '@/components/recipe-cards';
-import { QuickFilters } from '@/components/quick-filters';
-import { EmptyState, Hairline, SectionHeader } from '@/components/ui';
-import { useHousehold } from '@/lib/auth';
-import { matchCanonical, normalizeRaw } from '@/lib/canonical';
-import type { ProteinCategory } from '@/lib/category';
-import { resolveProteinCategory } from '@/lib/category';
-import { computeRecipeFodmap } from '@/lib/fodmap';
-import { weekStart } from '@/lib/plan';
-import { matchesQuickFilters, type QuickFilter } from '@/lib/quick-filters';
-import { supabase } from '@/lib/supabase';
-import { fonts, fontSize, minTapTarget, screenPadding, tabBarClearance, useTheme } from '@/lib/theme';
-import { useCanonicalIndex } from '@/lib/use-canonical';
+} from "@/components/recipe-cards";
+import { EmptyState, Hairline, SectionHeader } from "@/components/ui";
+import { useHousehold } from "@/lib/auth";
+import { matchCanonical, normalizeRaw } from "@/lib/canonical";
+import type { ProteinCategory } from "@/lib/category";
+import { resolveProteinCategory } from "@/lib/category";
+import { computeRecipeFodmap } from "@/lib/fodmap";
+import { weekStart } from "@/lib/plan";
+import { matchesQuickFilters, type QuickFilter } from "@/lib/quick-filters";
+import { supabase } from "@/lib/supabase";
+import {
+  fonts,
+  fontSize,
+  minTapTarget,
+  screenPadding,
+  tabBarClearance,
+  useTheme,
+} from "@/lib/theme";
+import { useCanonicalIndex } from "@/lib/use-canonical";
 
 export default function HomeScreen() {
   const { colors } = useTheme();
@@ -42,7 +52,9 @@ export default function HomeScreen() {
     { id: string; recipe_id: string | null; custom_title: string | null }[]
   >([]);
   const [sheetRecipe, setSheetRecipe] = useState<RecipeListItem | null>(null);
-  const [activeFilters, setActiveFilters] = useState<Set<QuickFilter>>(new Set());
+  const [activeFilters, setActiveFilters] = useState<Set<QuickFilter>>(
+    new Set(),
+  );
   const index = useCanonicalIndex();
 
   const toggleFilter = (f: QuickFilter) =>
@@ -55,42 +67,47 @@ export default function HomeScreen() {
 
   const load = useCallback(async () => {
     const weekIso = weekStart(new Date());
-    const [{ data: recipeRows }, { data: entryRows }, { data: weekPlan }] = await Promise.all([
-      supabase
-        .from('recipes')
-        .select(
-          'id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes, created_at, ingredients'
-        )
-        .eq('household_id', householdId)
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('plan_entries')
-        .select('recipe_id, meal_plans!inner(household_id)')
-        .eq('meal_plans.household_id', householdId),
-      supabase
-        .from('meal_plans')
-        .select('id')
-        .eq('household_id', householdId)
-        .eq('week_start', weekIso)
-        .maybeSingle(),
-    ]);
+    const [{ data: recipeRows }, { data: entryRows }, { data: weekPlan }] =
+      await Promise.all([
+        supabase
+          .from("recipes")
+          .select(
+            "id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes, created_at, ingredients",
+          )
+          .eq("household_id", householdId)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("plan_entries")
+          .select("recipe_id, meal_plans!inner(household_id)")
+          .eq("meal_plans.household_id", householdId),
+        supabase
+          .from("meal_plans")
+          .select("id")
+          .eq("household_id", householdId)
+          .eq("week_start", weekIso)
+          .maybeSingle(),
+      ]);
     if (recipeRows) setRecipes(recipeRows as RecipeListItem[]);
     if (entryRows) {
       setPlannedEverIds(
         new Set(
           (entryRows as { recipe_id: string | null }[])
             .map((e) => e.recipe_id)
-            .filter((id): id is string => id !== null)
-        )
+            .filter((id): id is string => id !== null),
+        ),
       );
     }
     if (weekPlan) {
       const { data: weekRows } = await supabase
-        .from('plan_entries')
-        .select('id, recipe_id, custom_title')
-        .eq('meal_plan_id', weekPlan.id);
+        .from("plan_entries")
+        .select("id, recipe_id, custom_title")
+        .eq("meal_plan_id", weekPlan.id);
       setWeekEntries(
-        (weekRows as { id: string; recipe_id: string | null; custom_title: string | null }[]) ?? []
+        (weekRows as {
+          id: string;
+          recipe_id: string | null;
+          custom_title: string | null;
+        }[]) ?? [],
       );
     } else {
       setWeekEntries([]);
@@ -100,13 +117,13 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       void load();
-    }, [load])
+    }, [load]),
   );
 
   // Same rule as v1/v2: never-planned recipes, newest first, max 6; hero = first.
   const suggestions = useMemo(
     () => recipes.filter((r) => !plannedEverIds.has(r.id)).slice(0, 6),
-    [recipes, plannedEverIds]
+    [recipes, plannedEverIds],
   );
   const hero = suggestions[0];
   const carousel = suggestions.slice(1);
@@ -124,7 +141,10 @@ export default function HomeScreen() {
 
   /** Chip inputs per recipe — pure local matching only (no LLM/cache). */
   const filterInputs = useMemo(() => {
-    const map = new Map<string, { category: ProteinCategory | null; fodmapFriendly: boolean | null }>();
+    const map = new Map<
+      string,
+      { category: ProteinCategory | null; fodmapFriendly: boolean | null }
+    >();
     for (const r of recipes) {
       const category = resolveProteinCategory(r.tags, r.ingredients, index);
       let fodmapFriendly: boolean | null = null;
@@ -137,9 +157,10 @@ export default function HomeScreen() {
             unit: ing.unit,
           })),
           r.servings,
-          (line) => matchCanonical(normalizeRaw(line.raw), index)?.ingredient ?? null
+          (line) =>
+            matchCanonical(normalizeRaw(line.raw), index)?.ingredient ?? null,
         );
-        fodmapFriendly = !result.flags.some((f) => f.tier === 'high');
+        fodmapFriendly = !result.flags.some((f) => f.tier === "high");
       }
       map.set(r.id, { category, fodmapFriendly });
     }
@@ -157,7 +178,7 @@ export default function HomeScreen() {
           category: input?.category ?? null,
           fodmapFriendly: input?.fodmapFriendly ?? null,
         },
-        activeFilters
+        activeFilters,
       );
     });
   }, [recipes, activeFilters, filterInputs]);
@@ -181,15 +202,24 @@ export default function HomeScreen() {
           });
         }
       } else if (entry.custom_title) {
-        items.push({ key: `c-${entry.id}`, title: entry.custom_title, path: null, recipeId: null });
+        items.push({
+          key: `c-${entry.id}`,
+          title: entry.custom_title,
+          path: null,
+          recipeId: null,
+        });
       }
     }
     return items;
   }, [recipes, weekEntries]);
   const thisWeekSet = useMemo(
     () =>
-      new Set(weekEntries.map((e) => e.recipe_id).filter((id): id is string => id !== null)),
-    [weekEntries]
+      new Set(
+        weekEntries
+          .map((e) => e.recipe_id)
+          .filter((id): id is string => id !== null),
+      ),
+    [weekEntries],
   );
 
   const openRecipe = (id: string) => router.push(`/recipe/${id}`);
@@ -209,10 +239,16 @@ export default function HomeScreen() {
   const carouselStyle = {
     marginHorizontal: -screenPadding,
   } as const;
-  const carouselContent = { gap: 14, paddingHorizontal: screenPadding } as const;
+  const carouselContent = {
+    gap: 14,
+    paddingHorizontal: screenPadding,
+  } as const;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: colors.bg }}
+      edges={["top"]}
+    >
       <ScrollView
         contentContainerStyle={{
           paddingHorizontal: screenPadding,
@@ -220,9 +256,16 @@ export default function HomeScreen() {
         }}
       >
         {/* Brand lockup + capture icon — discovery only, no search here (v3) */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 }}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 8,
+            paddingVertical: 8,
+          }}
+        >
           <Image
-            source={require('../../../../assets/images/brand-icon-source.png')}
+            source={require("../../../../assets/images/brand-icon-source.png")}
             // ~wordmark cap height (Bitter 700/30); nudged for optical balance.
             style={{ width: 40, height: 40, marginTop: -2 }}
             accessibilityIgnoresInvertColors
@@ -242,14 +285,14 @@ export default function HomeScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Add a recipe"
-            onPress={() => router.push('/capture')}
+            onPress={() => router.push("/capture")}
             style={({ pressed }) => ({
               width: minTapTarget,
               height: minTapTarget,
-              alignItems: 'center',
-              justifyContent: 'center',
+              alignItems: "center",
+              justifyContent: "center",
               borderRadius: minTapTarget / 2,
-              backgroundColor: pressed ? colors.cardPressed : 'transparent',
+              backgroundColor: pressed ? colors.cardPressed : "transparent",
             })}
           >
             <Ionicons name="add" size={28} color={colors.text} />
@@ -258,14 +301,14 @@ export default function HomeScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Settings"
-            onPress={() => router.push('/settings')}
+            onPress={() => router.push("/settings")}
             style={({ pressed }) => ({
               width: minTapTarget,
               height: minTapTarget,
-              alignItems: 'center',
-              justifyContent: 'center',
+              alignItems: "center",
+              justifyContent: "center",
               borderRadius: minTapTarget / 2,
-              backgroundColor: pressed ? colors.cardPressed : 'transparent',
+              backgroundColor: pressed ? colors.cardPressed : "transparent",
             })}
           >
             <Ionicons name="settings-outline" size={24} color={colors.text} />
@@ -274,18 +317,23 @@ export default function HomeScreen() {
 
         <QuickFilters active={activeFilters} onToggle={toggleFilter} />
 
+        <View style={{ marginBottom: 20 }} />
+
         {recipes.length === 0 ? (
           <EmptyState
             message="Your cooking notebook starts here."
             actionLabel="Add your first recipe"
-            onAction={() => router.push('/capture')}
+            onAction={() => router.push("/capture")}
           />
         ) : activeFilters.size > 0 ? (
           <View style={{ paddingTop: 8 }}>
             {filteredRecipes.map((recipe, i) => (
               <View key={recipe.id}>
                 {i > 0 ? <Hairline /> : null}
-                <RecipeRow recipe={recipe} onPress={() => openRecipe(recipe.id)} />
+                <RecipeRow
+                  recipe={recipe}
+                  onPress={() => openRecipe(recipe.id)}
+                />
               </View>
             ))}
             {filteredRecipes.length === 0 ? (
@@ -335,7 +383,7 @@ export default function HomeScreen() {
                 <SectionHeader
                   title="This week"
                   linkLabel="See all"
-                  onLinkPress={() => router.navigate('/plan')}
+                  onLinkPress={() => router.navigate("/plan")}
                 />
                 <ScrollView
                   horizontal
@@ -349,11 +397,17 @@ export default function HomeScreen() {
                       item={item}
                       // v3.2: recipe entries open the sheet; custom meals open the week.
                       onPress={() =>
-                        item.recipeId ? openRecipe(item.recipeId) : router.navigate('/plan')
+                        item.recipeId
+                          ? openRecipe(item.recipeId)
+                          : router.navigate("/plan")
                       }
                       onBookmark={
                         item.recipeId
-                          ? () => onBookmark({ id: item.recipeId!, title: item.title })
+                          ? () =>
+                              onBookmark({
+                                id: item.recipeId!,
+                                title: item.title,
+                              })
                           : undefined
                       }
                     />
@@ -392,7 +446,7 @@ export default function HomeScreen() {
                 <SectionHeader
                   title="All recipes"
                   linkLabel="See all"
-                  onLinkPress={() => router.navigate('/search')}
+                  onLinkPress={() => router.navigate("/search")}
                 />
                 <ScrollView
                   horizontal

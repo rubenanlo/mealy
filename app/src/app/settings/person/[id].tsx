@@ -136,7 +136,7 @@ export default function PersonScreen() {
 
   if (!loaded || !profile) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.bgGrouped }}>
         <View style={{ padding: screenPadding }}>
           <Muted>Loading…</Muted>
         </View>
@@ -145,11 +145,11 @@ export default function PersonScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bgGrouped }} edges={['top']}>
       <ScrollView contentContainerStyle={{ padding: screenPadding, gap: 20, paddingBottom: 48 }}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Back to settings"
+          accessibilityLabel="Back to account"
           onPress={() => router.back()}
           style={({ pressed }) => ({
             flexDirection: 'row',
@@ -160,7 +160,7 @@ export default function PersonScreen() {
           })}
         >
           <Ionicons name="chevron-back" size={20} color={colors.text} />
-          <Body style={{ fontFamily: fonts.uiSemi }}>Settings</Body>
+          <Body style={{ fontFamily: fonts.uiSemi }}>Account</Body>
         </Pressable>
         <Title>{name || 'Person'}</Title>
 

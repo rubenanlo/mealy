@@ -17,6 +17,8 @@ export type SchemeName = 'light' | 'dark';
 
 export interface Palette {
   bg: string;
+  /** Grouped-settings page background (NYT-style gray behind white cards). */
+  bgGrouped: string;
   card: string;
   cardPressed: string;
   text: string;
@@ -41,6 +43,7 @@ export interface Palette {
 export const palettes: Record<SchemeName, Palette> = {
   light: {
     bg: '#FFFFFF',
+    bgGrouped: '#F2F1EE',
     card: '#FFFFFF',
     cardPressed: '#F5F5F4',
     text: '#121212',
@@ -57,6 +60,7 @@ export const palettes: Record<SchemeName, Palette> = {
   },
   dark: {
     bg: '#121212',
+    bgGrouped: '#0D0D0D',
     card: '#1C1C1C',
     cardPressed: '#262626',
     text: '#F5F5F4',

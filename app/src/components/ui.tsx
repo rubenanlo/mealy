@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Children, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -232,6 +232,87 @@ export function Card({
     >
       {children}
     </View>
+  );
+}
+
+/**
+ * Grouped-settings card (NYT settings style): rounded surface on the
+ * bgGrouped page background, children separated by inset hairlines.
+ */
+export function SettingsGroup({
+  children,
+  style,
+}: {
+  children: ReactNode;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const { colors } = useTheme();
+  const items = Children.toArray(children).filter(Boolean);
+  return (
+    <View
+      style={[
+        { backgroundColor: colors.card, borderRadius: 12, overflow: 'hidden' },
+        style,
+      ]}
+    >
+      {items.map((child, index) => (
+        <View key={index}>
+          {index > 0 ? <Hairline style={{ marginLeft: 16 }} /> : null}
+          {child}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/**
+ * One row inside a SettingsGroup: label left, optional muted value and
+ * chevron right. Chevron shows whenever the row navigates (onPress +
+ * default chevron), never for action rows that opt out.
+ */
+export function SettingsRow({
+  label,
+  onPress,
+  value,
+  chevron,
+  destructive = false,
+  accessibilityLabel,
+}: {
+  label: string;
+  onPress?: () => void;
+  value?: string;
+  chevron?: boolean;
+  destructive?: boolean;
+  accessibilityLabel?: string;
+}) {
+  const { colors } = useTheme();
+  const showChevron = chevron ?? Boolean(onPress);
+  const content = (
+    <>
+      <Body style={{ flex: 1, color: destructive ? colors.danger : colors.text }}>{label}</Body>
+      {value ? <Muted>{value}</Muted> : null}
+      {showChevron ? (
+        <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+      ) : null}
+    </>
+  );
+  const layout: ViewStyle = {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minHeight: 52,
+    paddingHorizontal: 16,
+  };
+  if (!onPress) return <View style={layout}>{content}</View>;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
+      onPress={onPress}
+      style={({ pressed }) => [layout, { backgroundColor: pressed ? colors.cardPressed : 'transparent' }]}
+    >
+      {content}
+    </Pressable>
   );
 }
 
