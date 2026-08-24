@@ -881,6 +881,12 @@ export default function RecipeSheetScreen() {
                     accessibilityLabel={`FODMAP level ${recipeTier} — tap to change`}
                     onPress={editFodmapLevel}
                     hitSlop={8}
+                    style={({ pressed }) => ({
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 2,
+                      opacity: pressed ? 0.6 : 1,
+                    })}
                   >
                     <Text
                       style={{
@@ -904,6 +910,7 @@ export default function RecipeSheetScreen() {
                             ? 'Low FODMAP'
                             : 'FODMAP ?'}
                     </Text>
+                    <Ionicons name="chevron-down" size={12} color={colors.textMuted} />
                   </Pressable>
                 </>
               ) : null}
