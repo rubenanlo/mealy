@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
-import { Image, Pressable, ScrollView, Text, View } from "react-native";
+import { Alert, Image, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -16,17 +16,28 @@ import { QuickFilters } from "@/components/quick-filters";
 import {
   CarouselCard,
   Hero,
+  RecipeImage,
   RecipeRow,
   ThisWeekCard,
   type RecipeListItem,
   type WeekStripItem,
 } from "@/components/recipe-cards";
-import { EmptyState, Hairline, SectionHeader } from "@/components/ui";
-import { useHousehold } from "@/lib/auth";
+import { SaveSheet } from "@/components/save-sheet";
+import { EmptyState, Eyebrow, Hairline, Muted, SectionHeader } from "@/components/ui";
+import { useAuth, useHousehold } from "@/lib/auth";
 import { matchCanonical, normalizeRaw } from "@/lib/canonical";
 import type { ProteinCategory } from "@/lib/category";
 import { resolveProteinCategory } from "@/lib/category";
 import { computeRecipeFodmap } from "@/lib/fodmap";
+import {
+  collageCovers,
+  groupByOwner,
+  savedRecipeIds,
+  summarizeFolders,
+  type FolderLink,
+  type FolderRow,
+  type FolderSummary,
+} from "@/lib/folders";
 import { weekStart } from "@/lib/plan";
 import { matchesQuickFilters, type QuickFilter } from "@/lib/quick-filters";
 import { supabase } from "@/lib/supabase";
@@ -45,6 +56,8 @@ export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { householdId } = useHousehold();
+  const { session } = useAuth();
+  const userId = session?.user.id ?? "";
 
   const [recipes, setRecipes] = useState<RecipeListItem[]>([]);
   const [plannedEverIds, setPlannedEverIds] = useState<Set<string>>(new Set());
@@ -52,6 +65,11 @@ export default function HomeScreen() {
     { id: string; recipe_id: string | null; custom_title: string | null }[]
   >([]);
   const [sheetRecipe, setSheetRecipe] = useState<RecipeListItem | null>(null);
+  const [saveRecipe, setSaveRecipe] = useState<RecipeListItem | null>(null);
+  const [folders, setFolders] = useState<FolderSummary[]>([]);
+  const [memberEmails, setMemberEmails] = useState<Map<string, string>>(
+    new Map(),
+  );
   const [activeFilters, setActiveFilters] = useState<Set<QuickFilter>>(
     new Set(),
   );
@@ -67,8 +85,14 @@ export default function HomeScreen() {
 
   const load = useCallback(async () => {
     const weekIso = weekStart(new Date());
-    const [{ data: recipeRows }, { data: entryRows }, { data: weekPlan }] =
-      await Promise.all([
+    const [
+      { data: recipeRows },
+      { data: entryRows },
+      { data: weekPlan },
+      { data: folderRows },
+      { data: linkRows },
+      { data: memberRows },
+    ] = await Promise.all([
         supabase
           .from("recipes")
           .select(
@@ -86,8 +110,30 @@ export default function HomeScreen() {
           .eq("household_id", householdId)
           .eq("week_start", weekIso)
           .maybeSingle(),
+        supabase
+          .from("folders")
+          .select("id, household_id, owner_id, name, created_at")
+          .eq("household_id", householdId),
+        supabase.from("folder_recipes").select("folder_id, recipe_id, added_at"),
+        supabase
+          .from("household_members")
+          .select("user_id, email")
+          .eq("household_id", householdId),
       ]);
     if (recipeRows) setRecipes(recipeRows as RecipeListItem[]);
+    setFolders(
+      summarizeFolders(
+        (folderRows as FolderRow[]) ?? [],
+        (linkRows as FolderLink[]) ?? [],
+      ),
+    );
+    setMemberEmails(
+      new Map(
+        ((memberRows ?? []) as { user_id: string; email: string | null }[]).map(
+          (m) => [m.user_id, m.email ?? "Family member"],
+        ),
+      ),
+    );
     if (entryRows) {
       setPlannedEverIds(
         new Set(
@@ -174,6 +220,7 @@ export default function HomeScreen() {
       return matchesQuickFilters(
         {
           prep_minutes: r.prep_minutes,
+          cook_minutes: r.cook_minutes,
           needs_review: r.needs_review,
           category: input?.category ?? null,
           fodmapFriendly: input?.fodmapFriendly ?? null,
@@ -224,8 +271,37 @@ export default function HomeScreen() {
 
   const openRecipe = (id: string) => router.push(`/recipe/${id}`);
 
-  /** Bookmark tap: plan it, or confirm-remove when already in this week (v3). */
-  const onBookmark = (recipe: { id: string; title: string }) => {
+  const savedSet = useMemo(
+    () => savedRecipeIds(folders, userId),
+    [folders, userId],
+  );
+  const { mine: myFolders, others: otherFolders } = useMemo(
+    () => groupByOwner(folders, userId),
+    [folders, userId],
+  );
+  const coverByRecipe = useMemo(
+    () => new Map(recipes.map((r) => [r.id, r.cover_image_path ?? null])),
+    [recipes],
+  );
+
+  const createFolderPrompt = () => {
+    // Alert.prompt is iOS-only; elsewhere folders are created from the save sheet.
+    if (Platform.OS === "ios") {
+      Alert.prompt("New folder", undefined, (name) => {
+        const trimmed = name?.trim();
+        if (!trimmed) return;
+        void supabase
+          .from("folders")
+          .insert({ household_id: householdId, owner_id: userId, name: trimmed })
+          .then(() => void load());
+      });
+    } else {
+      Alert.alert("New folder", "Create folders from any recipe's bookmark.");
+    }
+  };
+
+  /** Calendar tap: plan it, or confirm-remove when already in this week (v3). */
+  const onPlan = (recipe: { id: string; title: string }) => {
     if (thisWeekSet.has(recipe.id)) {
       confirmRemoveFromWeek(recipe.title, () => {
         void removeRecipeFromCurrentWeek(householdId, recipe.id).then(load);
@@ -350,8 +426,10 @@ export default function HomeScreen() {
               <Hero
                 recipe={hero}
                 planned={thisWeekSet.has(hero.id)}
+                saved={savedSet.has(hero.id)}
                 onPress={() => openRecipe(hero.id)}
-                onBookmark={() => onBookmark(hero)}
+                onPlan={() => onPlan(hero)}
+                onSave={() => setSaveRecipe(hero)}
               />
             ) : null}
 
@@ -369,8 +447,10 @@ export default function HomeScreen() {
                       key={recipe.id}
                       recipe={recipe}
                       planned={thisWeekSet.has(recipe.id)}
+                      saved={savedSet.has(recipe.id)}
                       onPress={() => openRecipe(recipe.id)}
-                      onBookmark={() => onBookmark(recipe)}
+                      onPlan={() => onPlan(recipe)}
+                      onSave={() => setSaveRecipe(recipe)}
                     />
                   ))}
                 </ScrollView>
@@ -404,7 +484,7 @@ export default function HomeScreen() {
                       onBookmark={
                         item.recipeId
                           ? () =>
-                              onBookmark({
+                              onPlan({
                                 id: item.recipeId!,
                                 title: item.title,
                               })
@@ -431,8 +511,10 @@ export default function HomeScreen() {
                       key={recipe.id}
                       recipe={recipe}
                       planned={thisWeekSet.has(recipe.id)}
+                      saved={savedSet.has(recipe.id)}
                       onPress={() => openRecipe(recipe.id)}
-                      onBookmark={() => onBookmark(recipe)}
+                      onPlan={() => onPlan(recipe)}
+                      onSave={() => setSaveRecipe(recipe)}
                     />
                   ))}
                 </ScrollView>
@@ -459,13 +541,48 @@ export default function HomeScreen() {
                       key={recipe.id}
                       recipe={recipe}
                       planned={thisWeekSet.has(recipe.id)}
+                      saved={savedSet.has(recipe.id)}
                       onPress={() => openRecipe(recipe.id)}
-                      onBookmark={() => onBookmark(recipe)}
+                      onPlan={() => onPlan(recipe)}
+                      onSave={() => setSaveRecipe(recipe)}
                     />
                   ))}
                 </ScrollView>
               </View>
             ) : null}
+
+            {/* Recipe Box (spec 2026-08-24): my folders, then the family's. */}
+            <View style={{ paddingTop: 24, gap: 12 }}>
+              <SectionHeader
+                title="Your folders"
+                linkLabel="+ New"
+                onLinkPress={createFolderPrompt}
+              />
+              {myFolders.map((f) => (
+                <FolderRowItem
+                  key={f.id}
+                  folder={f}
+                  covers={collageCovers(f, coverByRecipe)}
+                  onPress={() => router.push(`/folder/${f.id}`)}
+                />
+              ))}
+              {myFolders.length === 0 ? (
+                <Muted>Save any recipe with the bookmark to start a folder.</Muted>
+              ) : null}
+              {otherFolders.map((group) => (
+                <View key={group.ownerId} style={{ gap: 12, paddingTop: 8 }}>
+                  <Eyebrow>{memberEmails.get(group.ownerId) ?? "Family member"}</Eyebrow>
+                  {group.folders.map((f) => (
+                    <FolderRowItem
+                      key={f.id}
+                      folder={f}
+                      covers={collageCovers(f, coverByRecipe)}
+                      onPress={() => router.push(`/folder/${f.id}`)}
+                    />
+                  ))}
+                </View>
+              ))}
+            </View>
           </View>
         )}
       </ScrollView>
@@ -479,6 +596,88 @@ export default function HomeScreen() {
           onAdded={() => void load()}
         />
       ) : null}
+
+      {saveRecipe ? (
+        <SaveSheet
+          visible
+          recipeId={saveRecipe.id}
+          recipeTitle={saveRecipe.title}
+          householdId={householdId}
+          userId={userId}
+          onClose={() => setSaveRecipe(null)}
+          onAddToWeek={() => {
+            const r = saveRecipe;
+            setSaveRecipe(null);
+            if (r) setSheetRecipe(r);
+          }}
+          onChanged={() => void load()}
+        />
+      ) : null}
     </SafeAreaView>
+  );
+}
+
+/** NYT Recipe Box row: 2×2 cover collage, name, count, chevron. */
+function FolderRowItem({
+  folder,
+  covers,
+  onPress,
+}: {
+  folder: FolderSummary;
+  covers: (string | null)[];
+  onPress: () => void;
+}) {
+  const { colors } = useTheme();
+  const tile = 35; // 2×2 grid + 2px gaps ≈ 72px square
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Open folder ${folder.name}`}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 14,
+        paddingVertical: 6,
+        backgroundColor: pressed ? colors.cardPressed : "transparent",
+      })}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          flexWrap: "wrap",
+          width: tile * 2 + 2,
+          gap: 2,
+          borderRadius: 8,
+          overflow: "hidden",
+        }}
+      >
+        {covers.map((path, i) => (
+          <RecipeImage
+            key={i}
+            path={path}
+            style={{ width: tile, height: tile }}
+            iconSize={14}
+          />
+        ))}
+      </View>
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text
+          numberOfLines={1}
+          style={{
+            color: colors.text,
+            fontSize: fontSize.cardTitle,
+            fontFamily: fonts.displaySemi,
+          }}
+        >
+          {folder.name}
+        </Text>
+        <Muted>
+          {folder.recipeIds.length}{" "}
+          {folder.recipeIds.length === 1 ? "recipe" : "recipes"}
+        </Muted>
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+    </Pressable>
   );
 }
