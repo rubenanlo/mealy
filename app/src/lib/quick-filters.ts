@@ -47,6 +47,10 @@ export function matchesQuickFilters(
   if (active.has('fodmapFriendly') && input.fodmapFriendly !== true) return false;
   if (active.has('needsReview') && !input.needs_review) return false;
   const proteins = PROTEIN_FILTERS.filter((f) => active.has(f));
-  if (proteins.length > 0 && !proteins.includes(input.category as QuickFilter)) return false;
+  if (proteins.length > 0) {
+    // Vegan recipes satisfy the Vegetarian chip (vegan ⊂ vegetarian).
+    const effective = input.category === 'vegan' ? 'vegetarian' : input.category;
+    if (!proteins.includes(effective as QuickFilter)) return false;
+  }
   return true;
 }

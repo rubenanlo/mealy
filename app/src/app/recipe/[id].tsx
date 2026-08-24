@@ -45,7 +45,13 @@ import {
 } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
 import type { CanonicalIngredient, FodmapTier } from '@/lib/canonical';
-import { CATEGORY_LABELS, resolveProteinCategory } from '@/lib/category';
+import {
+  CATEGORY_LABELS,
+  deriveCategory,
+  PROTEIN_CATEGORIES,
+  resolveProteinCategory,
+  type ProteinCategory,
+} from '@/lib/category';
 import { focalToContentPosition } from '@/lib/cover-focal';
 import { normalizeDietProfile } from '@/lib/diet';
 import { moveItem, removeItem, updateItem } from '@/lib/edit-list';
@@ -576,6 +582,29 @@ export default function RecipeSheetScreen() {
     ]);
   };
 
+  /** Tap the byline type: pick the recipe category in place (stored as a tag). */
+  const editCategory = () => {
+    if (!recipe) return;
+    const currentTag = deriveCategory(recipe.tags);
+    const pick = (cat: ProteinCategory | null) => {
+      const rest = recipe.tags.filter(
+        (t) => !(PROTEIN_CATEGORIES as readonly string[]).includes(t)
+      );
+      void saveRecipe({ tags: cat ? [...rest, cat] : rest });
+    };
+    Alert.alert('Recipe type', 'Auto derives it from the ingredients.', [
+      {
+        text: currentTag === null ? 'Auto ✓' : 'Auto',
+        onPress: () => pick(null),
+      },
+      ...PROTEIN_CATEGORIES.map((cat) => ({
+        text: currentTag === cat ? `${CATEGORY_LABELS[cat]} ✓` : CATEGORY_LABELS[cat],
+        onPress: () => pick(cat),
+      })),
+      { text: 'Cancel', style: 'cancel' as const },
+    ]);
+  };
+
   /** Tap the byline badge: pick the FODMAP level in place. */
   const editFodmapLevel = () => {
     if (!recipe) return;
@@ -909,15 +938,25 @@ export default function RecipeSheetScreen() {
 
             {/* Byline-style meta */}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-              {category ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <CategoryDot category={category} />
-                  <Muted>{CATEGORY_LABELS[category]}</Muted>
-                </View>
-              ) : null}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Recipe type ${category ? CATEGORY_LABELS[category] : 'unset'} — tap to change`}
+                onPress={editCategory}
+                hitSlop={8}
+                style={({ pressed }) => ({
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 5,
+                  opacity: pressed ? 0.6 : 1,
+                })}
+              >
+                {category ? <CategoryDot category={category} /> : null}
+                <Muted>{category ? CATEGORY_LABELS[category] : 'Type ?'}</Muted>
+                <Ionicons name="chevron-down" size={12} color={colors.textMuted} />
+              </Pressable>
               {recipeTier ? (
                 <>
-                  {category ? <Muted>·</Muted> : null}
+                  <Muted>·</Muted>
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={`FODMAP level ${recipeTier} — tap to change`}
@@ -956,7 +995,7 @@ export default function RecipeSheetScreen() {
                   </Pressable>
                 </>
               ) : null}
-              {(category || recipeTier) && metaParts.length > 0 ? <Muted>·</Muted> : null}
+              {metaParts.length > 0 ? <Muted>·</Muted> : null}
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Edit servings and times"

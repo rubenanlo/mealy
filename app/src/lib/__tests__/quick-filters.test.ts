@@ -42,3 +42,10 @@ describe('matchesQuickFilters', () => {
     expect(matchesQuickFilters(base, set('needsReview'))).toBe(false);
   });
 });
+
+describe('vegan category', () => {
+  it('satisfies the Vegetarian chip (vegan ⊂ vegetarian)', () => {
+    expect(matchesQuickFilters({ ...base, category: 'vegan' }, set('vegetarian'))).toBe(true);
+    expect(matchesQuickFilters({ ...base, category: 'vegan' }, set('meat'))).toBe(false);
+  });
+});

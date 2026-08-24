@@ -657,7 +657,7 @@ export default function HomeScreen() {
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
-                  gap: 4,
+                  gap: 5,
                 }}
               >
                 <View style={{ flex: 1 }}>
@@ -665,6 +665,7 @@ export default function HomeScreen() {
                     title="Your folders"
                     linkLabel="+ New"
                     onLinkPress={createFolderPrompt}
+                    style={{ marginRight: 5 }}
                   />
                 </View>
                 {(

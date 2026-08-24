@@ -5,11 +5,13 @@ import { matchCanonical, normalizeRaw, type CanonicalIndex } from '@/lib/canonic
  * Protein category behind the signature "category spine" (design.md).
  * Derived from recipe.tags — same Phase 1 convention as quotaProgress.
  */
-export type ProteinCategory = 'fish' | 'meat' | 'vegetarian' | 'legume';
+export type ProteinCategory = 'fish' | 'meat' | 'vegan' | 'vegetarian' | 'legume';
 
+/** Priority order: the first tag present wins (vegan outranks vegetarian). */
 export const PROTEIN_CATEGORIES: readonly ProteinCategory[] = [
   'fish',
   'meat',
+  'vegan',
   'vegetarian',
   'legume',
 ] as const;
@@ -17,6 +19,7 @@ export const PROTEIN_CATEGORIES: readonly ProteinCategory[] = [
 export const CATEGORY_LABELS: Record<ProteinCategory, string> = {
   fish: 'Fish',
   meat: 'Meat',
+  vegan: 'Vegan',
   vegetarian: 'Vegetarian',
   legume: 'Legumes',
 };
@@ -40,6 +43,7 @@ export function spineColor(category: ProteinCategory | null, colors: Palette): s
       return colors.spineFish;
     case 'meat':
       return colors.spineMeat;
+    case 'vegan':
     case 'vegetarian':
       return colors.spineVeg;
     case 'legume':
