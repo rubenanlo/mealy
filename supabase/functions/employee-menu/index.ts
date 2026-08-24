@@ -98,7 +98,7 @@ Deno.serve(async (req) => {
   // Current week only — never past weeks, never future ones.
   const { data: plans } = await admin
     .from('meal_plans')
-    .select('id, week_start')
+    .select('id, week_start, employee_notes')
     .eq('household_id', person.household_id)
     .eq('week_start', currentWeekStart())
     .order('week_start');
@@ -220,6 +220,18 @@ Deno.serve(async (req) => {
     body += recipe
       ? `<a class="card" href="?token=${esc(token)}&r=${esc(recipe.id)}">${inner}</a>`
       : `<div class="card">${inner}</div>`;
+  }
+
+  // Extra checklist items written by the family for this week.
+  const notes = planList.flatMap((p) =>
+    Array.isArray((p as { employee_notes?: unknown }).employee_notes)
+      ? ((p as { employee_notes: unknown[] }).employee_notes as string[])
+      : []
+  );
+  if (notes.length > 0) {
+    body += `<h2>More instructions</h2><ul class="ingredients">${notes
+      .map((n) => `<li>${esc(String(n))}</li>`)
+      .join('')}</ul>`;
   }
 
   return page(`Meals to cook — ${person.name}`, body);

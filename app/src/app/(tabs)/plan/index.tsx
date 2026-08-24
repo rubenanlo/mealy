@@ -5,7 +5,18 @@ import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RecipeImage } from '@/components/recipe-cards';
-import { Eyebrow, Loading, Muted, SectionHeader, Title } from '@/components/ui';
+import {
+  Body,
+  Button,
+  Eyebrow,
+  Field,
+  Hairline,
+  LinkButton,
+  Loading,
+  Muted,
+  SectionHeader,
+  Title,
+} from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
 import { isMealUpcoming, normalizeMealTimes, type MealTimes } from '@/lib/meal-times';
 import { addWeeks, DAY_LABELS, dayDate, SLOT_LABELS, weekStart, type MealSlot } from '@/lib/plan';
@@ -23,6 +34,8 @@ import {
 interface PlanRow {
   id: string;
   week_start: string;
+  /** Extra checklist items for the employee (migration 0016). */
+  employee_notes: string[];
 }
 
 interface EntryRow {
@@ -91,6 +104,8 @@ export default function WeeksScreen() {
   const [mealTimes, setMealTimes] = useState<MealTimes>(normalizeMealTimes(null));
   const [employeeNames, setEmployeeNames] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [noteDraft, setNoteDraft] = useState('');
 
   const currentWeek = weekStart(new Date());
 
@@ -98,7 +113,7 @@ export default function WeeksScreen() {
     const [{ data: planRows }, { data: hh }] = await Promise.all([
       supabase
         .from('meal_plans')
-        .select('id, week_start')
+        .select('id, week_start, employee_notes')
         .eq('household_id', householdId)
         .order('week_start', { ascending: false }),
       supabase.from('households').select('meal_times').eq('id', householdId).single(),
@@ -192,6 +207,26 @@ export default function WeeksScreen() {
         })),
     [plans, entries, recipesById, currentWeek]
   );
+
+  const currentPlan = plans.find((p) => p.week_start === currentWeek);
+  const employeeNotes = Array.isArray(currentPlan?.employee_notes)
+    ? currentPlan.employee_notes
+    : [];
+
+  const saveEmployeeNotes = async (next: string[]) => {
+    if (!currentPlan) return;
+    setPlans((prev) =>
+      prev.map((p) => (p.id === currentPlan.id ? { ...p, employee_notes: next } : p))
+    );
+    await supabase.from('meal_plans').update({ employee_notes: next }).eq('id', currentPlan.id);
+  };
+
+  const addEmployeeNote = () => {
+    const item = noteDraft.trim();
+    if (!item) return;
+    setNoteDraft('');
+    void saveEmployeeNotes([...employeeNotes, item]);
+  };
 
   const newPlan = () => {
     const options = [0, 1, 2, 3].map((delta) => {
@@ -373,6 +408,56 @@ export default function WeeksScreen() {
                 </Pressable>
               ))}
             </ScrollView>
+
+            {/* Extra checklist for the employee, mirrored on her web link. */}
+            {employeeNotes.length > 0 ? (
+              <View>
+                {employeeNotes.map((note, i) => (
+                  <View key={`${i}-${note}`}>
+                    {i > 0 ? <Hairline /> : null}
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 10,
+                        minHeight: 44,
+                      }}
+                    >
+                      <Body style={{ flex: 1 }}>{note}</Body>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Remove instruction: ${note}`}
+                        onPress={() =>
+                          void saveEmployeeNotes(employeeNotes.filter((_, idx) => idx !== i))
+                        }
+                        hitSlop={8}
+                      >
+                        <Ionicons name="close" size={16} color={colors.textMuted} />
+                      </Pressable>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+            {notesOpen ? (
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <Field
+                  value={noteDraft}
+                  onChangeText={setNoteDraft}
+                  placeholder="e.g. prep the lunch boxes…"
+                  style={{ flex: 1 }}
+                  autoFocus
+                  onSubmitEditing={addEmployeeNote}
+                />
+                <Button label="Add" kind="secondary" onPress={addEmployeeNote} />
+              </View>
+            ) : (
+              <LinkButton
+                label="+ Add more instructions"
+                onPress={() => setNotesOpen(true)}
+                style={{ alignSelf: 'flex-start', minHeight: 32 }}
+              />
+            )}
           </View>
         ) : null}
 
