@@ -1144,7 +1144,13 @@ export default function RecipeSheetScreen() {
                   ],
                 }}
               >
-                <ScrollView contentContainerStyle={{ paddingHorizontal: screenPadding, paddingVertical: 8 }}>
+                <ScrollView
+                  contentContainerStyle={{
+                    paddingHorizontal: screenPadding,
+                    paddingTop: 12,
+                    paddingBottom: 20,
+                  }}
+                >
                   {recipe.ingredients.map((ing, i) => {
                     const quantity = [ing.quantity, ing.unit].filter((v) => v != null).join(' ');
                     return (
@@ -1155,7 +1161,7 @@ export default function RecipeSheetScreen() {
                             flexDirection: 'row',
                             alignItems: 'baseline',
                             gap: 12,
-                            paddingVertical: 8,
+                            paddingVertical: 12,
                           }}
                         >
                           <Text
