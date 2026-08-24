@@ -221,11 +221,19 @@ export default function WeeksScreen() {
     await supabase.from('meal_plans').update({ employee_notes: next }).eq('id', currentPlan.id);
   };
 
-  const addEmployeeNote = () => {
-    const item = noteDraft.trim();
-    if (!item) return;
-    setNoteDraft('');
-    void saveEmployeeNotes([...employeeNotes, item]);
+  const openNotesEditor = () => {
+    setNoteDraft(employeeNotes.join('\n'));
+    setNotesOpen(true);
+  };
+
+  /** One instruction per line; blank lines drop out on save. */
+  const saveNotesDraft = () => {
+    const items = noteDraft
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+    setNotesOpen(false);
+    void saveEmployeeNotes(items);
   };
 
   const newPlan = () => {
@@ -410,53 +418,39 @@ export default function WeeksScreen() {
             </ScrollView>
 
             {/* Extra checklist for the employee, mirrored on her web link. */}
-            {employeeNotes.length > 0 ? (
-              <View>
-                {employeeNotes.map((note, i) => (
-                  <View key={`${i}-${note}`}>
-                    {i > 0 ? <Hairline /> : null}
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 10,
-                        minHeight: 44,
-                      }}
-                    >
-                      <Body style={{ flex: 1 }}>{note}</Body>
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={`Remove instruction: ${note}`}
-                        onPress={() =>
-                          void saveEmployeeNotes(employeeNotes.filter((_, idx) => idx !== i))
-                        }
-                        hitSlop={8}
-                      >
-                        <Ionicons name="close" size={16} color={colors.textMuted} />
-                      </Pressable>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            ) : null}
             {notesOpen ? (
-              <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ gap: 10 }}>
+                <Muted>One instruction per line — Enter starts the next one.</Muted>
                 <Field
                   value={noteDraft}
                   onChangeText={setNoteDraft}
-                  placeholder="e.g. prep the lunch boxes…"
-                  style={{ flex: 1 }}
+                  placeholder={'e.g. prep the lunch boxes\niron the shirts…'}
+                  multiline
                   autoFocus
-                  onSubmitEditing={addEmployeeNote}
+                  style={{ minHeight: 110, textAlignVertical: 'top' }}
                 />
-                <Button label="Add" kind="secondary" onPress={addEmployeeNote} />
+                <Button label="Save instructions" kind="secondary" onPress={saveNotesDraft} />
               </View>
             ) : (
-              <LinkButton
-                label="+ Add more instructions"
-                onPress={() => setNotesOpen(true)}
-                style={{ alignSelf: 'flex-start', minHeight: 32 }}
-              />
+              <>
+                {employeeNotes.length > 0 ? (
+                  <View>
+                    {employeeNotes.map((note, i) => (
+                      <View key={`${i}-${note}`}>
+                        {i > 0 ? <Hairline /> : null}
+                        <View style={{ minHeight: 40, justifyContent: 'center' }}>
+                          <Body>{note}</Body>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+                <LinkButton
+                  label={employeeNotes.length > 0 ? 'Edit instructions' : '+ Add more instructions'}
+                  onPress={openNotesEditor}
+                  style={{ alignSelf: 'flex-start', minHeight: 32 }}
+                />
+              </>
             )}
           </View>
         ) : null}
