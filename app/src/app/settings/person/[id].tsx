@@ -184,7 +184,12 @@ export default function PersonScreen() {
             <Body>Household employee</Body>
             <Switch
               value={isEmployee}
-              onValueChange={setIsEmployee}
+              onValueChange={(value) => {
+                // Persist immediately: the web-access link below only works
+                // once the flag is saved, so don't wait for the Save button.
+                setIsEmployee(value);
+                void supabase.from('persons').update({ is_employee: value }).eq('id', id);
+              }}
               trackColor={{ true: colors.accent }}
             />
           </View>
