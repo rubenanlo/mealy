@@ -309,6 +309,62 @@ export default function HomeScreen() {
     [recipes],
   );
 
+  const renameFolderPrompt = (folder: FolderSummary) => {
+    // Alert.prompt is iOS-only; elsewhere rename lives on the folder page.
+    Alert.prompt(
+      "Rename folder",
+      undefined,
+      (name) => {
+        const trimmed = name?.trim();
+        if (!trimmed) return;
+        void supabase
+          .from("folders")
+          .update({ name: trimmed })
+          .eq("id", folder.id)
+          .then(() => void load());
+      },
+      "plain-text",
+      folder.name,
+    );
+  };
+
+  const deleteFolderConfirm = (folder: FolderSummary) => {
+    Alert.alert(
+      "Delete this folder?",
+      `“${folder.name}” will be deleted. Recipes stay in your library.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            void supabase
+              .from("folders")
+              .delete()
+              .eq("id", folder.id)
+              .then(() => void load());
+          },
+        },
+      ],
+    );
+  };
+
+  /** ⋯ on a folder I own: quick actions without opening the folder. */
+  const folderMenu = (folder: FolderSummary) => {
+    Alert.alert(folder.name, undefined, [
+      { text: "Open", onPress: () => router.push(`/folder/${folder.id}`) },
+      ...(Platform.OS === "ios"
+        ? [{ text: "Rename", onPress: () => renameFolderPrompt(folder) }]
+        : []),
+      {
+        text: "Delete",
+        style: "destructive" as const,
+        onPress: () => deleteFolderConfirm(folder),
+      },
+      { text: "Cancel", style: "cancel" as const },
+    ]);
+  };
+
   const createFolderPrompt = () => {
     // Alert.prompt is iOS-only; elsewhere folders are created from the save sheet.
     if (Platform.OS === "ios") {
@@ -633,6 +689,7 @@ export default function HomeScreen() {
                 view={folderView}
                 coverByRecipe={coverByRecipe}
                 onOpen={(id) => router.push(`/folder/${id}`)}
+                onMenu={folderMenu}
               />
               {myFolders.length === 0 ? (
                 <Muted>Save any recipe with the bookmark to start a folder.</Muted>
@@ -689,21 +746,25 @@ function FolderCollection({
   view,
   coverByRecipe,
   onOpen,
+  onMenu,
 }: {
   folders: FolderSummary[];
   view: FolderView;
   coverByRecipe: Map<string, string | null>;
   onOpen: (id: string) => void;
+  /** Present only for folders the viewer owns (⋯ quick actions). */
+  onMenu?: (folder: FolderSummary) => void;
 }) {
   if (view === "list") {
     return (
-      <View>
+      <View style={{ gap: 8 }}>
         {folders.map((f) => (
           <FolderRowItem
             key={f.id}
             folder={f}
-            covers={collageCovers(f, coverByRecipe)}
+            cover={collageCovers(f, coverByRecipe)[0]}
             onPress={() => onOpen(f.id)}
+            onMenu={onMenu ? () => onMenu(f) : undefined}
           />
         ))}
       </View>
@@ -715,7 +776,7 @@ function FolderCollection({
         flexDirection: "row",
         flexWrap: "wrap",
         justifyContent: "space-between",
-        rowGap: 20,
+        rowGap: 24,
       }}
     >
       {folders.map((f) => (
@@ -724,21 +785,46 @@ function FolderCollection({
           folder={f}
           covers={collageCovers(f, coverByRecipe)}
           onPress={() => onOpen(f.id)}
+          onMenu={onMenu ? () => onMenu(f) : undefined}
         />
       ))}
     </View>
   );
 }
 
-/** NYT Recipe Box grid tile: large 2×2 collage over name + count. */
+/** ⋯ quick-actions button shared by both folder views. */
+function FolderMenuButton({
+  name,
+  onPress,
+}: {
+  name: string;
+  onPress: () => void;
+}) {
+  const { colors } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Folder options for ${name}`}
+      onPress={onPress}
+      hitSlop={8}
+      style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1, padding: 4 })}
+    >
+      <Ionicons name="ellipsis-horizontal" size={20} color={colors.textMuted} />
+    </Pressable>
+  );
+}
+
+/** NYT Recipe Box grid tile: gapped 2×2 collage, name + ⋯ row, count. */
 function FolderGridItem({
   folder,
   covers,
   onPress,
+  onMenu,
 }: {
   folder: FolderSummary;
   covers: (string | null)[];
   onPress: () => void;
+  onMenu?: () => void;
 }) {
   const { colors } = useTheme();
   return (
@@ -755,31 +841,35 @@ function FolderGridItem({
         style={{
           flexDirection: "row",
           flexWrap: "wrap",
+          justifyContent: "space-between",
+          alignContent: "space-between",
           aspectRatio: 1,
-          borderRadius: 8,
-          overflow: "hidden",
         }}
       >
         {covers.map((path, i) => (
           <RecipeImage
             key={i}
             path={path}
-            style={{ width: "50%", height: "50%" }}
+            style={{ width: "48.5%", height: "48.5%", borderRadius: 2 }}
             iconSize={20}
           />
         ))}
       </View>
       <View style={{ paddingTop: 8, gap: 2 }}>
-        <Text
-          numberOfLines={1}
-          style={{
-            color: colors.text,
-            fontSize: fontSize.cardTitle,
-            fontFamily: fonts.displaySemi,
-          }}
-        >
-          {folder.name}
-        </Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <Text
+            numberOfLines={1}
+            style={{
+              flex: 1,
+              color: colors.text,
+              fontSize: fontSize.cardTitle,
+              fontFamily: fonts.displaySemi,
+            }}
+          >
+            {folder.name}
+          </Text>
+          {onMenu ? <FolderMenuButton name={folder.name} onPress={onMenu} /> : null}
+        </View>
         <Muted>
           {folder.recipeIds.length}{" "}
           {folder.recipeIds.length === 1 ? "recipe" : "recipes"}
@@ -789,18 +879,19 @@ function FolderGridItem({
   );
 }
 
-/** NYT Recipe Box row: 2×2 cover collage, name, count, chevron. */
+/** NYT Recipe Box list row: single cover thumbnail, name, count, ⋯. */
 function FolderRowItem({
   folder,
-  covers,
+  cover,
   onPress,
+  onMenu,
 }: {
   folder: FolderSummary;
-  covers: (string | null)[];
+  cover: string | null;
   onPress: () => void;
+  onMenu?: () => void;
 }) {
   const { colors } = useTheme();
-  const tile = 35; // 2×2 grid + 2px gaps ≈ 72px square
   return (
     <Pressable
       accessibilityRole="button"
@@ -814,25 +905,11 @@ function FolderRowItem({
         backgroundColor: pressed ? colors.cardPressed : "transparent",
       })}
     >
-      <View
-        style={{
-          flexDirection: "row",
-          flexWrap: "wrap",
-          width: tile * 2 + 2,
-          gap: 2,
-          borderRadius: 8,
-          overflow: "hidden",
-        }}
-      >
-        {covers.map((path, i) => (
-          <RecipeImage
-            key={i}
-            path={path}
-            style={{ width: tile, height: tile }}
-            iconSize={14}
-          />
-        ))}
-      </View>
+      <RecipeImage
+        path={cover}
+        style={{ width: 64, height: 64, borderRadius: 8 }}
+        iconSize={20}
+      />
       <View style={{ flex: 1, gap: 2 }}>
         <Text
           numberOfLines={1}
@@ -849,7 +926,7 @@ function FolderRowItem({
           {folder.recipeIds.length === 1 ? "recipe" : "recipes"}
         </Muted>
       </View>
-      <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+      {onMenu ? <FolderMenuButton name={folder.name} onPress={onMenu} /> : null}
     </Pressable>
   );
 }
