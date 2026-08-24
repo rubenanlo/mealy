@@ -1,44 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { FlatList, Modal, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { PersonChip } from '@/components/person-chip';
-import {
-  Body,
-  Button,
-  CategoryDot,
-  Eyebrow,
-  Field,
-  Hairline,
-  LinkButton,
-  Muted,
-  Title,
-} from '@/components/ui';
+import { RecipeImage } from '@/components/recipe-cards';
+import { Eyebrow, Muted, SectionHeader, Title } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
-import { resolveProteinCategory, type ProteinCategory } from '@/lib/category';
-import { normalizeDietProfile } from '@/lib/diet';
-import { useImageUrl } from '@/lib/media';
-import {
-  DAY_LABELS,
-  SLOT_LABELS,
-  addWeeks,
-  dayDate,
-  plannedEvents,
-  slotCoverage,
-  slotEntries,
-  upsertEntryPayload,
-  weekStart,
-  type CookType,
-  type MealSlot,
-  type PlanEntry,
-} from '@/lib/plan';
-import { quotaProgress } from '@/lib/quotas';
+import { addWeeks, DAY_LABELS, dayDate, SLOT_LABELS, weekStart, type MealSlot } from '@/lib/plan';
 import { supabase } from '@/lib/supabase';
 import {
-  floatingActionOffset,
   fonts,
   fontSize,
   minTapTarget,
@@ -47,677 +18,379 @@ import {
   tabBarClearance,
   useTheme,
 } from '@/lib/theme';
-import { useCanonicalIndex } from '@/lib/use-canonical';
-import type { IngredientRow as IngredientData } from '@/lib/worker';
 
-interface Person {
+interface PlanRow {
   id: string;
-  name: string;
-  is_employee: boolean;
-  diet_profile: unknown;
+  week_start: string;
+}
+
+interface EntryRow {
+  meal_plan_id: string;
+  day: number;
+  slot: MealSlot;
+  recipe_id: string | null;
+  custom_title: string | null;
 }
 
 interface RecipeLite {
   id: string;
   title: string;
-  tags: string[];
   cover_image_path: string | null;
-  ingredients?: IngredientData[];
 }
 
-interface MealPlanRow {
-  id: string;
-  week_start: string;
-  status: 'draft' | 'approved';
+/** One planned meal cell (day + slot) with everything scheduled in it. */
+interface MealCell {
+  day: number;
+  slot: MealSlot;
+  titles: string[];
+  covers: (string | null)[];
+  recipeIds: string[];
 }
 
-const CATEGORY_PILL_LABELS: Record<string, string> = {
-  fish: 'Fish',
-  meat: 'Meat',
-  vegetarian: 'Veg',
-  legume: 'Legume',
-};
-
-/** Outlined quota chip: 8px category dot + "Fish 1/2" Franklin 500 13. */
-function QuotaChip({
-  category,
-  planned,
-  target,
-}: {
-  category: ProteinCategory;
-  planned: number;
-  target: number;
-}) {
-  const { colors } = useTheme();
-  return (
-    <View
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-        borderWidth: 1,
-        borderColor: colors.border,
-        borderRadius: 999,
-        paddingHorizontal: 10,
-        paddingVertical: 5,
-      }}
-    >
-      <CategoryDot category={category} />
-      <Text
-        style={{
-          color: colors.text,
-          fontSize: fontSize.meta,
-          fontFamily: fonts.uiMedium,
-          fontVariant: ['tabular-nums'],
-        }}
-      >
-        {CATEGORY_PILL_LABELS[category] ?? category} {planned}/{target}
-      </Text>
-    </View>
-  );
-}
-
-function EntryThumb({ path }: { path: string | null }) {
-  const { colors } = useTheme();
-  const url = useImageUrl(path);
-  return (
-    <View
-      style={{
-        width: 64,
-        height: 48,
-        borderRadius: radius.thumb,
-        backgroundColor: colors.cardPressed,
-        overflow: 'hidden',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-    >
-      {url ? (
-        <Image source={{ uri: url }} style={{ width: 64, height: 48 }} contentFit="cover" />
-      ) : (
-        <Ionicons name="restaurant-outline" size={18} color={colors.textMuted} />
-      )}
-    </View>
-  );
-}
-
-export default function PlanScreen() {
-  const { colors } = useTheme();
-  const { householdId } = useHousehold();
-  const insets = useSafeAreaInsets();
-  const router = useRouter();
-  const index = useCanonicalIndex();
-
-  const [weekIso, setWeekIso] = useState(() => weekStart(new Date()));
-  const [plan, setPlan] = useState<MealPlanRow | null>(null);
-  const [entries, setEntries] = useState<PlanEntry[]>([]);
-  const [persons, setPersons] = useState<Person[]>([]);
-  const [recipes, setRecipes] = useState<RecipeLite[]>([]);
-  const [busy, setBusy] = useState(false);
-
-  // Picker modal state
-  const [pickerCell, setPickerCell] = useState<{ day: number; slot: MealSlot } | null>(null);
-  const [pickerSearch, setPickerSearch] = useState('');
-  const [pickedRecipe, setPickedRecipe] = useState<RecipeLite | null>(null);
-  /** Free-text meal draft ("write down a specific meal"). */
-  const [customDraft, setCustomDraft] = useState('');
-  const [pickedCustom, setPickedCustom] = useState<string | null>(null);
-  const [pickedPersonIds, setPickedPersonIds] = useState<string[]>([]);
-  const [pickedCook, setPickedCook] = useState<CookType>('family');
-
-  const loadWeek = useCallback(
-    async (week: string) => {
-      const { data: planRow } = await supabase
-        .from('meal_plans')
-        .select('id, week_start, status')
-        .eq('household_id', householdId)
-        .eq('week_start', week)
-        .maybeSingle();
-      setPlan((planRow as MealPlanRow) ?? null);
-      if (planRow) {
-        const { data: entryRows } = await supabase
-          .from('plan_entries')
-          .select('*')
-          .eq('meal_plan_id', planRow.id);
-        setEntries((entryRows as PlanEntry[]) ?? []);
-      } else {
-        setEntries([]);
-      }
-    },
-    [householdId]
-  );
-
-  useFocusEffect(
-    useCallback(() => {
-      let cancelled = false;
-      (async () => {
-        const [{ data: personRows }, { data: recipeRows }] = await Promise.all([
-          supabase
-            .from('persons')
-            .select('id, name, is_employee, diet_profile')
-            .eq('household_id', householdId)
-            .order('created_at'),
-          supabase
-            .from('recipes')
-            .select('id, title, tags, cover_image_path, ingredients')
-            .eq('household_id', householdId)
-            .order('title'),
-        ]);
-        if (cancelled) return;
-        setPersons((personRows as Person[]) ?? []);
-        setRecipes((recipeRows as RecipeLite[]) ?? []);
-        await loadWeek(weekIso);
-      })();
-      return () => {
-        cancelled = true;
-      };
-    }, [householdId, weekIso, loadWeek])
-  );
-
-  const recipeById = useMemo(() => new Map(recipes.map((r) => [r.id, r])), [recipes]);
-  const personById = useMemo(() => new Map(persons.map((p) => [p.id, p])), [persons]);
-  const eaters = useMemo(() => persons.filter((p) => !p.is_employee), [persons]);
-
-  /**
-   * Household quota strip: per category, worst-covered eater (lowest planned)
-   * against the highest personal minimum. Categories without a minimum hide.
-   */
-  const quotaChips = useMemo(() => {
-    if (eaters.length === 0) return [];
-    const quotaRecipes = recipes.map((r) => ({
-      ...r,
-      category: resolveProteinCategory(r.tags, r.ingredients, index),
-    }));
-    const perPerson = eaters.map((person) =>
-      quotaProgress(
-        entries,
-        person.id,
-        quotaRecipes,
-        normalizeDietProfile(person.diet_profile).proteinQuotas.targets
-      )
-    );
-    const categories = new Set(perPerson.flat().map((p) => p.category));
-    const chips: { category: ProteinCategory; planned: number; target: number }[] = [];
-    for (const category of ['fish', 'meat', 'vegetarian', 'legume'] as ProteinCategory[]) {
-      if (!categories.has(category)) continue;
-      const rows = perPerson
-        .map((progress) => progress.find((p) => p.category === category))
-        .filter((row) => row !== undefined);
-      const target = Math.max(...rows.map((r) => r.min));
-      if (target <= 0) continue;
-      const planned = Math.min(...rows.map((r) => r.planned));
-      chips.push({ category, planned, target });
-    }
-    return chips;
-  }, [eaters, entries, recipes, index]);
-
-  const ensurePlan = async (): Promise<string> => {
-    if (plan) return plan.id;
-    const { data, error } = await supabase
-      .from('meal_plans')
-      .insert({ household_id: householdId, week_start: weekIso })
-      .select('id, week_start, status')
-      .single();
-    if (error || !data) throw new Error(error?.message ?? 'Could not create the week');
-    setPlan(data as MealPlanRow);
-    return data.id as string;
-  };
-
-  const openPicker = (day: number, slot: MealSlot) => {
-    setPickerCell({ day, slot });
-    setPickerSearch('');
-    setPickedRecipe(null);
-    setCustomDraft('');
-    setPickedCustom(null);
-    setPickedPersonIds([]);
-    setPickedCook('family');
-  };
-
-  const pickCustom = () => {
-    const title = customDraft.trim();
-    if (!title) return;
-    setPickedCustom(title);
-    setPickedRecipe(null);
-  };
-
-  const confirmAdd = async () => {
-    if (!pickerCell || (!pickedRecipe && !pickedCustom)) return;
-    setBusy(true);
-    try {
-      const mealPlanId = await ensurePlan();
-      const position = slotEntries(entries, pickerCell.day, pickerCell.slot).length;
-      const payload = upsertEntryPayload({
-        mealPlanId,
-        day: pickerCell.day,
-        slot: pickerCell.slot,
-        ...(pickedRecipe ? { recipeId: pickedRecipe.id } : { customTitle: pickedCustom! }),
-        personIds: pickedPersonIds,
-        assignedCook: pickedCook,
-        position,
-      });
-      await supabase.from('plan_entries').insert(payload);
-      setPickerCell(null);
-      await loadWeek(weekIso);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const removeEntry = async (entryId: string) => {
-    await supabase.from('plan_entries').delete().eq('id', entryId);
-    await loadWeek(weekIso);
-  };
-
-  const approveWeek = async () => {
-    if (!plan) return;
-    setBusy(true);
-    try {
-      await supabase.from('meal_plans').update({ status: 'approved' }).eq('id', plan.id);
-      const events = plannedEvents(
-        entries,
-        householdId,
-        eaters.map((p) => p.id),
-        weekIso
-      );
-      if (events.length > 0) await supabase.from('events').insert(events);
-      await loadWeek(weekIso);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const todayEyebrow = new Date().toLocaleDateString('en-US', {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-  });
-  const weekLabel = `Week of ${dayDate(weekIso, 0).toLocaleDateString('en-US', {
+function weekLabel(weekIso: string): string {
+  return `Week of ${dayDate(weekIso, 0).toLocaleDateString('en-US', {
     month: 'long',
     day: 'numeric',
   })}`;
-  const todayIndex = DAY_LABELS.findIndex(
-    (_, day) => dayDate(weekIso, day).toDateString() === new Date().toDateString()
+}
+
+/** Group a week's entries into ordered meal cells (day asc, lunch first). */
+function buildCells(entries: EntryRow[], recipesById: Map<string, RecipeLite>): MealCell[] {
+  const byKey = new Map<string, MealCell>();
+  for (const entry of entries) {
+    const key = `${entry.day}-${entry.slot}`;
+    const cell =
+      byKey.get(key) ?? { day: entry.day, slot: entry.slot, titles: [], covers: [], recipeIds: [] };
+    if (entry.recipe_id) {
+      const recipe = recipesById.get(entry.recipe_id);
+      cell.titles.push(recipe?.title ?? 'Recipe');
+      cell.covers.push(recipe?.cover_image_path ?? null);
+      cell.recipeIds.push(entry.recipe_id);
+    } else if (entry.custom_title) {
+      cell.titles.push(entry.custom_title);
+      cell.covers.push(null);
+    }
+    byKey.set(key, cell);
+  }
+  return [...byKey.values()].sort(
+    (a, b) => a.day - b.day || (a.slot === b.slot ? 0 : a.slot === 'lunch' ? -1 : 1)
+  );
+}
+
+export default function WeeksScreen() {
+  const { colors } = useTheme();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { householdId } = useHousehold();
+
+  const [plans, setPlans] = useState<PlanRow[]>([]);
+  const [entries, setEntries] = useState<EntryRow[]>([]);
+  const [recipesById, setRecipesById] = useState<Map<string, RecipeLite>>(new Map());
+
+  const currentWeek = weekStart(new Date());
+
+  const load = useCallback(async () => {
+    const { data: planRows } = await supabase
+      .from('meal_plans')
+      .select('id, week_start')
+      .eq('household_id', householdId)
+      .order('week_start', { ascending: false });
+    const allPlans = (planRows as PlanRow[]) ?? [];
+    setPlans(allPlans);
+    if (allPlans.length === 0) {
+      setEntries([]);
+      return;
+    }
+    const { data: entryRows } = await supabase
+      .from('plan_entries')
+      .select('meal_plan_id, day, slot, recipe_id, custom_title')
+      .in(
+        'meal_plan_id',
+        allPlans.map((p) => p.id)
+      );
+    const all = (entryRows as EntryRow[]) ?? [];
+    setEntries(all);
+    const recipeIds = [...new Set(all.map((e) => e.recipe_id).filter((id): id is string => !!id))];
+    if (recipeIds.length > 0) {
+      const { data: recipeRows } = await supabase
+        .from('recipes')
+        .select('id, title, cover_image_path')
+        .in('id', recipeIds);
+      setRecipesById(new Map(((recipeRows as RecipeLite[]) ?? []).map((r) => [r.id, r])));
+    }
+  }, [householdId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load])
   );
 
-  const filteredRecipes = recipes.filter((r) =>
-    r.title.toLowerCase().includes(pickerSearch.trim().toLowerCase())
-  );
-  const showApprove = plan?.status === 'draft' && entries.length > 0;
+  const openWeek = (week: string) =>
+    router.push({ pathname: '/plan/detail', params: { week } });
 
-  const navButton = (label: string, icon: 'chevron-back' | 'chevron-forward', delta: number) => (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onPress={() => setWeekIso(addWeeks(weekIso, delta))}
-      style={({ pressed }) => ({
-        width: minTapTarget,
-        height: minTapTarget,
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderRadius: minTapTarget / 2,
-        backgroundColor: pressed ? colors.cardPressed : 'transparent',
-      })}
-    >
-      <Ionicons name={icon} size={24} color={colors.text} />
-    </Pressable>
+  /** Current week's meals from today onward; the first one is "next". */
+  const upcoming = useMemo(() => {
+    const plan = plans.find((p) => p.week_start === currentWeek);
+    if (!plan) return [];
+    const cells = buildCells(
+      entries.filter((e) => e.meal_plan_id === plan.id),
+      recipesById
+    );
+    const todayIndex = Math.floor(
+      (new Date().setHours(0, 0, 0, 0) - dayDate(currentWeek, 0).getTime()) / 86_400_000
+    );
+    return cells.filter((c) => c.day >= todayIndex);
+  }, [plans, entries, recipesById, currentWeek]);
+
+  /** Past weeks with a plan, newest first. */
+  const pastWeeks = useMemo(
+    () =>
+      plans
+        .filter((p) => p.week_start < currentWeek)
+        .map((p) => ({
+          ...p,
+          cells: buildCells(
+            entries.filter((e) => e.meal_plan_id === p.id),
+            recipesById
+          ),
+        })),
+    [plans, entries, recipesById, currentWeek]
+  );
+
+  const newPlan = () => {
+    const options = [0, 1, 2, 3].map((delta) => {
+      const week = addWeeks(currentWeek, delta);
+      const label =
+        delta === 0 ? 'This week' : delta === 1 ? 'Next week' : `In ${delta} weeks`;
+      return { text: `${label} — ${weekLabel(week).replace('Week of ', '')}`, week };
+    });
+    Alert.alert('Plan which week?', undefined, [
+      ...options.map((o) => ({ text: o.text, onPress: () => openWeek(o.week) })),
+      { text: 'Cancel', style: 'cancel' as const },
+    ]);
+  };
+
+  const todayIndex = Math.floor(
+    (new Date().setHours(0, 0, 0, 0) - dayDate(currentWeek, 0).getTime()) / 86_400_000
   );
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
-      {/* Header: date eyebrow + title + week nav */}
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          paddingHorizontal: screenPadding,
-          paddingVertical: 8,
-          gap: 8,
-        }}
-      >
-        <View style={{ flex: 1, gap: 2 }}>
-          <Eyebrow>{todayEyebrow}</Eyebrow>
-          <Title>Week</Title>
-          <Muted>
-            {weekLabel}
-            {plan?.status === 'approved' ? ' · approved' : ''}
-          </Muted>
-        </View>
-        {navButton('Previous week', 'chevron-back', -1)}
-        {navButton('Next week', 'chevron-forward', 1)}
-      </View>
-
-      {/* Quota strip */}
-      {quotaChips.length > 0 ? (
-        <View
-          style={{
-            flexDirection: 'row',
-            flexWrap: 'wrap',
-            gap: 8,
-            paddingHorizontal: screenPadding,
-            paddingBottom: 12,
-          }}
-        >
-          {quotaChips.map((chip) => (
-            <QuotaChip key={chip.category} {...chip} />
-          ))}
-        </View>
-      ) : null}
-
       <ScrollView
         contentContainerStyle={{
           paddingHorizontal: screenPadding,
-          // Clear the capsule bar, plus the floating approve button when shown.
-          paddingBottom: insets.bottom + (showApprove ? tabBarClearance + 72 : tabBarClearance),
+          paddingBottom: insets.bottom + tabBarClearance,
+          gap: 16,
         }}
       >
-        {DAY_LABELS.map((dayLabel, day) => {
-          const isToday = day === todayIndex;
-          return (
-            <View key={day}>
-              <Hairline />
-              <View style={{ paddingVertical: 14, gap: 10 }}>
-                {isToday ? <Eyebrow style={{ color: colors.saffron }}>Today</Eyebrow> : null}
-                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-                  <Text
+        <View style={{ paddingVertical: 8, gap: 2 }}>
+          <Eyebrow>
+            {new Date()
+              .toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+              .toUpperCase()}
+          </Eyebrow>
+          <Title>Meal plans</Title>
+        </View>
+
+        {/* This week: next meal first, then the rest of the upcoming meals. */}
+        <View style={{ gap: 12 }}>
+          <SectionHeader
+            title="This week"
+            linkLabel="Open"
+            onLinkPress={() => openWeek(currentWeek)}
+          />
+          {upcoming.length > 0 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ marginHorizontal: -screenPadding }}
+              contentContainerStyle={{ gap: 14, paddingHorizontal: screenPadding }}
+            >
+              {upcoming.map((cell, i) => (
+                <Pressable
+                  key={`${cell.day}-${cell.slot}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${DAY_LABELS[cell.day]} ${SLOT_LABELS[cell.slot]}: ${cell.titles.join(', ')}`}
+                  onPress={() =>
+                    cell.recipeIds.length === 1
+                      ? router.push(`/recipe/${cell.recipeIds[0]}`)
+                      : openWeek(currentWeek)
+                  }
+                  style={({ pressed }) => ({ width: 150, opacity: pressed ? 0.7 : 1 })}
+                >
+                  {cell.covers.length > 1 ? (
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        flexWrap: 'wrap',
+                        justifyContent: 'space-between',
+                        alignContent: 'space-between',
+                        width: 150,
+                        height: 110,
+                        borderRadius: radius.card,
+                        overflow: 'hidden',
+                      }}
+                    >
+                      {[0, 1, 2, 3].map((n) => (
+                        <RecipeImage
+                          key={n}
+                          path={cell.covers[n] ?? null}
+                          style={{ width: '49%', height: '48.5%' }}
+                          iconSize={16}
+                        />
+                      ))}
+                    </View>
+                  ) : (
+                    <RecipeImage
+                      path={cell.covers[0] ?? null}
+                      style={{ width: 150, height: 110, borderRadius: radius.card }}
+                    />
+                  )}
+                  <View style={{ paddingTop: 8, gap: 2 }}>
+                    <Eyebrow style={i === 0 ? { color: colors.saffron } : undefined}>
+                      {`${cell.day === todayIndex ? 'Today' : DAY_LABELS[cell.day]} · ${SLOT_LABELS[cell.slot]}`}
+                      {i === 0 ? ' · next' : ''}
+                    </Eyebrow>
+                    <Text
+                      numberOfLines={2}
+                      style={{
+                        color: colors.text,
+                        fontSize: fontSize.cardTitle,
+                        lineHeight: 21,
+                        fontFamily: fonts.displaySemi,
+                      }}
+                    >
+                      {cell.titles.join(' · ')}
+                    </Text>
+                  </View>
+                </Pressable>
+              ))}
+            </ScrollView>
+          ) : (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Plan this week"
+              onPress={() => openWeek(currentWeek)}
+              style={({ pressed }) => ({
+                minHeight: 110,
+                borderRadius: radius.card,
+                borderWidth: 1,
+                borderColor: colors.border,
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                backgroundColor: pressed ? colors.cardPressed : 'transparent',
+              })}
+            >
+              <Ionicons name="calendar-outline" size={24} color={colors.textMuted} />
+              <Muted>Nothing planned yet — plan this week</Muted>
+            </Pressable>
+          )}
+        </View>
+
+        {/* Past weeks grid; the first tile creates a new plan. */}
+        <View style={{ gap: 12, paddingTop: 8 }}>
+          <SectionHeader title="Past weeks" />
+          <View
+            style={{
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              justifyContent: 'space-between',
+              rowGap: 20,
+            }}
+          >
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="New meal plan"
+              onPress={newPlan}
+              style={({ pressed }) => ({
+                width: '47.5%',
+                aspectRatio: 1,
+                borderRadius: radius.card,
+                borderWidth: 1,
+                borderColor: colors.border,
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                backgroundColor: pressed ? colors.cardPressed : 'transparent',
+              })}
+            >
+              <View
+                style={{
+                  width: minTapTarget,
+                  height: minTapTarget,
+                  borderRadius: minTapTarget / 2,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="add" size={28} color={colors.text} />
+              </View>
+              <Muted>New plan</Muted>
+            </Pressable>
+
+            {pastWeeks.map((week) => {
+              const covers: (string | null)[] = week.cells
+                .flatMap((c) => c.covers)
+                .filter((c): c is string => !!c)
+                .slice(0, 4);
+              while (covers.length < 4) covers.push(null);
+              const meals = week.cells.length;
+              return (
+                <Pressable
+                  key={week.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${weekLabel(week.week_start)}`}
+                  onPress={() => openWeek(week.week_start)}
+                  style={({ pressed }) => ({ width: '47.5%', opacity: pressed ? 0.7 : 1 })}
+                >
+                  <View
                     style={{
-                      color: colors.text,
-                      fontSize: fontSize.dayName,
-                      letterSpacing: -0.2,
-                      fontFamily: fonts.displaySemi,
+                      flexDirection: 'row',
+                      flexWrap: 'wrap',
+                      justifyContent: 'space-between',
+                      alignContent: 'space-between',
+                      aspectRatio: 1,
+                      borderRadius: radius.card,
+                      overflow: 'hidden',
                     }}
                   >
-                    {dayLabel}
-                  </Text>
-                  <Muted>
-                    {dayDate(weekIso, day).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                    })}
-                  </Muted>
-                </View>
-
-                {(['lunch', 'dinner'] as const).map((slot) => {
-                  const cellEntries = slotEntries(entries, day, slot);
-                  const coverage = slotCoverage(
-                    entries,
-                    day,
-                    slot,
-                    eaters.map((p) => p.id)
-                  );
-                  return (
-                    <View key={slot} style={{ gap: 6 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                        <Eyebrow style={{ flex: 1 }}>{SLOT_LABELS[slot]}</Eyebrow>
-                        <LinkButton
-                          label="+ Add"
-                          accessibilityLabel={`Add a dish — ${dayLabel} ${SLOT_LABELS[slot]}`}
-                          onPress={() => openPicker(day, slot)}
-                          textStyle={{ fontSize: fontSize.small }}
-                        />
-                      </View>
-                      {cellEntries.map((entry) => {
-                        const recipe = entry.recipe_id ? recipeById.get(entry.recipe_id) : undefined;
-                        const category = resolveProteinCategory(
-                          recipe?.tags ?? [],
-                          recipe?.ingredients,
-                          index
-                        );
-                        return (
-                          <View
-                            key={entry.id}
-                            style={{
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              gap: 12,
-                              minHeight: 56, // v3: glanceable tap floor for Week rows
-                            }}
-                          >
-                            {/* v3.2: tapping a planned recipe opens the sheet */}
-                            <Pressable
-                              accessibilityRole="button"
-                              accessibilityLabel={`Open ${entry.custom_title ?? recipe?.title ?? 'recipe'}`}
-                              disabled={!recipe}
-                              onPress={() => recipe && router.push(`/recipe/${recipe.id}`)}
-                              style={({ pressed }) => ({
-                                flex: 1,
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                gap: 12,
-                                borderRadius: radius.thumb,
-                                backgroundColor: pressed && recipe ? colors.cardPressed : 'transparent',
-                              })}
-                            >
-                            <EntryThumb path={recipe?.cover_image_path ?? null} />
-                            <View style={{ flex: 1, gap: 3 }}>
-                              <Text
-                                numberOfLines={2}
-                                style={{
-                                  color: colors.text,
-                                  fontSize: fontSize.small,
-                                  fontFamily: fonts.uiMedium,
-                                }}
-                              >
-                                {entry.assigned_cook === 'employee' ? '👩‍🍳 ' : ''}
-                                {entry.custom_title ?? recipe?.title ?? 'Recipe'}
-                              </Text>
-                              <View
-                                style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}
-                              >
-                                {category ? <CategoryDot category={category} size={7} /> : null}
-                                {entry.person_ids.length === 0 ? (
-                                  <Muted>Whole household</Muted>
-                                ) : (
-                                  entry.person_ids.map((pid) => {
-                                    const person = personById.get(pid);
-                                    return person ? <PersonChip key={pid} person={person} /> : null;
-                                  })
-                                )}
-                              </View>
-                            </View>
-                            </Pressable>
-                            <Pressable
-                              accessibilityRole="button"
-                              accessibilityLabel="Remove this dish"
-                              onPress={() => void removeEntry(entry.id)}
-                              hitSlop={8}
-                              style={({ pressed }) => ({
-                                width: 32,
-                                height: 32,
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                opacity: pressed ? 0.5 : 1,
-                              })}
-                            >
-                              <Ionicons name="close" size={18} color={colors.textMuted} />
-                            </Pressable>
-                          </View>
-                        );
-                      })}
-                      {coverage.uncovered.length > 0 && cellEntries.length > 0 ? (
-                        <View style={{ flexDirection: 'row', gap: 4, flexWrap: 'wrap' }}>
-                          {coverage.uncovered.map((pid) => {
-                            const person = personById.get(pid);
-                            return person ? <PersonChip key={pid} person={person} hollow /> : null;
-                          })}
-                        </View>
-                      ) : null}
-                    </View>
-                  );
-                })}
-              </View>
-            </View>
-          );
-        })}
-        <Hairline />
-      </ScrollView>
-
-      {/* v3.1: approve floats ABOVE the capsule tab bar (draft + non-empty only) */}
-      {showApprove ? (
-        <View
-          pointerEvents="box-none"
-          style={{
-            position: 'absolute',
-            left: screenPadding,
-            right: screenPadding,
-            bottom: insets.bottom + floatingActionOffset,
-            ...Platform.select({
-              ios: {
-                shadowColor: '#000000',
-                shadowOpacity: 0.12,
-                shadowRadius: 16,
-                shadowOffset: { width: 0, height: 4 },
-              },
-              android: { elevation: 8 },
-              web: { boxShadow: '0 4px 16px rgba(0, 0, 0, 0.12)' } as object,
-              default: {},
-            }),
-          }}
-        >
-          <Button label="Approve week" onPress={() => void approveWeek()} loading={busy} />
-        </View>
-      ) : null}
-
-      <Modal visible={pickerCell !== null} animationType="slide" onRequestClose={() => setPickerCell(null)}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
-          <View style={{ flex: 1, padding: screenPadding, gap: 14 }}>
-            {pickerCell ? (
-              <Title>
-                {DAY_LABELS[pickerCell.day]} — {SLOT_LABELS[pickerCell.slot]}
-              </Title>
-            ) : null}
-            {!pickedRecipe && !pickedCustom ? (
-              <>
-                {/* Free-text meal: no recipe required */}
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <Field
-                    value={customDraft}
-                    onChangeText={setCustomDraft}
-                    placeholder="Or type a meal…"
-                    style={{ flex: 1 }}
-                    onSubmitEditing={pickCustom}
-                    returnKeyType="done"
-                  />
-                  <LinkButton
-                    label="Add"
-                    accessibilityLabel="Add this meal"
-                    onPress={pickCustom}
-                    style={{ opacity: customDraft.trim() ? 1 : 0.4 }}
-                  />
-                </View>
-                <Field
-                  icon="search-outline"
-                  value={pickerSearch}
-                  onChangeText={setPickerSearch}
-                  placeholder="Search recipes"
-                  autoCapitalize="none"
-                />
-                <FlatList
-                  data={filteredRecipes}
-                  keyExtractor={(r) => r.id}
-                  ItemSeparatorComponent={Hairline}
-                  renderItem={({ item }) => {
-                    const category = resolveProteinCategory(item.tags, item.ingredients, index);
-                    return (
-                      <Pressable
-                        accessibilityRole="button"
-                        onPress={() => setPickedRecipe(item)}
-                        style={({ pressed }) => ({
-                          minHeight: minTapTarget,
-                          justifyContent: 'center',
-                          paddingHorizontal: 4,
-                          backgroundColor: pressed ? colors.cardPressed : 'transparent',
-                        })}
-                      >
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                          {category ? <CategoryDot category={category} /> : <View style={{ width: 8 }} />}
-                          <Body>{item.title}</Body>
-                        </View>
-                      </Pressable>
-                    );
-                  }}
-                  ListEmptyComponent={<Muted>No recipes yet. Capture one first.</Muted>}
-                />
-              </>
-            ) : (
-              <View style={{ gap: 16 }}>
-                <Body style={{ fontFamily: fonts.uiSemi }}>
-                  {pickedRecipe?.title ?? pickedCustom}
-                </Body>
-                <Muted>Who eats? No selection means the whole household.</Muted>
-                <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
-                  {eaters.map((person) => (
-                    <PersonChip
-                      key={person.id}
-                      person={person}
-                      selected={pickedPersonIds.length === 0 ? undefined : pickedPersonIds.includes(person.id)}
-                      onPress={() =>
-                        setPickedPersonIds((prev) =>
-                          prev.includes(person.id)
-                            ? prev.filter((p) => p !== person.id)
-                            : [...prev, person.id]
-                        )
-                      }
-                    />
-                  ))}
-                </View>
-                <Muted>Who cooks?</Muted>
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                  {(
-                    [
-                      ['family', 'Family'],
-                      ['employee', '👩‍🍳 Employee'],
-                    ] as const
-                  ).map(([cook, label]) => {
-                    const selected = pickedCook === cook;
-                    return (
-                      <Pressable
-                        key={cook}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected }}
-                        onPress={() => setPickedCook(cook)}
-                        style={({ pressed }) => ({
-                          flex: 1,
-                          minHeight: minTapTarget,
-                          borderRadius: radius.control,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          backgroundColor: selected
-                            ? colors.text
-                            : pressed
-                              ? colors.cardPressed
-                              : 'transparent',
-                          borderWidth: selected ? 0 : 1,
-                          borderColor: colors.border,
-                        })}
-                      >
-                        <Text
-                          style={{
-                            color: selected ? colors.bg : colors.text,
-                            fontSize: fontSize.base,
-                            fontFamily: fonts.uiMedium,
-                          }}
-                        >
-                          {label}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-                <Button label="Add to the week" onPress={() => void confirmAdd()} loading={busy} />
-                <Button
-                  label="Pick something else"
-                  kind="secondary"
-                  onPress={() => {
-                    setPickedRecipe(null);
-                    setPickedCustom(null);
-                  }}
-                />
-              </View>
-            )}
-            <Button label="Close" kind="secondary" onPress={() => setPickerCell(null)} />
+                    {covers.map((path, n) => (
+                      <RecipeImage
+                        key={n}
+                        path={path ?? null}
+                        style={{ width: '48.5%', height: '48.5%' }}
+                        iconSize={20}
+                      />
+                    ))}
+                  </View>
+                  <View style={{ paddingTop: 8, gap: 2 }}>
+                    <Text
+                      numberOfLines={1}
+                      style={{
+                        color: colors.text,
+                        fontSize: fontSize.cardTitle,
+                        fontFamily: fonts.displaySemi,
+                      }}
+                    >
+                      {weekLabel(week.week_start)}
+                    </Text>
+                    <Muted>
+                      {meals} {meals === 1 ? 'meal' : 'meals'}
+                    </Muted>
+                  </View>
+                </Pressable>
+              );
+            })}
           </View>
-        </SafeAreaView>
-      </Modal>
+          {pastWeeks.length === 0 ? (
+            <Muted>Planned weeks land here once they wrap up.</Muted>
+          ) : null}
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
