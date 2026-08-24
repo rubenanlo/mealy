@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { Pressable, Text, View } from 'react-native';
 
-import { BookmarkChip, CategoryDot, Hairline, Muted } from '@/components/ui';
+import { BookmarkChip, CalendarChip, CategoryDot, Hairline, Muted } from '@/components/ui';
 import { CATEGORY_LABELS, resolveProteinCategory } from '@/lib/category';
 import { useCanonicalIndex } from '@/lib/use-canonical';
 import { useImageUrl } from '@/lib/media';
@@ -102,17 +102,21 @@ export function RecipeImage({
   );
 }
 
-/** Full-bleed 4:3 hero card with the bookmark chip (Home). */
+/** Full-bleed 4:3 hero card with plan + save chips (Home). */
 export function Hero({
   recipe,
   planned,
+  saved,
   onPress,
-  onBookmark,
+  onPlan,
+  onSave,
 }: {
   recipe: RecipeListItem;
   planned: boolean;
+  saved: boolean;
   onPress: () => void;
-  onBookmark: () => void;
+  onPlan: () => void;
+  onSave: () => void;
 }) {
   const { colors } = useTheme();
   return (
@@ -127,7 +131,13 @@ export function Hero({
     >
       <View>
         <RecipeImage path={recipe.cover_image_path} style={{ width: '100%', aspectRatio: 4 / 3 }} iconSize={48} />
-        <BookmarkChip saved={planned} onPress={onBookmark} style={{ top: 12, right: 12 }} />
+        <CalendarChip planned={planned} onPress={onPlan} style={{ top: 12, right: 12 }} />
+        <BookmarkChip
+          saved={saved}
+          onPress={onSave}
+          accessibilityLabel={saved ? 'Saved to your folders' : 'Save to a folder'}
+          style={{ top: 12, right: 56 }}
+        />
       </View>
       <View style={{ paddingHorizontal: screenPadding, paddingTop: 12, paddingBottom: 16, gap: 6 }}>
         <Text
@@ -152,13 +162,17 @@ export function Hero({
 export function CarouselCard({
   recipe,
   planned,
+  saved,
   onPress,
-  onBookmark,
+  onPlan,
+  onSave,
 }: {
   recipe: RecipeListItem;
   planned: boolean;
+  saved: boolean;
   onPress: () => void;
-  onBookmark: () => void;
+  onPlan: () => void;
+  onSave: () => void;
 }) {
   const { colors } = useTheme();
   return (
@@ -173,7 +187,13 @@ export function CarouselCard({
           path={recipe.cover_image_path}
           style={{ width: 150, height: 110, borderRadius: radius.card }}
         />
-        <BookmarkChip saved={planned} onPress={onBookmark} style={{ top: 6, right: 6 }} />
+        <CalendarChip planned={planned} onPress={onPlan} style={{ top: 6, right: 6 }} />
+        <BookmarkChip
+          saved={saved}
+          onPress={onSave}
+          accessibilityLabel={saved ? 'Saved to your folders' : 'Save to a folder'}
+          style={{ top: 6, right: 50 }}
+        />
       </View>
       <View style={{ paddingTop: 8, gap: 4 }}>
         <Text
@@ -227,8 +247,8 @@ export function ThisWeekCard({
           iconSize={22}
         />
         {onBookmark ? (
-          <BookmarkChip
-            saved
+          <CalendarChip
+            planned
             onPress={onBookmark}
             accessibilityLabel={`Remove ${item.title} from this week`}
             style={{ top: 4, right: 4 }}

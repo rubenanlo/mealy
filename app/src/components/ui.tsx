@@ -601,6 +601,61 @@ export function BookmarkChip({
   );
 }
 
+/**
+ * 36px calendar chip overlaid on recipe photos — add/remove this week's
+ * plan (the bookmark now belongs to folders, spec 2026-08-24).
+ */
+export function CalendarChip({
+  planned,
+  onPress,
+  accessibilityLabel,
+  style,
+}: {
+  planned: boolean;
+  onPress: () => void;
+  accessibilityLabel?: string;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const { colors } = useTheme();
+  return (
+    <View
+      style={[
+        {
+          position: 'absolute',
+          top: 8,
+          right: 8,
+          width: 36,
+          height: 36,
+          borderRadius: 18,
+          backgroundColor: colors.card,
+          borderWidth: 1,
+          borderColor: colors.border,
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+        style,
+      ]}
+    >
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={
+          accessibilityLabel ?? (planned ? 'Planned this week' : 'Add to this week')
+        }
+        accessibilityState={{ selected: planned }}
+        onPress={onPress}
+        hitSlop={8}
+        style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+      >
+        <Ionicons
+          name={planned ? 'calendar' : 'calendar-outline'}
+          size={18}
+          color={planned ? colors.accent : colors.text}
+        />
+      </Pressable>
+    </View>
+  );
+}
+
 /** Bitter headline + one red primary action. Direct, never apologetic. */
 export function EmptyState({
   message,
