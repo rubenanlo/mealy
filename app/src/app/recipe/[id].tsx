@@ -733,17 +733,10 @@ export default function RecipeSheetScreen() {
             focal={recipe.cover_focal}
             onEdit={heroPath ? () => setCoverMenuOpen(true) : undefined}
             onPress={
-              galleryPaths.length > 0
-                ? () => {
-                    // heroPath may be a custom cover not present in recipe_images
-                    // (e.g. library-picked cover-custom.jpg) — fold it into the
-                    // viewer list so tap-to-enlarge still opens on the right image.
-                    const paths =
-                      heroPath && !galleryPaths.includes(heroPath)
-                        ? [heroPath, ...galleryPaths]
-                        : galleryPaths;
-                    setViewer({ paths, index: Math.max(0, paths.indexOf(heroPath ?? '')) });
-                  }
+              heroPath
+                ? // The cover enlarges alone; the Original source gallery below
+                  // is where multi-image paging lives.
+                  () => setViewer({ paths: [heroPath], index: 0 })
                 : undefined
             }
           />
