@@ -180,6 +180,21 @@ export function Muted({ children, style }: { children: ReactNode; style?: StyleP
   );
 }
 
+/** Centered first-load spinner — screens show this instead of a fake-empty state. */
+export function Loading({ style }: { style?: StyleProp<ViewStyle> }) {
+  const { colors } = useTheme();
+  return (
+    <View
+      style={[
+        { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 48 },
+        style,
+      ]}
+    >
+      <ActivityIndicator color={colors.accent} size="large" />
+    </View>
+  );
+}
+
 /** Hairline divider — the NYT texture between list sections. */
 export function Hairline({ style }: { style?: StyleProp<ViewStyle> }) {
   const { colors } = useTheme();

@@ -36,6 +36,7 @@ import {
   EmptyState,
   Eyebrow,
   Hairline,
+  Loading,
   Muted,
   SectionHeader,
 } from "@/components/ui";
@@ -91,6 +92,7 @@ export default function HomeScreen() {
     new Map(),
   );
   const [folderView, setFolderView] = useState<FolderView>("grid");
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -215,6 +217,7 @@ export default function HomeScreen() {
     } else {
       setWeekEntries([]);
     }
+    setLoaded(true);
   }, [householdId]);
 
   useFocusEffect(
@@ -512,7 +515,9 @@ export default function HomeScreen() {
 
         <View style={{ marginBottom: 20 }} />
 
-        {recipes.length === 0 ? (
+        {!loaded ? (
+          <Loading />
+        ) : recipes.length === 0 ? (
           <EmptyState
             message="Your cooking notebook starts here."
             actionLabel="Add your first recipe"

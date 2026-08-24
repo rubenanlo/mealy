@@ -5,7 +5,7 @@ import { Alert, Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RecipeRow, type RecipeListItem } from '@/components/recipe-cards';
-import { Body, Button, Field, Hairline, Muted, Title } from '@/components/ui';
+import { Body, Button, Field, Hairline, Loading, Muted, Title } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { fonts, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
@@ -22,6 +22,7 @@ export default function FolderScreen() {
   const [ownerEmail, setOwnerEmail] = useState<string | null>(null);
   const [recipes, setRecipes] = useState<RecipeListItem[]>([]);
   const [renaming, setRenaming] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   const isMine = ownerId !== null && ownerId === session?.user.id;
 
@@ -51,6 +52,7 @@ export default function FolderScreen() {
     const ids = ((links ?? []) as { recipe_id: string }[]).map((l) => l.recipe_id);
     if (ids.length === 0) {
       setRecipes([]);
+      setLoaded(true);
       return;
     }
     const { data: recipeRows } = await supabase
@@ -65,6 +67,7 @@ export default function FolderScreen() {
         .slice()
         .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
     );
+    setLoaded(true);
   }, [id]);
 
   useFocusEffect(
@@ -140,19 +143,22 @@ export default function FolderScreen() {
         ) : (
           <Title>{name || 'Folder'}</Title>
         )}
+        {!loaded ? <Loading /> : null}
+        {loaded ? (
         <Muted>
           {recipes.length} {recipes.length === 1 ? 'recipe' : 'recipes'}
           {!isMine && ownerEmail ? ` · ${ownerEmail}` : ''}
         </Muted>
+        ) : null}
 
         <View>
-          {recipes.map((recipe, i) => (
+          {loaded ? recipes.map((recipe, i) => (
             <View key={recipe.id}>
               {i > 0 ? <Hairline /> : null}
               <RecipeRow recipe={recipe} onPress={() => router.push(`/recipe/${recipe.id}`)} />
             </View>
-          ))}
-          {recipes.length === 0 ? (
+          )) : null}
+          {loaded && recipes.length === 0 ? (
             <Muted>
               Nothing saved here yet{isMine ? ' — use the bookmark on any recipe.' : '.'}
             </Muted>

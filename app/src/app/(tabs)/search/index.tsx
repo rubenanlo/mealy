@@ -4,7 +4,7 @@ import { FlatList, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RecipeRow, type RecipeListItem } from '@/components/recipe-cards';
-import { EmptyState, Field, Hairline, LinkButton, Muted, Title } from '@/components/ui';
+import { EmptyState, Field, Hairline, LinkButton, Loading, Muted, Title } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
 import { resolveProteinCategory, type ProteinCategory } from '@/lib/category';
 import { supabase } from '@/lib/supabase';
@@ -75,6 +75,7 @@ export default function SearchScreen() {
   const { householdId } = useHousehold();
 
   const [recipes, setRecipes] = useState<RecipeListItem[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const index = useCanonicalIndex();
@@ -90,7 +91,9 @@ export default function SearchScreen() {
         .eq('household_id', householdId)
         .order('created_at', { ascending: false })
         .then(({ data }) => {
-          if (!cancelled && data) setRecipes(data as RecipeListItem[]);
+          if (cancelled) return;
+          if (data) setRecipes(data as RecipeListItem[]);
+          setLoaded(true);
         });
       return () => {
         cancelled = true;
@@ -158,7 +161,9 @@ export default function SearchScreen() {
         )}
         ItemSeparatorComponent={Hairline}
         ListEmptyComponent={
-          recipes.length === 0 ? (
+          !loaded ? (
+            <Loading />
+          ) : recipes.length === 0 ? (
             <EmptyState
               message="Your cooking notebook starts here."
               actionLabel="Add your first recipe"

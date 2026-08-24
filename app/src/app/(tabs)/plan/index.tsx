@@ -5,7 +5,7 @@ import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RecipeImage } from '@/components/recipe-cards';
-import { Eyebrow, Muted, SectionHeader, Title } from '@/components/ui';
+import { Eyebrow, Loading, Muted, SectionHeader, Title } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
 import { isMealUpcoming, normalizeMealTimes, type MealTimes } from '@/lib/meal-times';
 import { addWeeks, DAY_LABELS, dayDate, SLOT_LABELS, weekStart, type MealSlot } from '@/lib/plan';
@@ -88,6 +88,7 @@ export default function WeeksScreen() {
   const [entries, setEntries] = useState<EntryRow[]>([]);
   const [recipesById, setRecipesById] = useState<Map<string, RecipeLite>>(new Map());
   const [mealTimes, setMealTimes] = useState<MealTimes>(normalizeMealTimes(null));
+  const [loaded, setLoaded] = useState(false);
 
   const currentWeek = weekStart(new Date());
 
@@ -105,6 +106,7 @@ export default function WeeksScreen() {
     setPlans(allPlans);
     if (allPlans.length === 0) {
       setEntries([]);
+      setLoaded(true);
       return;
     }
     const { data: entryRows } = await supabase
@@ -124,6 +126,7 @@ export default function WeeksScreen() {
         .in('id', recipeIds);
       setRecipesById(new Map(((recipeRows as RecipeLite[]) ?? []).map((r) => [r.id, r])));
     }
+    setLoaded(true);
   }, [householdId]);
 
   useFocusEffect(
@@ -203,7 +206,11 @@ export default function WeeksScreen() {
           <Title>Meal plans</Title>
         </View>
 
+        {!loaded ? <Loading /> : null}
+
         {/* This week: next meal first, then the rest of the upcoming meals. */}
+        {loaded ? (
+        <>
         <View style={{ gap: 12 }}>
           <SectionHeader
             title="This week"
@@ -400,6 +407,8 @@ export default function WeeksScreen() {
             <Muted>Planned weeks land here once they wrap up.</Muted>
           ) : null}
         </View>
+        </>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );

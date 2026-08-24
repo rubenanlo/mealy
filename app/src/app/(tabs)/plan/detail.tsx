@@ -15,6 +15,7 @@ import {
   Field,
   Hairline,
   LinkButton,
+  Loading,
   Muted,
   Title,
 } from '@/components/ui';
@@ -165,6 +166,8 @@ export default function PlanScreen() {
   );
   const [plan, setPlan] = useState<MealPlanRow | null>(null);
   const [entries, setEntries] = useState<PlanEntry[]>([]);
+  /** Which week's data is on screen — spinner until it matches weekIso. */
+  const [loadedWeek, setLoadedWeek] = useState<string | null>(null);
   const [persons, setPersons] = useState<Person[]>([]);
   const [recipes, setRecipes] = useState<RecipeLite[]>([]);
   const [busy, setBusy] = useState(false);
@@ -197,6 +200,7 @@ export default function PlanScreen() {
       } else {
         setEntries([]);
       }
+      setLoadedWeek(week);
     },
     [householdId]
   );
@@ -606,7 +610,8 @@ export default function PlanScreen() {
           paddingBottom: insets.bottom + (showApprove ? tabBarClearance + 72 : tabBarClearance),
         }}
       >
-        {DAY_LABELS.map((dayLabel, day) => {
+        {loadedWeek !== weekIso ? <Loading /> : null}
+        {loadedWeek === weekIso ? DAY_LABELS.map((dayLabel, day) => {
           const isToday = day === todayIndex;
           return (
             <View key={day}>
@@ -743,8 +748,8 @@ export default function PlanScreen() {
               </View>
             </View>
           );
-        })}
-        <Hairline />
+        }) : null}
+        {loadedWeek === weekIso ? <Hairline /> : null}
       </ScrollView>
 
       {/* v3.1: approve floats ABOVE the capsule tab bar (draft + non-empty only) */}
