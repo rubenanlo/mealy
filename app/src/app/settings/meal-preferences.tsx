@@ -97,6 +97,7 @@ export default function MealPreferencesScreen() {
   const [mealTimes, setMealTimes] = useState<MealTimes>(normalizeMealTimes(null));
   const [timesSaved, setTimesSaved] = useState(false);
   const [timesError, setTimesError] = useState<string | null>(null);
+  const [restWeeks, setRestWeeks] = useState<number>(3);
 
   const load = useCallback(async () => {
     const [{ data: personRows }, { data: hh }] = await Promise.all([
@@ -107,7 +108,7 @@ export default function MealPreferencesScreen() {
         .order('created_at'),
       supabase
         .from('households')
-        .select('other_requirements, meal_times')
+        .select('other_requirements, meal_times, suggested_rest_weeks')
         .eq('id', householdId)
         .single(),
     ]);
@@ -115,8 +116,18 @@ export default function MealPreferencesScreen() {
     if (hh) {
       setHouseholdNotes(hh.other_requirements ?? '');
       setMealTimes(normalizeMealTimes(hh.meal_times));
+      if (typeof hh.suggested_rest_weeks === 'number') setRestWeeks(hh.suggested_rest_weeks);
     }
   }, [householdId]);
+
+  const updateRestWeeks = async (next: number | null) => {
+    const value = next ?? 0;
+    setRestWeeks(value);
+    await supabase
+      .from('households')
+      .update({ suggested_rest_weeks: value })
+      .eq('id', householdId);
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -250,6 +261,30 @@ export default function MealPreferencesScreen() {
         {diners.length === 0 ? (
           <Muted>No people yet — add your household under Manage your account.</Muted>
         ) : null}
+
+        <Eyebrow style={{ marginTop: 16 }}>Suggestions</Eyebrow>
+        <Muted>
+          Weeks a recipe rests after being planned before it reappears in Suggested for you. 0
+          hides only this week's picks.
+        </Muted>
+        <SettingsGroup>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              minHeight: 56,
+              paddingHorizontal: 16,
+            }}
+          >
+            <Body style={{ flex: 1 }}>Rest weeks</Body>
+            <Stepper
+              value={restWeeks}
+              label="rest weeks"
+              onChange={(v) => void updateRestWeeks(v)}
+            />
+          </View>
+        </SettingsGroup>
 
         <Eyebrow style={{ marginTop: 16 }}>Meal times</Eyebrow>
         <Muted>

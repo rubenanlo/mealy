@@ -53,7 +53,7 @@ import {
   type FolderRow,
   type FolderSummary,
 } from "@/lib/folders";
-import { weekStart } from "@/lib/plan";
+import { addWeeks, weekStart } from "@/lib/plan";
 import { matchesQuickFilters, type QuickFilter } from "@/lib/quick-filters";
 import { supabase } from "@/lib/supabase";
 import {
@@ -80,7 +80,7 @@ export default function HomeScreen() {
   const userId = session?.user.id ?? "";
 
   const [recipes, setRecipes] = useState<RecipeListItem[]>([]);
-  const [plannedEverIds, setPlannedEverIds] = useState<Set<string>>(new Set());
+  const [plannedRecentIds, setPlannedRecentIds] = useState<Set<string>>(new Set());
   const [weekEntries, setWeekEntries] = useState<
     { id: string; recipe_id: string | null; custom_title: string | null }[]
   >([]);
@@ -128,6 +128,7 @@ export default function HomeScreen() {
     const [
       { data: recipeRows },
       { data: entryRows },
+      { data: hh },
       { data: weekPlan },
       { data: folderRows },
       { data: linkRows },
@@ -142,8 +143,13 @@ export default function HomeScreen() {
         .order("created_at", { ascending: false }),
       supabase
         .from("plan_entries")
-        .select("recipe_id, meal_plans!inner(household_id)")
+        .select("recipe_id, meal_plans!inner(household_id, week_start)")
         .eq("meal_plans.household_id", householdId),
+      supabase
+        .from("households")
+        .select("suggested_rest_weeks")
+        .eq("id", householdId)
+        .single(),
       supabase
         .from("meal_plans")
         .select("id")
@@ -175,9 +181,20 @@ export default function HomeScreen() {
       ),
     );
     if (entryRows) {
-      setPlannedEverIds(
+      // Suggestion cool-down: only picks within the household's rest window
+      // hide a recipe from "Suggested for you" (settings → meal preferences).
+      const restWeeks = hh?.suggested_rest_weeks ?? 3;
+      const cutoff = addWeeks(weekIso, -restWeeks);
+      setPlannedRecentIds(
         new Set(
-          (entryRows as { recipe_id: string | null }[])
+          (
+            // supabase-js types the to-one join as an array; runtime is an object.
+            entryRows as unknown as {
+              recipe_id: string | null;
+              meal_plans: { week_start: string };
+            }[]
+          )
+            .filter((e) => e.meal_plans.week_start >= cutoff)
             .map((e) => e.recipe_id)
             .filter((id): id is string => id !== null),
         ),
@@ -206,10 +223,10 @@ export default function HomeScreen() {
     }, [load]),
   );
 
-  // Same rule as v1/v2: never-planned recipes, newest first, max 6; hero = first.
+  // Recipes not planned within the rest window, newest first, max 6; hero = first.
   const suggestions = useMemo(
-    () => recipes.filter((r) => !plannedEverIds.has(r.id)).slice(0, 6),
-    [recipes, plannedEverIds],
+    () => recipes.filter((r) => !plannedRecentIds.has(r.id)).slice(0, 6),
+    [recipes, plannedRecentIds],
   );
   const hero = suggestions[0];
   const carousel = suggestions.slice(1);
