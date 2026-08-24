@@ -11,14 +11,22 @@ import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, minTapTarget, radius, screenPadding, tabBarClearance, useTheme } from '@/lib/theme';
 import { useCanonicalIndex } from '@/lib/use-canonical';
 
-type Filter = 'all' | ProteinCategory | 'needs_review';
+type MealTypeFilter = 'main' | 'breakfast' | 'dessert' | 'side';
+type Filter = 'all' | ProteinCategory | MealTypeFilter | 'needs_review';
+
+const MEAL_TYPE_FILTERS: readonly MealTypeFilter[] = ['main', 'breakfast', 'dessert', 'side'];
 
 const FILTERS: { value: Filter; label: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'fish', label: 'Fish' },
   { value: 'meat', label: 'Meat' },
+  { value: 'vegan', label: 'Vegan' },
   { value: 'vegetarian', label: 'Vegetarian' },
   { value: 'legume', label: 'Legume' },
+  { value: 'main', label: 'Lunch/dinner' },
+  { value: 'breakfast', label: 'Breakfast' },
+  { value: 'side', label: 'Side' },
+  { value: 'dessert', label: 'Dessert' },
   { value: 'needs_review', label: 'Needs review' },
 ];
 
@@ -77,7 +85,7 @@ export default function SearchScreen() {
       supabase
         .from('recipes')
         .select(
-          'id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes, ingredients, fodmap_override'
+          'id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes, ingredients, fodmap_override, meal_type'
         )
         .eq('household_id', householdId)
         .order('created_at', { ascending: false })
@@ -96,7 +104,13 @@ export default function SearchScreen() {
       if (q && !recipe.title.toLowerCase().includes(q)) return false;
       if (filter === 'all') return true;
       if (filter === 'needs_review') return recipe.needs_review;
-      return resolveProteinCategory(recipe.tags, recipe.ingredients, index) === filter;
+      if ((MEAL_TYPE_FILTERS as readonly string[]).includes(filter)) {
+        return (recipe.meal_type ?? 'main') === filter;
+      }
+      const category = resolveProteinCategory(recipe.tags, recipe.ingredients, index);
+      // Vegan recipes satisfy the Vegetarian chip (vegan ⊂ vegetarian).
+      if (filter === 'vegetarian') return category === 'vegetarian' || category === 'vegan';
+      return category === filter;
     });
   }, [recipes, query, filter, index]);
 

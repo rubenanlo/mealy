@@ -774,7 +774,15 @@ export default function PlanScreen() {
       ) : null}
 
       <Modal visible={pickerCell !== null} animationType="slide" onRequestClose={() => setPickerCell(null)}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
+        {/* Explicit insets: SafeAreaView reports 0 inside a native Modal here. */}
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: colors.bg,
+            paddingTop: insets.top,
+            paddingBottom: insets.bottom,
+          }}
+        >
           <View style={{ flex: 1, padding: screenPadding, gap: 14 }}>
             {pickerCell ? (
               <Title>
@@ -895,7 +903,7 @@ export default function PlanScreen() {
             )}
             <Button label="Close" kind="secondary" onPress={() => setPickerCell(null)} />
           </View>
-        </SafeAreaView>
+        </View>
       </Modal>
 
       {/* Choose-for-us intermediary: confirm + low-FODMAP toggle. */}

@@ -29,6 +29,8 @@ export interface RecipeListItem {
   ingredients?: IngredientData[];
   /** Manual FODMAP level; null/absent = derive from ingredients. */
   fodmap_override?: 'low' | 'moderate' | 'high' | null;
+  /** Planner classification; null/absent is treated as 'main'. */
+  meal_type?: 'main' | 'breakfast' | 'dessert' | 'side' | null;
 }
 
 export function totalMinutes(recipe: RecipeListItem): number | null {
