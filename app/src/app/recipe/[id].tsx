@@ -4,6 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
+  Alert,
   Animated,
   Easing,
   Linking,
@@ -705,6 +706,37 @@ export default function RecipeSheetScreen() {
   // url/reel captures carry the original link; photo/paste/PDF are null.
   const sourceUrl = sources.find((s) => s.url)?.url ?? null;
   const hasSource = galleryPaths.length > 0 || sourceUrl !== null;
+
+  const deleteRecipe = () => {
+    Alert.alert(
+      'Delete this recipe?',
+      `“${recipe.title}” will be permanently deleted for the whole family, along with its images, plan entries and folder saves.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              // Best-effort storage cleanup; the row delete is what matters.
+              const paths = Array.from(
+                new Set([heroPath, ...galleryPaths].filter((p): p is string => p !== null))
+              );
+              if (paths.length > 0) {
+                await supabase.storage.from('recipe-media').remove(paths);
+              }
+              const { error } = await supabase.from('recipes').delete().eq('id', recipe.id);
+              if (error) {
+                Alert.alert('Could not delete recipe', 'Try again.');
+                return;
+              }
+              dismiss();
+            })();
+          },
+        },
+      ]
+    );
+  };
   const showPinnedBar = pinnedVisible;
   const actionBottom = (Platform.OS === 'ios' ? insets.bottom : insets.bottom) + 16;
 
@@ -1097,6 +1129,10 @@ export default function RecipeSheetScreen() {
                 {recipe.steps.length === 0 ? <Muted>No steps extracted.</Muted> : null}
               </View>
             )}
+          </View>
+
+          <View style={{ paddingHorizontal: screenPadding, paddingTop: 32 }}>
+            <Button label="Delete recipe" kind="danger" onPress={deleteRecipe} />
           </View>
         </ScrollView>
 
