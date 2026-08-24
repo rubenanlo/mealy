@@ -13,6 +13,8 @@ export interface PlanEntry {
   custom_title: string | null;
   /** Empty array ⇒ the whole household eats this entry. */
   person_ids: string[];
+  /** Non-family guests eating this meal; adds to the servings (migration 0017). */
+  guest_count: number;
   assigned_cook: CookType;
   position: number;
   /** True when "Choose for us" inserted it (migration 0014). */
@@ -109,6 +111,8 @@ export interface UpsertEntryInput {
   /** Free-text meal ("write down a specific meal"). */
   customTitle?: string;
   personIds?: string[];
+  /** Non-family guests eating this meal (default 0). */
+  guestCount?: number;
   assignedCook?: CookType;
   position?: number;
 }
@@ -129,6 +133,7 @@ export function upsertEntryPayload(input: UpsertEntryInput) {
     recipe_id: input.recipeId ?? null,
     custom_title: input.recipeId ? null : (customTitle as string),
     person_ids: input.personIds ?? [],
+    guest_count: Math.max(0, input.guestCount ?? 0),
     assigned_cook: input.assignedCook ?? ('family' as CookType),
     position: input.position ?? 0,
   };

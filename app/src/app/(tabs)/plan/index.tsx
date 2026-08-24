@@ -20,6 +20,7 @@ import {
 import { useHousehold } from '@/lib/auth';
 import { isMealUpcoming, normalizeMealTimes, type MealTimes } from '@/lib/meal-times';
 import { addWeeks, DAY_LABELS, dayDate, SLOT_LABELS, weekStart, type MealSlot } from '@/lib/plan';
+import { entryServings } from '@/lib/servings';
 import { supabase } from '@/lib/supabase';
 import {
   fonts,
@@ -45,6 +46,10 @@ interface EntryRow {
   recipe_id: string | null;
   custom_title: string | null;
   assigned_cook: 'family' | 'employee';
+  /** Empty ⇒ whole household eats it. */
+  person_ids: string[];
+  /** Non-family guests eating this meal (migration 0017). */
+  guest_count: number;
 }
 
 interface RecipeLite {
@@ -60,6 +65,8 @@ interface MealCell {
   titles: string[];
   covers: (string | null)[];
   recipeIds: string[];
+  /** Servings (covered eaters + guests) per recipe, parallel to recipeIds. */
+  servings: number[];
 }
 
 function weekLabel(weekIso: string): string {
@@ -70,17 +77,23 @@ function weekLabel(weekIso: string): string {
 }
 
 /** Group a week's entries into ordered meal cells (day asc, lunch first). */
-function buildCells(entries: EntryRow[], recipesById: Map<string, RecipeLite>): MealCell[] {
+function buildCells(
+  entries: EntryRow[],
+  recipesById: Map<string, RecipeLite>,
+  eaterCount: number
+): MealCell[] {
   const byKey = new Map<string, MealCell>();
   for (const entry of entries) {
     const key = `${entry.day}-${entry.slot}`;
     const cell =
-      byKey.get(key) ?? { day: entry.day, slot: entry.slot, titles: [], covers: [], recipeIds: [] };
+      byKey.get(key) ??
+      { day: entry.day, slot: entry.slot, titles: [], covers: [], recipeIds: [], servings: [] };
     if (entry.recipe_id) {
       const recipe = recipesById.get(entry.recipe_id);
       cell.titles.push(recipe?.title ?? 'Recipe');
       cell.covers.push(recipe?.cover_image_path ?? null);
       cell.recipeIds.push(entry.recipe_id);
+      cell.servings.push(entryServings(entry.person_ids, entry.guest_count, eaterCount));
     } else if (entry.custom_title) {
       cell.titles.push(entry.custom_title);
       cell.covers.push(null);
@@ -103,6 +116,7 @@ export default function WeeksScreen() {
   const [recipesById, setRecipesById] = useState<Map<string, RecipeLite>>(new Map());
   const [mealTimes, setMealTimes] = useState<MealTimes>(normalizeMealTimes(null));
   const [employeeNames, setEmployeeNames] = useState<string[]>([]);
+  const [eaterCount, setEaterCount] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
   const [noteDraft, setNoteDraft] = useState('');
@@ -119,12 +133,13 @@ export default function WeeksScreen() {
       supabase.from('households').select('meal_times').eq('id', householdId).single(),
       supabase
         .from('persons')
-        .select('name')
+        .select('name, is_employee')
         .eq('household_id', householdId)
-        .eq('is_employee', true)
         .order('created_at')
         .then((res) => {
-          setEmployeeNames(((res.data ?? []) as { name: string }[]).map((p) => p.name));
+          const rows = ((res.data ?? []) as { name: string; is_employee: boolean }[]);
+          setEmployeeNames(rows.filter((p) => p.is_employee).map((p) => p.name));
+          setEaterCount(rows.filter((p) => !p.is_employee).length);
           return res;
         }),
     ]);
@@ -138,7 +153,7 @@ export default function WeeksScreen() {
     }
     const { data: entryRows } = await supabase
       .from('plan_entries')
-      .select('meal_plan_id, day, slot, recipe_id, custom_title, assigned_cook')
+      .select('meal_plan_id, day, slot, recipe_id, custom_title, assigned_cook, person_ids, guest_count')
       .in(
         'meal_plan_id',
         allPlans.map((p) => p.id)
@@ -171,7 +186,8 @@ export default function WeeksScreen() {
     if (!plan) return [];
     const cells = buildCells(
       entries.filter((e) => e.meal_plan_id === plan.id),
-      recipesById
+      recipesById,
+      eaterCount
     );
     const now = new Date();
     const todayIndex = Math.floor(
@@ -181,7 +197,7 @@ export default function WeeksScreen() {
     return cells.filter((c) =>
       isMealUpcoming(c.day, c.slot, todayIndex, nowMinutes, mealTimes)
     );
-  }, [plans, entries, recipesById, currentWeek, mealTimes]);
+  }, [plans, entries, recipesById, currentWeek, mealTimes, eaterCount]);
 
   /** This week's meals the employee cooks (whole week, not just upcoming). */
   const employeeCells = useMemo(() => {
@@ -189,9 +205,10 @@ export default function WeeksScreen() {
     if (!plan) return [];
     return buildCells(
       entries.filter((e) => e.meal_plan_id === plan.id && e.assigned_cook === 'employee'),
-      recipesById
+      recipesById,
+      eaterCount
     );
-  }, [plans, entries, recipesById, currentWeek]);
+  }, [plans, entries, recipesById, currentWeek, eaterCount]);
 
   /** Past weeks with a plan, newest first. */
   const pastWeeks = useMemo(
@@ -202,10 +219,11 @@ export default function WeeksScreen() {
           ...p,
           cells: buildCells(
             entries.filter((e) => e.meal_plan_id === p.id),
-            recipesById
+            recipesById,
+            eaterCount
           ),
         })),
-    [plans, entries, recipesById, currentWeek]
+    [plans, entries, recipesById, currentWeek, eaterCount]
   );
 
   const currentPlan = plans.find((p) => p.week_start === currentWeek);
@@ -296,7 +314,10 @@ export default function WeeksScreen() {
                   accessibilityLabel={`${DAY_LABELS[cell.day]} ${SLOT_LABELS[cell.slot]}: ${cell.titles.join(', ')}`}
                   onPress={() =>
                     cell.recipeIds.length === 1
-                      ? router.push(`/recipe/${cell.recipeIds[0]}`)
+                      ? router.push({
+                          pathname: '/recipe/[id]',
+                          params: { id: cell.recipeIds[0], planServings: String(cell.servings[0]) },
+                        })
                       : openWeek(currentWeek)
                   }
                   style={({ pressed }) => ({ width: 150, opacity: pressed ? 0.7 : 1 })}
@@ -345,6 +366,9 @@ export default function WeeksScreen() {
                     >
                       {cell.titles.join(' · ')}
                     </Text>
+                    {cell.recipeIds.length === 1 ? (
+                      <Muted>{`Serves ${cell.servings[0]}`}</Muted>
+                    ) : null}
                   </View>
                 </Pressable>
               ))}
@@ -388,7 +412,10 @@ export default function WeeksScreen() {
                   accessibilityLabel={`${DAY_LABELS[cell.day]} ${SLOT_LABELS[cell.slot]}: ${cell.titles.join(', ')}`}
                   onPress={() =>
                     cell.recipeIds.length === 1
-                      ? router.push(`/recipe/${cell.recipeIds[0]}`)
+                      ? router.push({
+                          pathname: '/recipe/[id]',
+                          params: { id: cell.recipeIds[0], planServings: String(cell.servings[0]) },
+                        })
                       : openWeek(currentWeek)
                   }
                   style={({ pressed }) => ({ width: 150, opacity: pressed ? 0.7 : 1 })}

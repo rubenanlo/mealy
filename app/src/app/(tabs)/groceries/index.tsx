@@ -30,6 +30,10 @@ interface EntryRow {
   day: number;
   slot: string;
   position: number;
+  /** Empty ⇒ whole household eats it. */
+  person_ids: string[];
+  /** Non-family guests eating this meal (migration 0017). */
+  guest_count: number;
 }
 
 interface AisleGroup {
@@ -226,6 +230,9 @@ export default function GroceriesScreen() {
           .select('is_employee, diet_profile')
           .eq('household_id', householdId),
       ]);
+      const eaterCount = (
+        (personRows as { is_employee: boolean; diet_profile: unknown }[]) ?? []
+      ).filter((p) => !p.is_employee).length;
       setFodmapDots(
         ((personRows as { is_employee: boolean; diet_profile: unknown }[]) ?? []).some(
           (p) => !p.is_employee && normalizeDietProfile(p.diet_profile).fodmap.mode !== 'off'
@@ -240,9 +247,12 @@ export default function GroceriesScreen() {
       const [{ data: entryRows }, { data: recipeRows }, { data: checkRows }] = await Promise.all([
         supabase
           .from('plan_entries')
-          .select('id, recipe_id, day, slot, position')
+          .select('id, recipe_id, day, slot, position, person_ids, guest_count')
           .eq('meal_plan_id', planRow.id),
-        supabase.from('recipes').select('id, title, ingredients').eq('household_id', householdId),
+        supabase
+          .from('recipes')
+          .select('id, title, ingredients, servings')
+          .eq('household_id', householdId),
         supabase
           .from('grocery_checks')
           .select('item_key')
@@ -255,8 +265,13 @@ export default function GroceriesScreen() {
         (a, b) => a.day - b.day || a.slot.localeCompare(b.slot) || a.position - b.position
       );
       const recipes =
-        (recipeRows as { id: string; title: string; ingredients: IngredientRow[] }[]) ?? [];
-      const groups = collectWeekIngredients(entries, recipes);
+        (recipeRows as {
+          id: string;
+          title: string;
+          ingredients: IngredientRow[];
+          servings: number | null;
+        }[]) ?? [];
+      const groups = collectWeekIngredients(entries, recipes, eaterCount);
       const lines: AggregateLine[] = groups.flatMap((group) =>
         group.items.map((item) => ({
           raw: item.raw || item.name,

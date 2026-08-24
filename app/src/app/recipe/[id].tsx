@@ -65,7 +65,7 @@ import { resolveMatches } from '@/lib/matching';
 import { useImageUrl } from '@/lib/media';
 import { useReducedMotion } from '@/lib/motion';
 import { weekStart } from '@/lib/plan';
-import { rescaleIngredients } from '@/lib/servings';
+import { rescaleIngredients, servingsFactor } from '@/lib/servings';
 import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, minTapTarget, radius, screenPadding, useTheme } from '@/lib/theme';
 import { useCanonicalIndex } from '@/lib/use-canonical';
@@ -321,7 +321,11 @@ function TierDot({ tier }: { tier: FodmapTier }) {
 }
 
 export default function RecipeSheetScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, planServings: planServingsParam } = useLocalSearchParams<{
+    id: string;
+    /** Set when opened from the planner / "what's next": scale to this meal's servings. */
+    planServings?: string;
+  }>();
   const { colors } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -827,8 +831,22 @@ export default function RecipeSheetScreen() {
   }
 
   const category = resolveProteinCategory(recipe.tags, recipe.ingredients, canonicalIndex);
+  // When reached from the planner / "what's next", scale ingredient amounts to
+  // that meal's servings (eaters + guests). Display only — the recipe itself is
+  // never rewritten, so opening it from the library shows the base amounts.
+  const planServings = planServingsParam ? parseInt(planServingsParam, 10) : null;
+  const planFactor =
+    planServings != null ? servingsFactor(planServings, recipe.servings) : null;
+  const viewIngredients =
+    planFactor && ingredientsDraft === null
+      ? rescaleIngredients(recipe.ingredients, planFactor)
+      : recipe.ingredients;
   const metaParts = [
-    recipe.servings ? `${recipe.servings} servings` : null,
+    planFactor && planServings != null
+      ? `${planServings} servings this week`
+      : recipe.servings
+        ? `${recipe.servings} servings`
+        : null,
     recipe.prep_minutes ? `Prep ${recipe.prep_minutes} min` : null,
     recipe.cook_minutes ? `Cook ${recipe.cook_minutes} min` : null,
   ].filter(Boolean);
@@ -1254,7 +1272,7 @@ export default function RecipeSheetScreen() {
                 </View>
               ) : (
                 <View>
-                  {recipe.ingredients.map((ing, i) => {
+                  {viewIngredients.map((ing, i) => {
                     const rawKey = ing.raw || ing.name;
                     const flag = flagByRaw.get(rawKey);
                     const canonical = matches.get(rawKey) ?? null;
@@ -1419,7 +1437,7 @@ export default function RecipeSheetScreen() {
                     paddingBottom: 20,
                   }}
                 >
-                  {recipe.ingredients.map((ing, i) => {
+                  {viewIngredients.map((ing, i) => {
                     const quantity = [ing.quantity, ing.unit].filter((v) => v != null).join(' ');
                     return (
                       <View key={`pin-${ing.raw}-${i}`}>

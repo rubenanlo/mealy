@@ -5,6 +5,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { Alert, FlatList, Modal, Platform, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { GuestStepper } from '@/components/guest-stepper';
 import { PersonChip } from '@/components/person-chip';
 import { MetaLine, RecipeImage, RecipeRow, type RecipeListItem } from '@/components/recipe-cards';
 import {
@@ -41,6 +42,7 @@ import {
   type PlanEntry,
 } from '@/lib/plan';
 import { quotaProgress } from '@/lib/quotas';
+import { entryServings } from '@/lib/servings';
 import { supabase } from '@/lib/supabase';
 import {
   floatingActionOffset,
@@ -180,6 +182,7 @@ export default function PlanScreen() {
   const [customDraft, setCustomDraft] = useState('');
   const [pickedCustom, setPickedCustom] = useState<string | null>(null);
   const [pickedPersonIds, setPickedPersonIds] = useState<string[]>([]);
+  const [pickedGuests, setPickedGuests] = useState(0);
   const [pickedCook, setPickedCook] = useState<CookType>('family');
 
   const loadWeek = useCallback(
@@ -445,6 +448,7 @@ export default function PlanScreen() {
     setCustomDraft('');
     setPickedCustom(null);
     setPickedPersonIds([]);
+    setPickedGuests(0);
     setPickedCook('family');
   };
 
@@ -467,6 +471,7 @@ export default function PlanScreen() {
         slot: pickerCell.slot,
         ...(pickedRecipe ? { recipeId: pickedRecipe.id } : { customTitle: pickedCustom! }),
         personIds: pickedPersonIds,
+        guestCount: pickedGuests,
         assignedCook: pickedCook,
         position,
       });
@@ -500,6 +505,79 @@ export default function PlanScreen() {
       setBusy(false);
     }
   };
+
+  /**
+   * Copy this (past) week's meals into the current week, carrying over recipes,
+   * eaters, guests, and cook. Replaces the current week's meals (after a
+   * confirm) when it already has some.
+   */
+  const copyToCurrentWeek = async () => {
+    const sourceEntries = entries;
+    if (sourceEntries.length === 0) return;
+    const currentWeekIso = weekStart(new Date());
+    const { data: existing } = await supabase
+      .from('meal_plans')
+      .select('id')
+      .eq('household_id', householdId)
+      .eq('week_start', currentWeekIso)
+      .maybeSingle();
+    const targetPlanId = (existing?.id as string | undefined) ?? null;
+
+    const run = async () => {
+      setBusy(true);
+      try {
+        let planId = targetPlanId;
+        if (!planId) {
+          const { data: created, error } = await supabase
+            .from('meal_plans')
+            .insert({ household_id: householdId, week_start: currentWeekIso })
+            .select('id')
+            .single();
+          if (error || !created) throw new Error(error?.message ?? 'Could not create the week');
+          planId = created.id as string;
+        } else {
+          await supabase.from('plan_entries').delete().eq('meal_plan_id', planId);
+        }
+        const rows = sourceEntries.map((e) => ({
+          meal_plan_id: planId,
+          day: e.day,
+          slot: e.slot,
+          recipe_id: e.recipe_id,
+          custom_title: e.custom_title,
+          person_ids: e.person_ids,
+          guest_count: e.guest_count,
+          assigned_cook: e.assigned_cook,
+          position: e.position,
+        }));
+        await supabase.from('plan_entries').insert(rows);
+        setWeekIso(currentWeekIso);
+      } finally {
+        setBusy(false);
+      }
+    };
+
+    if (targetPlanId) {
+      const { count } = await supabase
+        .from('plan_entries')
+        .select('id', { count: 'exact', head: true })
+        .eq('meal_plan_id', targetPlanId);
+      if ((count ?? 0) > 0) {
+        Alert.alert(
+          "Replace this week's meals?",
+          `This week already has ${count} meal${count === 1 ? '' : 's'}. Copying will replace ${count === 1 ? 'it' : 'them'} with this plan.`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Replace', style: 'destructive', onPress: () => void run() },
+          ]
+        );
+        return;
+      }
+    }
+    await run();
+  };
+
+  const currentWeekIso = weekStart(new Date());
+  const isPastWeek = weekIso < currentWeekIso;
 
   const todayEyebrow = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
@@ -603,6 +681,17 @@ export default function PlanScreen() {
         </View>
       ) : null}
 
+      {isPastWeek && loadedWeek === weekIso && entries.length > 0 ? (
+        <View style={{ paddingHorizontal: screenPadding, paddingBottom: 12 }}>
+          <Button
+            label="Copy to this week"
+            kind="secondary"
+            onPress={() => void copyToCurrentWeek()}
+            loading={busy}
+          />
+        </View>
+      ) : null}
+
       <ScrollView
         contentContainerStyle={{
           paddingHorizontal: screenPadding,
@@ -663,6 +752,11 @@ export default function PlanScreen() {
                           recipe?.ingredients,
                           index
                         );
+                        const planServings = entryServings(
+                          entry.person_ids,
+                          entry.guest_count,
+                          eaters.length
+                        );
                         return (
                           <View
                             key={entry.id}
@@ -678,7 +772,13 @@ export default function PlanScreen() {
                               accessibilityRole="button"
                               accessibilityLabel={`Open ${entry.custom_title ?? recipe?.title ?? 'recipe'}`}
                               disabled={!recipe}
-                              onPress={() => recipe && router.push(`/recipe/${recipe.id}`)}
+                              onPress={() =>
+                                recipe &&
+                                router.push({
+                                  pathname: '/recipe/[id]',
+                                  params: { id: recipe.id, planServings: String(planServings) },
+                                })
+                              }
                               style={({ pressed }) => ({
                                 flex: 1,
                                 flexDirection: 'row',
@@ -712,6 +812,10 @@ export default function PlanScreen() {
                                     return person ? <PersonChip key={pid} person={person} /> : null;
                                   })
                                 )}
+                                {entry.guest_count > 0 ? (
+                                  <Muted>{`+${entry.guest_count} guest${entry.guest_count === 1 ? '' : 's'}`}</Muted>
+                                ) : null}
+                                {recipe ? <Muted>{`· Serves ${planServings}`}</Muted> : null}
                                 {entry.assigned_cook === 'employee' ? (
                                   <View
                                     style={{
@@ -902,6 +1006,15 @@ export default function PlanScreen() {
                       }
                     />
                   ))}
+                  </View>
+                </View>
+
+                <View style={{ gap: 10 }}>
+                  <Eyebrow>Guests</Eyebrow>
+                  <Muted>Extra people (not in the household) eating this meal.</Muted>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <GuestStepper value={pickedGuests} onChange={setPickedGuests} />
+                    <Muted>{`Serves ${entryServings(pickedPersonIds, pickedGuests, eaters.length)}`}</Muted>
                   </View>
                 </View>
 

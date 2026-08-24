@@ -100,9 +100,21 @@ describe('payload builders', () => {
       recipe_id: 'r1',
       custom_title: null,
       person_ids: [],
+      guest_count: 0,
       assigned_cook: 'family',
       position: 0,
     });
+  });
+
+  it('carries the guest count through, clamping negatives to 0', () => {
+    expect(
+      upsertEntryPayload({ mealPlanId: 'mp', day: 1, slot: 'lunch', recipeId: 'r1', guestCount: 3 })
+        .guest_count
+    ).toBe(3);
+    expect(
+      upsertEntryPayload({ mealPlanId: 'mp', day: 1, slot: 'lunch', recipeId: 'r1', guestCount: -2 })
+        .guest_count
+    ).toBe(0);
   });
 
   it('builds a free-text meal payload (custom_title only, recipe_id null)', () => {

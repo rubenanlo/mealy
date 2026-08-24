@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Alert, Modal, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { GuestStepper } from '@/components/guest-stepper';
 import { PersonChip } from '@/components/person-chip';
 import { Body, Button, Eyebrow, Muted, Title } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
@@ -14,6 +15,7 @@ import {
   type CookType,
   type MealSlot,
 } from '@/lib/plan';
+import { entryServings } from '@/lib/servings';
 import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, radius, screenPadding, useTheme } from '@/lib/theme';
 
@@ -78,6 +80,7 @@ export function AddToWeekSheet({
   const [cell, setCell] = useState<{ day: number; slot: MealSlot } | null>(null);
   const [persons, setPersons] = useState<PersonLite[]>([]);
   const [personIds, setPersonIds] = useState<string[]>([]);
+  const [guests, setGuests] = useState(0);
   const [cook, setCook] = useState<CookType>('family');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,6 +89,7 @@ export function AddToWeekSheet({
     if (!visible) return;
     setCell(null);
     setPersonIds([]);
+    setGuests(0);
     setCook('family');
     setError(null);
     let cancelled = false;
@@ -136,6 +140,7 @@ export function AddToWeekSheet({
         slot: cell.slot,
         recipeId,
         personIds,
+        guestCount: guests,
         assignedCook: cook,
         position: count ?? 0,
       });
@@ -243,6 +248,15 @@ export function AddToWeekSheet({
               </View>
             </View>
           ) : null}
+
+          <View style={{ gap: 10 }}>
+            <Eyebrow>Guests</Eyebrow>
+            <Muted>Extra people (not in the household) eating this meal.</Muted>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <GuestStepper value={guests} onChange={setGuests} />
+              <Muted>{`Serves ${entryServings(personIds, guests, eaters.length)}`}</Muted>
+            </View>
+          </View>
 
           <View style={{ gap: 10 }}>
             <Eyebrow>Who cooks</Eyebrow>
