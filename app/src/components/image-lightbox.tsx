@@ -50,6 +50,14 @@ function ZoomableImage({
   const ty = useSharedValue(0);
   const savedTx = useSharedValue(0);
   const savedTy = useSharedValue(0);
+  // Pan must be dead while un-zoomed: an always-active pan wins the gesture
+  // race against the paging ScrollView and horizontal swipes go nowhere.
+  const [panEnabled, setPanEnabled] = useState(false);
+
+  const setZoom = (zoomedNow: boolean) => {
+    setPanEnabled(zoomedNow);
+    onZoomChange(zoomedNow);
+  };
 
   const reset = () => {
     'worklet';
@@ -69,13 +77,14 @@ function ZoomableImage({
       savedScale.value = scale.value;
       if (scale.value <= 1) {
         reset();
-        runOnJS(onZoomChange)(false);
+        runOnJS(setZoom)(false);
       } else {
-        runOnJS(onZoomChange)(true);
+        runOnJS(setZoom)(true);
       }
     });
 
   const pan = Gesture.Pan()
+    .enabled(panEnabled)
     .averageTouches(true)
     .onUpdate((e) => {
       if (scale.value > 1) {
@@ -93,11 +102,11 @@ function ZoomableImage({
     .onEnd(() => {
       if (scale.value > 1) {
         reset();
-        runOnJS(onZoomChange)(false);
+        runOnJS(setZoom)(false);
       } else {
         scale.value = withTiming(DOUBLE_TAP_SCALE);
         savedScale.value = DOUBLE_TAP_SCALE;
-        runOnJS(onZoomChange)(true);
+        runOnJS(setZoom)(true);
       }
     });
 
@@ -152,13 +161,17 @@ export function ImageLightbox({
   const [zoomed, setZoomed] = useState(false);
   const [index, setIndex] = useState(initialIndex);
 
-  // Re-sync to the tapped image each time the viewer opens.
+  // Re-sync to the tapped image each time the viewer opens. The scrollTo
+  // covers Android, where the contentOffset prop is ignored.
   useEffect(() => {
     if (visible) {
       setZoomed(false);
       setIndex(initialIndex);
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollTo({ x: initialIndex * width, animated: false });
+      });
     }
-  }, [visible, initialIndex]);
+  }, [visible, initialIndex, width]);
 
   const onMomentumEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     setIndex(Math.round(e.nativeEvent.contentOffset.x / width));
