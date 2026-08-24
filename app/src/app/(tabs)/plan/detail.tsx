@@ -184,6 +184,8 @@ export default function PlanScreen() {
   const [pickedPersonIds, setPickedPersonIds] = useState<string[]>([]);
   const [pickedGuests, setPickedGuests] = useState(0);
   const [pickedCook, setPickedCook] = useState<CookType>('family');
+  /** Set when the picker is editing an existing entry rather than adding one. */
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
 
   const loadWeek = useCallback(
     async (week: string) => {
@@ -442,6 +444,7 @@ export default function PlanScreen() {
   };
 
   const openPicker = (day: number, slot: MealSlot) => {
+    setEditingEntryId(null);
     setPickerCell({ day, slot });
     setPickerSearch('');
     setPickedRecipe(null);
@@ -450,6 +453,24 @@ export default function PlanScreen() {
     setPickedPersonIds([]);
     setPickedGuests(0);
     setPickedCook('family');
+  };
+
+  /** Open the picker on an existing entry, pre-filled so it can be edited. */
+  const openEditor = (entry: PlanEntry) => {
+    setEditingEntryId(entry.id);
+    setPickerCell({ day: entry.day, slot: entry.slot });
+    setPickerSearch('');
+    setCustomDraft('');
+    setPickedRecipe(entry.recipe_id ? (recipeById.get(entry.recipe_id) ?? null) : null);
+    setPickedCustom(entry.custom_title);
+    setPickedPersonIds(entry.person_ids);
+    setPickedGuests(entry.guest_count);
+    setPickedCook(entry.assigned_cook);
+  };
+
+  const closePicker = () => {
+    setPickerCell(null);
+    setEditingEntryId(null);
   };
 
   const pickCustom = () => {
@@ -463,20 +484,35 @@ export default function PlanScreen() {
     if (!pickerCell || (!pickedRecipe && !pickedCustom)) return;
     setBusy(true);
     try {
-      const mealPlanId = await ensurePlan();
-      const position = slotEntries(entries, pickerCell.day, pickerCell.slot).length;
-      const payload = upsertEntryPayload({
-        mealPlanId,
-        day: pickerCell.day,
-        slot: pickerCell.slot,
-        ...(pickedRecipe ? { recipeId: pickedRecipe.id } : { customTitle: pickedCustom! }),
-        personIds: pickedPersonIds,
-        guestCount: pickedGuests,
-        assignedCook: pickedCook,
-        position,
-      });
-      await supabase.from('plan_entries').insert(payload);
-      setPickerCell(null);
+      if (editingEntryId) {
+        // Editing keeps the entry's slot/position; only who eats, guests, cook,
+        // and (via "Pick something else") the recipe/title can change.
+        await supabase
+          .from('plan_entries')
+          .update({
+            recipe_id: pickedRecipe ? pickedRecipe.id : null,
+            custom_title: pickedRecipe ? null : pickedCustom,
+            person_ids: pickedPersonIds,
+            guest_count: Math.max(0, pickedGuests),
+            assigned_cook: pickedCook,
+          })
+          .eq('id', editingEntryId);
+      } else {
+        const mealPlanId = await ensurePlan();
+        const position = slotEntries(entries, pickerCell.day, pickerCell.slot).length;
+        const payload = upsertEntryPayload({
+          mealPlanId,
+          day: pickerCell.day,
+          slot: pickerCell.slot,
+          ...(pickedRecipe ? { recipeId: pickedRecipe.id } : { customTitle: pickedCustom! }),
+          personIds: pickedPersonIds,
+          guestCount: pickedGuests,
+          assignedCook: pickedCook,
+          position,
+        });
+        await supabase.from('plan_entries').insert(payload);
+      }
+      closePicker();
       await loadWeek(weekIso);
     } finally {
       setBusy(false);
@@ -767,25 +803,18 @@ export default function PlanScreen() {
                               minHeight: 56, // v3: glanceable tap floor for Week rows
                             }}
                           >
-                            {/* v3.2: tapping a planned recipe opens the sheet */}
+                            {/* Tapping a planned meal opens the editor, pre-filled. */}
                             <Pressable
                               accessibilityRole="button"
-                              accessibilityLabel={`Open ${entry.custom_title ?? recipe?.title ?? 'recipe'}`}
-                              disabled={!recipe}
-                              onPress={() =>
-                                recipe &&
-                                router.push({
-                                  pathname: '/recipe/[id]',
-                                  params: { id: recipe.id, planServings: String(planServings) },
-                                })
-                              }
+                              accessibilityLabel={`Edit ${entry.custom_title ?? recipe?.title ?? 'meal'}`}
+                              onPress={() => openEditor(entry)}
                               style={({ pressed }) => ({
                                 flex: 1,
                                 flexDirection: 'row',
                                 alignItems: 'center',
                                 gap: 12,
                                 borderRadius: radius.thumb,
-                                backgroundColor: pressed && recipe ? colors.cardPressed : 'transparent',
+                                backgroundColor: pressed ? colors.cardPressed : 'transparent',
                               })}
                             >
                             <EntryThumb path={recipe?.cover_image_path ?? null} />
@@ -904,7 +933,7 @@ export default function PlanScreen() {
         </View>
       ) : null}
 
-      <Modal visible={pickerCell !== null} animationType="slide" onRequestClose={() => setPickerCell(null)}>
+      <Modal visible={pickerCell !== null} animationType="slide" onRequestClose={closePicker}>
         {/* Explicit insets: SafeAreaView reports 0 inside a native Modal here. */}
         <View
           style={{
@@ -984,6 +1013,24 @@ export default function PlanScreen() {
                     ) : (
                       <Muted>Custom meal</Muted>
                     )}
+                    {pickedRecipe ? (
+                      <LinkButton
+                        label="View recipe"
+                        onPress={() =>
+                          router.push({
+                            pathname: '/recipe/[id]',
+                            params: {
+                              id: pickedRecipe.id,
+                              planServings: String(
+                                entryServings(pickedPersonIds, pickedGuests, eaters.length)
+                              ),
+                            },
+                          })
+                        }
+                        style={{ alignSelf: 'flex-start' }}
+                        textStyle={{ fontSize: fontSize.small }}
+                      />
+                    ) : null}
                   </View>
                 </View>
                 <Hairline />
@@ -1067,9 +1114,11 @@ export default function PlanScreen() {
                 <View style={{ flex: 1 }} />
                 <Button
                   label={
-                    pickerCell
-                      ? `Add to ${DAY_LABELS[pickerCell.day]} ${SLOT_LABELS[pickerCell.slot].toLowerCase()}`
-                      : 'Add to the week'
+                    editingEntryId
+                      ? 'Save changes'
+                      : pickerCell
+                        ? `Add to ${DAY_LABELS[pickerCell.day]} ${SLOT_LABELS[pickerCell.slot].toLowerCase()}`
+                        : 'Add to the week'
                   }
                   onPress={() => void confirmAdd()}
                   loading={busy}
@@ -1084,7 +1133,7 @@ export default function PlanScreen() {
                 />
               </View>
             )}
-            <Button label="Close" kind="secondary" onPress={() => setPickerCell(null)} />
+            <Button label="Close" kind="secondary" onPress={closePicker} />
           </View>
         </View>
       </Modal>
