@@ -26,6 +26,7 @@ const PROTEIN_FILTERS: readonly QuickFilter[] = ['meat', 'fish', 'vegetarian'];
 
 export interface QuickFilterInput {
   prep_minutes: number | null;
+  cook_minutes: number | null;
   needs_review: boolean;
   category: ProteinCategory | null;
   /** null = not computable yet (no ingredients / index not loaded). */
@@ -36,8 +37,12 @@ export function matchesQuickFilters(
   input: QuickFilterInput,
   active: ReadonlySet<QuickFilter>
 ): boolean {
-  if (active.has('under30') && !(input.prep_minutes !== null && input.prep_minutes <= 30)) {
-    return false;
+  if (active.has('under30')) {
+    // Total time, matching what the recipe card displays; a recipe with no
+    // time data at all can't claim to be under 30.
+    const known = input.prep_minutes !== null || input.cook_minutes !== null;
+    const total = (input.prep_minutes ?? 0) + (input.cook_minutes ?? 0);
+    if (!known || total > 30) return false;
   }
   if (active.has('fodmapFriendly') && input.fodmapFriendly !== true) return false;
   if (active.has('needsReview') && !input.needs_review) return false;
