@@ -7,6 +7,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { RecipeImage } from '@/components/recipe-cards';
 import { Eyebrow, Muted, SectionHeader, Title } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
+import { isMealUpcoming, normalizeMealTimes, type MealTimes } from '@/lib/meal-times';
 import { addWeeks, DAY_LABELS, dayDate, SLOT_LABELS, weekStart, type MealSlot } from '@/lib/plan';
 import { supabase } from '@/lib/supabase';
 import {
@@ -86,15 +87,20 @@ export default function WeeksScreen() {
   const [plans, setPlans] = useState<PlanRow[]>([]);
   const [entries, setEntries] = useState<EntryRow[]>([]);
   const [recipesById, setRecipesById] = useState<Map<string, RecipeLite>>(new Map());
+  const [mealTimes, setMealTimes] = useState<MealTimes>(normalizeMealTimes(null));
 
   const currentWeek = weekStart(new Date());
 
   const load = useCallback(async () => {
-    const { data: planRows } = await supabase
-      .from('meal_plans')
-      .select('id, week_start')
-      .eq('household_id', householdId)
-      .order('week_start', { ascending: false });
+    const [{ data: planRows }, { data: hh }] = await Promise.all([
+      supabase
+        .from('meal_plans')
+        .select('id, week_start')
+        .eq('household_id', householdId)
+        .order('week_start', { ascending: false }),
+      supabase.from('households').select('meal_times').eq('id', householdId).single(),
+    ]);
+    if (hh) setMealTimes(normalizeMealTimes(hh.meal_times));
     const allPlans = (planRows as PlanRow[]) ?? [];
     setPlans(allPlans);
     if (allPlans.length === 0) {
@@ -137,11 +143,15 @@ export default function WeeksScreen() {
       entries.filter((e) => e.meal_plan_id === plan.id),
       recipesById
     );
+    const now = new Date();
     const todayIndex = Math.floor(
-      (new Date().setHours(0, 0, 0, 0) - dayDate(currentWeek, 0).getTime()) / 86_400_000
+      (new Date(now).setHours(0, 0, 0, 0) - dayDate(currentWeek, 0).getTime()) / 86_400_000
     );
-    return cells.filter((c) => c.day >= todayIndex);
-  }, [plans, entries, recipesById, currentWeek]);
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    return cells.filter((c) =>
+      isMealUpcoming(c.day, c.slot, todayIndex, nowMinutes, mealTimes)
+    );
+  }, [plans, entries, recipesById, currentWeek, mealTimes]);
 
   /** Past weeks with a plan, newest first. */
   const pastWeeks = useMemo(

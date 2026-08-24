@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Body, Button, Eyebrow, Field, Muted, SettingsGroup, Title } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
 import { normalizeDietProfile, QUOTA_CATEGORIES, type DietProfile } from '@/lib/diet';
+import { normalizeMealTimes, parseHHMM, type MealTimes } from '@/lib/meal-times';
 import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
 
@@ -93,6 +94,9 @@ export default function MealPreferencesScreen() {
   const [persons, setPersons] = useState<PersonRow[]>([]);
   const [householdNotes, setHouseholdNotes] = useState('');
   const [notesSaved, setNotesSaved] = useState(false);
+  const [mealTimes, setMealTimes] = useState<MealTimes>(normalizeMealTimes(null));
+  const [timesSaved, setTimesSaved] = useState(false);
+  const [timesError, setTimesError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [{ data: personRows }, { data: hh }] = await Promise.all([
@@ -101,10 +105,17 @@ export default function MealPreferencesScreen() {
         .select('id, name, is_employee, diet_profile')
         .eq('household_id', householdId)
         .order('created_at'),
-      supabase.from('households').select('other_requirements').eq('id', householdId).single(),
+      supabase
+        .from('households')
+        .select('other_requirements, meal_times')
+        .eq('id', householdId)
+        .single(),
     ]);
     setPersons((personRows as PersonRow[]) ?? []);
-    if (hh) setHouseholdNotes(hh.other_requirements ?? '');
+    if (hh) {
+      setHouseholdNotes(hh.other_requirements ?? '');
+      setMealTimes(normalizeMealTimes(hh.meal_times));
+    }
   }, [householdId]);
 
   useFocusEffect(
@@ -129,6 +140,26 @@ export default function MealPreferencesScreen() {
     );
     await supabase.from('persons').update({ diet_profile: updated }).eq('id', person.id);
   };
+
+  const saveMealTimes = async () => {
+    const values = [
+      mealTimes.lunch.start,
+      mealTimes.lunch.end,
+      mealTimes.dinner.start,
+      mealTimes.dinner.end,
+    ];
+    if (values.some((v) => parseHHMM(v) === null)) {
+      setTimesError('Times must be HH:MM, e.g. 13:30.');
+      return;
+    }
+    setTimesError(null);
+    await supabase.from('households').update({ meal_times: mealTimes }).eq('id', householdId);
+    setTimesSaved(true);
+    setTimeout(() => setTimesSaved(false), 2000);
+  };
+
+  const setTime = (slot: 'lunch' | 'dinner', field: 'start' | 'end', value: string) =>
+    setMealTimes((prev) => ({ ...prev, [slot]: { ...prev[slot], [field]: value } }));
 
   const saveHouseholdNotes = async () => {
     // Stored verbatim; structured-proposal parsing is Phase 3 (spec §2).
@@ -219,6 +250,51 @@ export default function MealPreferencesScreen() {
         {diners.length === 0 ? (
           <Muted>No people yet — add your household under Manage your account.</Muted>
         ) : null}
+
+        <Eyebrow style={{ marginTop: 16 }}>Meal times</Eyebrow>
+        <Muted>
+          When lunch and dinner happen. The week page uses the end time to know a meal is done.
+        </Muted>
+        <SettingsGroup>
+          {(['lunch', 'dinner'] as const).map((slot) => (
+            <View
+              key={slot}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 10,
+                minHeight: 56,
+                paddingHorizontal: 16,
+                paddingVertical: 8,
+              }}
+            >
+              <Body style={{ flex: 1, textTransform: 'capitalize' }}>{slot}</Body>
+              <Field
+                value={mealTimes[slot].start}
+                onChangeText={(v) => setTime(slot, 'start', v)}
+                placeholder="12:00"
+                keyboardType="numbers-and-punctuation"
+                autoCapitalize="none"
+                style={{ width: 76, textAlign: 'center' }}
+              />
+              <Muted>–</Muted>
+              <Field
+                value={mealTimes[slot].end}
+                onChangeText={(v) => setTime(slot, 'end', v)}
+                placeholder="15:00"
+                keyboardType="numbers-and-punctuation"
+                autoCapitalize="none"
+                style={{ width: 76, textAlign: 'center' }}
+              />
+            </View>
+          ))}
+        </SettingsGroup>
+        {timesError ? <Body style={{ color: colors.danger }}>{timesError}</Body> : null}
+        <Button
+          label={timesSaved ? 'Saved' : 'Save meal times'}
+          kind="secondary"
+          onPress={() => void saveMealTimes()}
+        />
 
         <Eyebrow style={{ marginTop: 16 }}>Other requirements</Eyebrow>
         <Muted>Free text for the whole household, used as-is when planning.</Muted>
