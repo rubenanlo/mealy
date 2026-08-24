@@ -94,3 +94,15 @@ describe('quota-aware fill', () => {
     expect(unfilled).toHaveLength(1);
   });
 });
+
+describe('choose again', () => {
+  it('avoids last round picks when alternatives exist, reuses them when not', () => {
+    const candidates = [cand('a'), cand('b')];
+    const first = autoFillWeek([cell(0)], candidates, { lowFodmapOnly: false });
+    expect(first.assignments[0].recipeId).toBe('a');
+    const again = autoFillWeek([cell(0)], candidates, { lowFodmapOnly: false, avoidIds: ['a'] });
+    expect(again.assignments[0].recipeId).toBe('b');
+    const only = autoFillWeek([cell(0)], [cand('a')], { lowFodmapOnly: false, avoidIds: ['a'] });
+    expect(only.assignments[0].recipeId).toBe('a');
+  });
+});

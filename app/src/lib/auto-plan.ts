@@ -40,6 +40,8 @@ export interface AutoFillOptions {
   quotas?: QuotaConstraint[];
   /** Meals already planned this week, counted per category. */
   existingCounts?: Record<string, number>;
+  /** "Choose again": last round's picks go to the back of the queue. */
+  avoidIds?: string[];
 }
 
 export function autoFillWeek(
@@ -50,7 +52,9 @@ export function autoFillWeek(
   const pool = options.lowFodmapOnly
     ? candidates.filter((c) => c.fodmapTier === 'low')
     : candidates;
-  const ordered = [...pool.filter((c) => !c.plannedRecently), ...pool.filter((c) => c.plannedRecently)];
+  const avoid = new Set(options.avoidIds ?? []);
+  const rank = (c: AutoCandidate) => (avoid.has(c.id) ? 2 : 0) + (c.plannedRecently ? 1 : 0);
+  const ordered = [...pool].sort((a, b) => rank(a) - rank(b));
 
   const orderedCells = [...cells].sort(
     (a, b) => a.day - b.day || (a.slot === b.slot ? 0 : a.slot === 'lunch' ? -1 : 1)

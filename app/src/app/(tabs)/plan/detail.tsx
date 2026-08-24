@@ -267,6 +267,13 @@ export default function PlanScreen() {
   const [autoOpen, setAutoOpen] = useState(false);
   const [autoLowFodmap, setAutoLowFodmap] = useState(false);
   const [autoBusy, setAutoBusy] = useState(false);
+  /** Last auto-fill's inserts (per week), so "Choose again" replaces only them. */
+  const [autoPicks, setAutoPicks] = useState<{
+    week: string;
+    entryIds: string[];
+    recipeIds: string[];
+  } | null>(null);
+  const canReroll = autoPicks !== null && autoPicks.week === weekIso;
 
   const emptyCells = useMemo(() => {
     const cells: { day: number; slot: MealSlot }[] = [];
@@ -279,9 +286,22 @@ export default function PlanScreen() {
   }, [entries]);
 
   const runAutoFill = async () => {
-    if (autoBusy || emptyCells.length === 0) return;
+    if (autoBusy || (emptyCells.length === 0 && !canReroll)) return;
     setAutoBusy(true);
     try {
+      // "Choose again": clear last round's auto-picked entries first so their
+      // slots re-open; manual picks are never touched.
+      let currentEntries = entries;
+      if (canReroll && autoPicks) {
+        await supabase.from('plan_entries').delete().in('id', autoPicks.entryIds);
+        currentEntries = entries.filter((e) => !autoPicks.entryIds.includes(e.id));
+      }
+      const openCells: { day: number; slot: MealSlot }[] = [];
+      for (let day = 0; day < 7; day += 1) {
+        for (const slot of ['lunch', 'dinner'] as MealSlot[]) {
+          if (slotEntries(currentEntries, day, slot).length === 0) openCells.push({ day, slot });
+        }
+      }
       // Cool-down window: same rule as "Suggested for you".
       const [{ data: hh }, { data: recentRows }] = await Promise.all([
         supabase.from('households').select('suggested_rest_weeks').eq('id', householdId).single(),
@@ -349,18 +369,21 @@ export default function PlanScreen() {
         recipes.map((r) => [r.id, resolveProteinCategory(r.tags, r.ingredients, index)])
       );
       const existingCounts: Record<string, number> = {};
-      for (const entry of entries) {
+      for (const entry of currentEntries) {
         const cat = entry.recipe_id ? categoryById.get(entry.recipe_id) : null;
         if (cat) existingCounts[cat] = (existingCounts[cat] ?? 0) + 1;
       }
 
-      const { assignments, unfilled } = autoFillWeek(emptyCells, candidates, {
+      const { assignments, unfilled } = autoFillWeek(openCells, candidates, {
         lowFodmapOnly: autoLowFodmap,
         quotas,
         existingCounts,
+        avoidIds: canReroll && autoPicks ? autoPicks.recipeIds : [],
       });
       if (assignments.length === 0) {
         setAutoOpen(false);
+        setAutoPicks(null);
+        await loadWeek(weekIso);
         Alert.alert(
           'No recipes to pick from',
           autoLowFodmap
@@ -370,19 +393,27 @@ export default function PlanScreen() {
         return;
       }
       const mealPlanId = await ensurePlan();
-      await supabase.from('plan_entries').insert(
-        assignments.map((a) =>
-          upsertEntryPayload({
-            mealPlanId,
-            day: a.day,
-            slot: a.slot,
-            recipeId: a.recipeId,
-            personIds: [], // empty = whole household
-            assignedCook: 'family',
-            position: 0,
-          })
+      const { data: inserted } = await supabase
+        .from('plan_entries')
+        .insert(
+          assignments.map((a) =>
+            upsertEntryPayload({
+              mealPlanId,
+              day: a.day,
+              slot: a.slot,
+              recipeId: a.recipeId,
+              personIds: [], // empty = whole household
+              assignedCook: 'family',
+              position: 0,
+            })
+          )
         )
-      );
+        .select('id');
+      setAutoPicks({
+        week: weekIso,
+        entryIds: ((inserted ?? []) as { id: string }[]).map((r) => r.id),
+        recipeIds: assignments.map((a) => a.recipeId),
+      });
       setAutoOpen(false);
       await loadWeek(weekIso);
       if (unfilled.length > 0) {
@@ -563,15 +594,12 @@ export default function PlanScreen() {
         </View>
       ) : null}
 
-      {emptyCells.length > 0 ? (
+      {emptyCells.length > 0 || canReroll ? (
         <View style={{ paddingHorizontal: screenPadding, paddingBottom: 12 }}>
           <Button
-            label="Choose for us"
+            label={canReroll ? 'Choose again' : 'Choose for us'}
             kind="secondary"
-            onPress={() => {
-              setAutoLowFodmap(false);
-              setAutoOpen(true);
-            }}
+            onPress={() => setAutoOpen(true)}
           />
         </View>
       ) : null}
@@ -913,9 +941,11 @@ export default function PlanScreen() {
             borderTopRightRadius: 16,
           }}
         >
-          <Eyebrow>Choose for us</Eyebrow>
+          <Eyebrow>{canReroll ? 'Choose again' : 'Choose for us'}</Eyebrow>
           <Muted>
-            {`Fills the ${emptyCells.length} empty ${emptyCells.length === 1 ? 'meal' : 'meals'} for the whole household — recipes that haven't been cooked recently, varying the type from meal to meal. You can swap anything afterwards.`}
+            {canReroll
+              ? 'Swaps the auto-picked meals for a different selection. Meals you added yourself stay put.'
+              : `Fills the ${emptyCells.length} empty ${emptyCells.length === 1 ? 'meal' : 'meals'} for the whole household — recipes that haven't been cooked recently, varying the type from meal to meal. You can swap anything afterwards.`}
           </Muted>
           <View
             style={{
@@ -932,7 +962,11 @@ export default function PlanScreen() {
               trackColor={{ true: colors.accent }}
             />
           </View>
-          <Button label="Fill the week" onPress={() => void runAutoFill()} loading={autoBusy} />
+          <Button
+            label={canReroll ? 'Pick a new selection' : 'Fill the week'}
+            onPress={() => void runAutoFill()}
+            loading={autoBusy}
+          />
           <Button label="Cancel" kind="secondary" onPress={() => setAutoOpen(false)} />
         </View>
       </Modal>
