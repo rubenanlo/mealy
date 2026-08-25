@@ -1,13 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Body, Button, Field, Muted, Title } from '@/components/ui';
+import { Body, Button, Eyebrow, Field, Muted, Title } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
+import { createBlankRecipe } from '@/lib/recipes';
 import { supabase } from '@/lib/supabase';
 import { controlHeight, fonts, fontSize, radius, screenPadding, useTheme } from '@/lib/theme';
 import {
@@ -24,6 +25,14 @@ export default function CaptureScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const membership = useHousehold();
+  // When opened from the planner: seed the manual title and remember the slot
+  // to drop the finished recipe into (see recipe/[id] assign params).
+  const { seedTitle, assignDay, assignSlot, assignWeek } = useLocalSearchParams<{
+    seedTitle?: string;
+    assignDay?: string;
+    assignSlot?: string;
+    assignWeek?: string;
+  }>();
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,11 +40,43 @@ export default function CaptureScreen() {
 
   type Ctx = { householdId: string; userId: string };
 
+  /** Slot context forwarded to the recipe page so it can auto-assign on finish. */
+  const assignParams = () => {
+    const p: Record<string, string> = {};
+    if (assignWeek) p.assignWeek = assignWeek;
+    if (assignDay != null) p.assignDay = assignDay;
+    if (assignSlot) p.assignSlot = assignSlot;
+    return p;
+  };
+
   const finish = (outcome: CaptureOutcome) => {
     if (outcome.recipeId) {
-      router.replace(`/recipe/${outcome.recipeId}`);
+      router.replace({
+        pathname: '/recipe/[id]',
+        params: { id: outcome.recipeId, ...assignParams() },
+      });
     } else {
       setNeedsPaste(true);
+    }
+  };
+
+  const createManual = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const id = await createBlankRecipe({
+        householdId: membership.householdId,
+        userId: data.session?.user.id,
+        title: seedTitle,
+      });
+      router.replace({
+        pathname: '/recipe/[id]',
+        params: { id, isNew: '1', ...assignParams() },
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not create the recipe. Try again.');
+      setBusy(false);
     }
   };
 
@@ -103,6 +144,15 @@ export default function CaptureScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <Title>Add a recipe</Title>
+          {seedTitle ? <Muted>Creating “{seedTitle}”.</Muted> : null}
+
+          {/* Section 1 — type everything in yourself on a blank recipe page. */}
+          <Eyebrow style={{ marginTop: 4 }}>Manual input</Eyebrow>
+          <Muted>Start from a blank recipe and fill in the details yourself.</Muted>
+          <Button label="Create it yourself" onPress={() => void createManual()} loading={busy} />
+
+          {/* Section 2 — let the worker extract from a link, text, photos or a PDF. */}
+          <Eyebrow style={{ marginTop: 16 }}>Automatic</Eyebrow>
           <Muted>Paste a link (website, Instagram, TikTok) or the full recipe text.</Muted>
           <Field
             value={input}

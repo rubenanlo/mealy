@@ -480,6 +480,33 @@ export default function PlanScreen() {
     setPickedRecipe(null);
   };
 
+  // "Add" on a typed meal: offer to turn it into a reusable recipe. "No" keeps
+  // the current free-text flow; "Yes" hands off to the add-recipe screen with
+  // the slot context, so the finished recipe lands back in this slot.
+  const onAddCustom = () => {
+    const title = customDraft.trim();
+    if (!title) return;
+    Alert.alert('Add as a recipe?', `Save “${title}” as a recipe you can reuse and plan again?`, [
+      { text: 'No, just add it', onPress: pickCustom },
+      { text: 'Yes, create a recipe', onPress: () => startRecipeFromMeal(title) },
+    ]);
+  };
+
+  const startRecipeFromMeal = (title: string) => {
+    if (!pickerCell) return;
+    const cell = pickerCell;
+    closePicker();
+    router.push({
+      pathname: '/capture',
+      params: {
+        seedTitle: title,
+        assignDay: String(cell.day),
+        assignSlot: cell.slot,
+        assignWeek: weekIso,
+      },
+    });
+  };
+
   const confirmAdd = async () => {
     if (!pickerCell || (!pickedRecipe && !pickedCustom)) return;
     setBusy(true);
@@ -958,13 +985,13 @@ export default function PlanScreen() {
                     onChangeText={setCustomDraft}
                     placeholder="Or type a meal…"
                     style={{ flex: 1 }}
-                    onSubmitEditing={pickCustom}
+                    onSubmitEditing={onAddCustom}
                     returnKeyType="done"
                   />
                   <LinkButton
                     label="Add"
                     accessibilityLabel="Add this meal"
-                    onPress={pickCustom}
+                    onPress={onAddCustom}
                     style={{ opacity: customDraft.trim() ? 1 : 0.4 }}
                   />
                 </View>

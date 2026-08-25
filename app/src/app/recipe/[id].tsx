@@ -64,7 +64,8 @@ import {
 import { resolveMatches } from '@/lib/matching';
 import { useImageUrl } from '@/lib/media';
 import { useReducedMotion } from '@/lib/motion';
-import { weekStart } from '@/lib/plan';
+import { DAY_LABELS, type MealSlot, SLOT_LABELS, weekStart } from '@/lib/plan';
+import { assignRecipeToSlot, isRecipeUntouched } from '@/lib/recipes';
 import { rescaleIngredients, servingsFactor } from '@/lib/servings';
 import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, minTapTarget, radius, screenPadding, useTheme } from '@/lib/theme';
@@ -200,7 +201,7 @@ function Hero({
     <View
       style={{
         aspectRatio: path ? 4 / 3 : undefined,
-        height: path ? undefined : 64,
+        height: path ? undefined : onEdit ? 96 : 64,
         backgroundColor: colors.cardPressed,
       }}
     >
@@ -218,6 +219,25 @@ function Hero({
             contentFit="cover"
             contentPosition={focalToContentPosition(focal)}
           />
+        </Pressable>
+      ) : onEdit ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Add a cover photo"
+          onPress={onEdit}
+          style={({ pressed }) => ({
+            flex: 1,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            opacity: pressed ? 0.7 : 1,
+          })}
+        >
+          <Ionicons name="camera-outline" size={20} color={colors.textMuted} />
+          <Text style={{ color: colors.textMuted, fontSize: fontSize.meta, fontFamily: fonts.uiMedium }}>
+            Add a cover photo
+          </Text>
         </Pressable>
       ) : null}
       {/* Bookmark chip sits above the image Pressable so it keeps its own taps. */}
@@ -321,10 +341,23 @@ function TierDot({ tier }: { tier: FodmapTier }) {
 }
 
 export default function RecipeSheetScreen() {
-  const { id, planServings: planServingsParam } = useLocalSearchParams<{
+  const {
+    id,
+    planServings: planServingsParam,
+    isNew: isNewParam,
+    assignDay,
+    assignSlot,
+    assignWeek,
+  } = useLocalSearchParams<{
     id: string;
     /** Set when opened from the planner / "what's next": scale to this meal's servings. */
     planServings?: string;
+    /** '1' when this is a freshly created blank manual recipe (enables auto-delete + Done). */
+    isNew?: string;
+    /** Slot to auto-assign this recipe into on finish, when created from the planner. */
+    assignDay?: string;
+    assignSlot?: string;
+    assignWeek?: string;
   }>();
   const { colors } = useTheme();
   const router = useRouter();
@@ -332,6 +365,17 @@ export default function RecipeSheetScreen() {
   const reduced = useReducedMotion();
   const { householdId } = useHousehold();
   const canonicalIndex = useCanonicalIndex();
+
+  const isNew = isNewParam === '1';
+  const assignTarget =
+    assignWeek && assignDay != null && assignSlot
+      ? { week: assignWeek, day: parseInt(assignDay, 10), slot: assignSlot as MealSlot }
+      : null;
+  const [busyAssign, setBusyAssign] = useState(false);
+  // Guards the abandon cleanup: a blank recipe left untouched is deleted on unmount
+  // unless the user finalized it (Done / assigned to a slot).
+  const finalizedRef = useRef(false);
+  const recipeRef = useRef<RecipeDetail | null>(null);
 
   const [recipe, setRecipe] = useState<RecipeDetail | null>(null);
   const [sources, setSources] = useState<SourceRow[]>([]);
@@ -429,6 +473,21 @@ export default function RecipeSheetScreen() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    recipeRef.current = recipe;
+  }, [recipe]);
+
+  // A blank manual recipe the user opened but never filled in is deleted when
+  // they leave, so abandoned blanks don't pile up in the library.
+  useEffect(() => {
+    return () => {
+      const r = recipeRef.current;
+      if (isNew && !finalizedRef.current && r && isRecipeUntouched(r)) {
+        void supabase.from('recipes').delete().eq('id', r.id);
+      }
+    };
+  }, [isNew]);
 
   // Resolve ingredient→canonical matches + who has a FODMAP mode enabled.
   const loadMatches = useCallback(async () => {
@@ -820,6 +879,35 @@ export default function RecipeSheetScreen() {
 
   const dismiss = () => router.back();
 
+  // Manual recipe created from Library/Search: keep it, drop the isNew flag,
+  // and show it in normal view mode.
+  const finishManual = () => {
+    finalizedRef.current = true;
+    router.replace({ pathname: '/recipe/[id]', params: { id } });
+  };
+
+  // Manual/automatic recipe created from the planner: drop it into the slot and
+  // return to the planner (which reloads the week on focus).
+  const finishAssign = async () => {
+    if (!recipe || !assignTarget) return;
+    setBusyAssign(true);
+    try {
+      await assignRecipeToSlot({
+        householdId,
+        recipeId: recipe.id,
+        weekIso: assignTarget.week,
+        day: assignTarget.day,
+        slot: assignTarget.slot,
+      });
+      finalizedRef.current = true;
+      router.back();
+    } catch {
+      Alert.alert('Could not add to the planner', 'Something went wrong. Try again.');
+    } finally {
+      setBusyAssign(false);
+    }
+  };
+
   if (!recipe) {
     return (
       <Sheet onDismiss={dismiss}>
@@ -920,7 +1008,7 @@ export default function RecipeSheetScreen() {
             saved={inThisWeek}
             onBookmark={onBookmark}
             focal={recipe.cover_focal}
-            onEdit={heroPath ? () => setCoverMenuOpen(true) : undefined}
+            onEdit={() => setCoverMenuOpen(true)}
             onPress={
               heroPath
                 ? // The cover enlarges alone; the Original source gallery below
@@ -1498,10 +1586,20 @@ export default function RecipeSheetScreen() {
             }),
           }}
         >
-          <Button
-            label={inThisWeek ? 'Add again this week' : 'Add to this week'}
-            onPress={() => setSheetOpen(true)}
-          />
+          {assignTarget ? (
+            <Button
+              label={`Add to ${DAY_LABELS[assignTarget.day]} ${SLOT_LABELS[assignTarget.slot]}`}
+              onPress={() => void finishAssign()}
+              loading={busyAssign}
+            />
+          ) : isNew ? (
+            <Button label="Done" onPress={finishManual} />
+          ) : (
+            <Button
+              label={inThisWeek ? 'Add again this week' : 'Add to this week'}
+              onPress={() => setSheetOpen(true)}
+            />
+          )}
         </View>
       </View>
 
@@ -1615,22 +1713,26 @@ export default function RecipeSheetScreen() {
           }}
         >
           <Eyebrow>Cover image</Eyebrow>
-          <Button
-            label="Reposition"
-            kind="secondary"
-            onPress={() => {
-              setCoverMenuOpen(false);
-              setRepositionOpen(true);
-            }}
-          />
-          <Button
-            label="Choose from captured"
-            kind="secondary"
-            onPress={() => {
-              setCoverMenuOpen(false);
-              setPickCapturedOpen(true);
-            }}
-          />
+          {heroPath ? (
+            <Button
+              label="Reposition"
+              kind="secondary"
+              onPress={() => {
+                setCoverMenuOpen(false);
+                setRepositionOpen(true);
+              }}
+            />
+          ) : null}
+          {images.length > 0 ? (
+            <Button
+              label="Choose from captured"
+              kind="secondary"
+              onPress={() => {
+                setCoverMenuOpen(false);
+                setPickCapturedOpen(true);
+              }}
+            />
+          ) : null}
           <Button
             label="Choose from library"
             kind="secondary"
