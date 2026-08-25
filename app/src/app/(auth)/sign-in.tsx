@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Image, KeyboardAvoidingView, Platform, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -148,6 +149,12 @@ export default function SignInScreen() {
                 ) : null}
               </View>
             ) : null}
+            <Button
+              label="Have a signup code? Create your family"
+              kind="secondary"
+              onPress={() => router.push('/sign-up')}
+              disabled={busy}
+            />
           </View>
         ) : step === 'password' ? (
           <View style={{ gap: 12 }}>

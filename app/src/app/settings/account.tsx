@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, Pressable, ScrollView, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
@@ -15,8 +16,9 @@ import {
   Title,
 } from '@/components/ui';
 import { useAuth, useHousehold } from '@/lib/auth';
+import { type SignupCodeRow, signupCodeStatus } from '@/lib/signup-codes';
 import { supabase } from '@/lib/supabase';
-import { controlHeight, fonts, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
+import { controlHeight, fonts, fontSize, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
 
 interface PersonRow {
   id: string;
@@ -50,23 +52,39 @@ export default function AccountScreen() {
   const [newEmail, setNewEmail] = useState('');
   const [emailBusy, setEmailBusy] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [codes, setCodes] = useState<SignupCodeRow[]>([]);
+  const [codeBusy, setCodeBusy] = useState(false);
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [{ data: personRows }, { data: memberRows }, { data: inviteRows }] = await Promise.all([
-      supabase
-        .from('persons')
-        .select('id, name, is_employee')
-        .eq('household_id', householdId)
-        .order('created_at'),
-      supabase
-        .from('household_members')
-        .select('user_id, email, role')
-        .eq('household_id', householdId),
-      supabase.from('invites').select('email').eq('household_id', householdId).order('created_at'),
-    ]);
+    const [{ data: personRows }, { data: memberRows }, { data: inviteRows }, { data: adminData }] =
+      await Promise.all([
+        supabase
+          .from('persons')
+          .select('id, name, is_employee')
+          .eq('household_id', householdId)
+          .order('created_at'),
+        supabase
+          .from('household_members')
+          .select('user_id, email, role')
+          .eq('household_id', householdId),
+        supabase.from('invites').select('email').eq('household_id', householdId).order('created_at'),
+        supabase.rpc('is_app_admin'),
+      ]);
     setPersons((personRows as PersonRow[]) ?? []);
     setMembers((memberRows as MemberRow[]) ?? []);
     setInvites((inviteRows as InviteRow[]) ?? []);
+    const admin = adminData === true;
+    setIsAdmin(admin);
+    if (admin) {
+      // RLS already restricts signup_codes to the admin.
+      const { data: codeRows } = await supabase
+        .from('signup_codes')
+        .select('code, expires_at, redeemed_at')
+        .order('created_at', { ascending: false });
+      setCodes((codeRows as SignupCodeRow[]) ?? []);
+    }
   }, [householdId]);
 
   useFocusEffect(
@@ -104,6 +122,33 @@ export default function AccountScreen() {
 
   const revoke = async (email: string) => {
     await supabase.from('invites').delete().eq('email', email);
+    await load();
+  };
+
+  const copyCode = async (code: string) => {
+    await Clipboard.setStringAsync(code);
+    setCopiedCode(code);
+    setTimeout(() => setCopiedCode((c) => (c === code ? null : c)), 1500);
+  };
+
+  const generateCode = async () => {
+    setCodeBusy(true);
+    const { data, error } = await supabase.rpc('create_signup_code');
+    setCodeBusy(false);
+    if (error || !data) {
+      Alert.alert('Could not create a code', 'Something went wrong. Try again.');
+      return;
+    }
+    await Clipboard.setStringAsync(data as string);
+    Alert.alert(
+      'New signup code',
+      `${data}\n\nCopied to your clipboard. Share it with the person you are inviting. It works once and expires in 7 days.`
+    );
+    await load();
+  };
+
+  const revokeCode = async (code: string) => {
+    await supabase.from('signup_codes').delete().eq('code', code);
     await load();
   };
 
@@ -259,6 +304,80 @@ export default function AccountScreen() {
           />
         </View>
         {inviteError ? <Body style={{ color: colors.danger }}>{inviteError}</Body> : null}
+
+        {/* Admin only: codes that let a new person create their own family. */}
+        {isAdmin ? (
+          <>
+            <Eyebrow style={{ marginTop: 16 }}>Signup codes</Eyebrow>
+            <SettingsGroup>
+              {codes.map((c) => {
+                const status = signupCodeStatus(c);
+                return (
+                  <View
+                    key={c.code}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 10,
+                      minHeight: controlHeight + 4,
+                      paddingHorizontal: 16,
+                    }}
+                  >
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Copy code ${c.code}`}
+                      onPress={() => void copyCode(c.code)}
+                      hitSlop={8}
+                      style={{ flex: 1 }}
+                    >
+                      <Text
+                        style={{
+                          color: colors.text,
+                          fontSize: fontSize.base,
+                          fontFamily: fonts.uiSemi,
+                        }}
+                      >
+                        {c.code}
+                      </Text>
+                    </Pressable>
+                    <Muted>
+                      {copiedCode === c.code
+                        ? 'Copied'
+                        : status === 'active'
+                          ? `expires ${new Date(c.expires_at).toLocaleDateString()}`
+                          : status}
+                    </Muted>
+                    {status === 'redeemed' ? null : (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Revoke code ${c.code}`}
+                        onPress={() => void revokeCode(c.code)}
+                        hitSlop={8}
+                      >
+                        <Ionicons name="close-circle-outline" size={20} color={colors.textMuted} />
+                      </Pressable>
+                    )}
+                  </View>
+                );
+              })}
+              {codes.length === 0 ? (
+                <View style={{ paddingHorizontal: 16, paddingVertical: 14 }}>
+                  <Muted>No codes yet. Generate one to let a new family join.</Muted>
+                </View>
+              ) : null}
+            </SettingsGroup>
+            <Muted>
+              Only you can create these. A code lets one person sign up and start their own family.
+              Tap a code to copy it.
+            </Muted>
+            <Button
+              label="Generate code"
+              kind="secondary"
+              onPress={() => void generateCode()}
+              loading={codeBusy}
+            />
+          </>
+        ) : null}
 
         <Eyebrow style={{ marginTop: 16 }}>Change email</Eyebrow>
         <View style={{ flexDirection: 'row', gap: 10 }}>
