@@ -21,6 +21,7 @@ from .ingest.url import ingest_url
 from .matching import IngredientMatch, match_ingredients
 from .models import CanonicalRecipe, IngestResult, Verbatim
 from .structure import structure_text
+from .translate import TranslateRequest, TranslateResponse, translate_recipe
 
 app = FastAPI(title="Mealy Worker", version="0.1.0")
 
@@ -118,6 +119,17 @@ async def image_fetch_route(
     if data is None:
         raise HTTPException(status_code=422, detail="image failed validation")
     return Response(content=data, media_type="image/jpeg")
+
+
+@app.post("/translate", response_model=TranslateResponse)
+async def translate_route(
+    body: TranslateRequest, _claims: dict = Depends(verify_token)
+) -> TranslateResponse:
+    """Exact translation of canonical content into the supported languages."""
+    try:
+        return await translate_recipe(body)
+    except ValueError as err:
+        raise HTTPException(status_code=422, detail=str(err)) from err
 
 
 @app.post("/fodmap/swaps", response_model=SwapResponse)

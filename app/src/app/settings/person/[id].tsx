@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Body, Button, Eyebrow, Field, Hairline, Muted, Title } from '@/components/ui';
 import { FODMAP_MODES, normalizeDietProfile, type DietProfile, type FodmapMode } from '@/lib/diet';
-import { fmt, useI18n } from '@/lib/i18n';
+import { fmt, LOCALES, useI18n, type Locale } from '@/lib/i18n';
 import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, minTapTarget, radius, screenPadding, useTheme } from '@/lib/theme';
 
@@ -83,6 +83,7 @@ export default function PersonScreen() {
   const [name, setName] = useState('');
   const [isEmployee, setIsEmployee] = useState(false);
   const [shareToken, setShareToken] = useState<string | null>(null);
+  const [linkLanguage, setLinkLanguage] = useState<Locale>('es');
   const [profile, setProfile] = useState<DietProfile | null>(null);
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
@@ -100,7 +101,7 @@ export default function PersonScreen() {
     if (!id) return;
     supabase
       .from('persons')
-      .select('name, is_employee, diet_profile, other_requirements, share_token')
+      .select('name, is_employee, diet_profile, other_requirements, share_token, link_language')
       .eq('id', id)
       .single()
       .then(({ data }) => {
@@ -108,6 +109,7 @@ export default function PersonScreen() {
         setName(data.name);
         setIsEmployee(data.is_employee);
         setShareToken(data.share_token ?? null);
+        setLinkLanguage((data.link_language as Locale) ?? 'es');
         setProfile(normalizeDietProfile(data.diet_profile));
         setNotes(data.other_requirements ?? '');
         setLoaded(true);
@@ -221,6 +223,52 @@ export default function PersonScreen() {
                 void Share.share({ message: url, url });
               }}
             />
+            <Eyebrow style={{ marginTop: 6 }}>{d.person.linkLanguage}</Eyebrow>
+            <Muted>{d.person.linkLanguageHint}</Muted>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {LOCALES.map((option) => {
+                const selected = linkLanguage === option.code;
+                return (
+                  <Pressable
+                    key={option.code}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    onPress={() => {
+                      // Persist immediately: the shared page reads it live.
+                      setLinkLanguage(option.code);
+                      void supabase
+                        .from('persons')
+                        .update({ link_language: option.code })
+                        .eq('id', id);
+                    }}
+                    style={({ pressed }) => ({
+                      minHeight: minTapTarget,
+                      borderRadius: radius.control,
+                      paddingHorizontal: 16,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderWidth: selected ? 0 : 1,
+                      borderColor: colors.border,
+                      backgroundColor: selected
+                        ? colors.text
+                        : pressed
+                          ? colors.cardPressed
+                          : 'transparent',
+                    })}
+                  >
+                    <Text
+                      style={{
+                        color: selected ? colors.bg : colors.text,
+                        fontSize: fontSize.base,
+                        fontFamily: fonts.uiMedium,
+                      }}
+                    >
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
         ) : null}
 

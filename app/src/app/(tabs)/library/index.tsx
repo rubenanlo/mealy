@@ -58,6 +58,7 @@ import {
 import { addWeeks, weekStart } from "@/lib/plan";
 import { matchesQuickFilters, type QuickFilter } from "@/lib/quick-filters";
 import { supabase } from "@/lib/supabase";
+import { localizedTitle } from "@/lib/translations";
 import {
   fonts,
   fontSize,
@@ -75,7 +76,7 @@ const FOLDER_VIEW_KEY = "mealy.folder-view";
 
 export default function HomeScreen() {
   const { colors } = useTheme();
-  const { d } = useI18n();
+  const { d, locale } = useI18n();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { householdId } = useHousehold();
@@ -141,7 +142,7 @@ export default function HomeScreen() {
       supabase
         .from("recipes")
         .select(
-          "id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes, created_at, ingredients, fodmap_override",
+          "id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes, created_at, ingredients, fodmap_override, recipe_translations(locale, title)",
         )
         .eq("household_id", householdId)
         .order("created_at", { ascending: false }),
@@ -170,7 +171,20 @@ export default function HomeScreen() {
         .select("user_id, email")
         .eq("household_id", householdId),
     ]);
-    if (recipeRows) setRecipes(recipeRows as RecipeListItem[]);
+    if (recipeRows) {
+      // Localize titles once at the fetch boundary, then drop the embed so
+      // downstream state keeps the plain RecipeListItem shape.
+      setRecipes(
+        (
+          recipeRows as (RecipeListItem & {
+            recipe_translations?: { locale: string; title: string }[] | null;
+          })[]
+        ).map(({ recipe_translations, ...r }) => ({
+          ...r,
+          title: localizedTitle({ title: r.title, recipe_translations }, locale),
+        })),
+      );
+    }
     setFolders(
       summarizeFolders(
         (folderRows as FolderRow[]) ?? [],
@@ -220,7 +234,7 @@ export default function HomeScreen() {
       setWeekEntries([]);
     }
     setLoaded(true);
-  }, [householdId]);
+  }, [householdId, locale]);
 
   useFocusEffect(
     useCallback(() => {

@@ -44,6 +44,7 @@ import {
 import { quotaProgress } from '@/lib/quotas';
 import { entryServings } from '@/lib/servings';
 import { supabase } from '@/lib/supabase';
+import { localizedTitle } from '@/lib/translations';
 import {
   floatingActionOffset,
   fonts,
@@ -226,20 +227,30 @@ export default function PlanScreen() {
           supabase
             .from('recipes')
             .select(
-              'id, title, tags, needs_review, cover_image_path, ingredients, prep_minutes, cook_minutes, servings, fodmap_override, meal_type'
+              'id, title, tags, needs_review, cover_image_path, ingredients, prep_minutes, cook_minutes, servings, fodmap_override, meal_type, recipe_translations(locale, title)'
             )
             .eq('household_id', householdId)
             .order('title'),
         ]);
         if (cancelled) return;
         setPersons((personRows as Person[]) ?? []);
-        setRecipes((recipeRows as RecipeLite[]) ?? []);
+        // Localize titles up front so the grid, picker, and editor all show the
+        // active locale's title without any downstream changes.
+        const rows = (
+          (recipeRows as (RecipeLite & {
+            recipe_translations: { locale: string; title: string }[] | null;
+          })[]) ?? []
+        ).map(({ recipe_translations, ...r }) => ({
+          ...r,
+          title: localizedTitle({ title: r.title, recipe_translations }, locale),
+        }));
+        setRecipes(rows);
         await loadWeek(weekIso);
       })();
       return () => {
         cancelled = true;
       };
-    }, [householdId, weekIso, loadWeek])
+    }, [householdId, weekIso, loadWeek, locale])
   );
 
   const recipeById = useMemo(() => new Map(recipes.map((r) => [r.id, r])), [recipes]);

@@ -5,8 +5,95 @@
 // *.supabase.co refuses to render unauthenticated HTML.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
-const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-const SLOTS: Record<string, string> = { lunch: 'Lunch', dinner: 'Dinner' };
+// Chrome strings per link language (persons.link_language, migration 0022).
+// Recipe content itself comes from recipe_translations with original fallback.
+const L10N = {
+  en: {
+    days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+    slots: { lunch: 'Lunch', dinner: 'Dinner' } as Record<string, string>,
+    weekOf: 'Week of',
+    servings: 'servings',
+    prep: 'prep',
+    cook: 'cook',
+    min: 'min',
+    ingredients: 'Ingredients',
+    steps: 'Steps',
+    step: 'Step',
+    mealsToCook: 'Meals to cook',
+    forName: 'For',
+    noMeals: 'No meals assigned right now — check back later.',
+    moreInstructions: 'More instructions',
+    allMeals: '‹ All meals',
+    notFoundTitle: 'Not found',
+    linkNotValid: 'Link not valid',
+    checkLink: 'Check the link you received.',
+    meal: 'Meal',
+  },
+  es: {
+    days: ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'],
+    slots: { lunch: 'Comida', dinner: 'Cena' } as Record<string, string>,
+    weekOf: 'Semana del',
+    servings: 'raciones',
+    prep: 'preparación',
+    cook: 'cocción',
+    min: 'min',
+    ingredients: 'Ingredientes',
+    steps: 'Pasos',
+    step: 'Paso',
+    mealsToCook: 'Comidas para cocinar',
+    forName: 'Para',
+    noMeals: 'No hay comidas asignadas ahora mismo. Vuelve a mirar más tarde.',
+    moreInstructions: 'Más instrucciones',
+    allMeals: '‹ Todas las comidas',
+    notFoundTitle: 'No encontrado',
+    linkNotValid: 'Enlace no válido',
+    checkLink: 'Revisa el enlace que recibiste.',
+    meal: 'Comida',
+  },
+  fr: {
+    days: ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'],
+    slots: { lunch: 'Déjeuner', dinner: 'Dîner' } as Record<string, string>,
+    weekOf: 'Semaine du',
+    servings: 'portions',
+    prep: 'préparation',
+    cook: 'cuisson',
+    min: 'min',
+    ingredients: 'Ingrédients',
+    steps: 'Étapes',
+    step: 'Étape',
+    mealsToCook: 'Repas à cuisiner',
+    forName: 'Pour',
+    noMeals: 'Aucun repas assigné pour le moment. Revenez plus tard.',
+    moreInstructions: 'Instructions supplémentaires',
+    allMeals: '‹ Tous les repas',
+    notFoundTitle: 'Introuvable',
+    linkNotValid: 'Lien non valide',
+    checkLink: 'Vérifiez le lien que vous avez reçu.',
+    meal: 'Repas',
+  },
+  it: {
+    days: ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'],
+    slots: { lunch: 'Pranzo', dinner: 'Cena' } as Record<string, string>,
+    weekOf: 'Settimana del',
+    servings: 'porzioni',
+    prep: 'preparazione',
+    cook: 'cottura',
+    min: 'min',
+    ingredients: 'Ingredienti',
+    steps: 'Passaggi',
+    step: 'Passaggio',
+    mealsToCook: 'Pasti da cucinare',
+    forName: 'Per',
+    noMeals: 'Nessun pasto assegnato al momento. Ricontrolla più tardi.',
+    moreInstructions: 'Altre istruzioni',
+    allMeals: '‹ Tutti i pasti',
+    notFoundTitle: 'Non trovato',
+    linkNotValid: 'Link non valido',
+    checkLink: 'Controlla il link che hai ricevuto.',
+    meal: 'Pasto',
+  },
+} as const;
+type LinkLocale = keyof typeof L10N;
 
 function esc(s: string): string {
   return s
@@ -50,8 +137,8 @@ ul.ingredients li{padding:9px 0;border-bottom:1px solid var(--border);font-size:
 .step p{margin:2px 0 0;font-size:16px}
 `;
 
-function page(title: string, body: string): Response {
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
+function page(title: string, body: string, lang = 'en'): Response {
+  const html = `<!doctype html><html lang="${lang}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>${esc(title)}</title>
@@ -79,8 +166,12 @@ Deno.serve(async (req) => {
   const url = new URL(req.url);
   const token = url.searchParams.get('token') ?? '';
   const recipeParam = url.searchParams.get('r');
+  // Before the person loads we don't know their language; Spanish is this
+  // page's primary audience (and the person lookup rarely fails).
+  let t: (typeof L10N)[LinkLocale] = L10N.es;
+  let lang: LinkLocale = 'es';
   const notFound = () =>
-    page('Not found', '<h1>Link not valid</h1><p class="muted">Check the link you received.</p>');
+    page(t.notFoundTitle, `<h1>${t.linkNotValid}</h1><p class="muted">${t.checkLink}</p>`, lang);
   if (!/^[0-9a-f-]{36}$/.test(token)) return notFound();
 
   const admin = createClient(
@@ -90,10 +181,12 @@ Deno.serve(async (req) => {
 
   const { data: person } = await admin
     .from('persons')
-    .select('id, name, household_id, is_employee')
+    .select('id, name, household_id, is_employee, link_language')
     .eq('share_token', token)
     .maybeSingle();
   if (!person || !person.is_employee) return notFound();
+  lang = (person.link_language ?? 'es') as LinkLocale;
+  t = L10N[lang] ?? L10N.es;
 
   // Current week only — never past weeks, never future ones.
   const { data: plans } = await admin
@@ -136,6 +229,21 @@ Deno.serve(async (req) => {
       .select('id, title, servings, prep_minutes, cook_minutes, cover_image_path, ingredients, steps')
       .in('id', recipeIds);
     for (const r of (recipeRows ?? []) as RecipeRow[]) recipesById.set(r.id, r);
+
+    // Overlay the link language's translation (fallback: original content).
+    const { data: translationRows } = await admin
+      .from('recipe_translations')
+      .select('recipe_id, title, ingredients, steps')
+      .in('recipe_id', recipeIds)
+      .eq('locale', lang);
+    for (const tr of translationRows ?? []) {
+      const r = recipesById.get(tr.recipe_id as string);
+      if (r) {
+        r.title = tr.title as string;
+        r.ingredients = tr.ingredients as RecipeRow['ingredients'];
+        r.steps = tr.steps as string[];
+      }
+    }
   }
 
   // Signed cover URLs, regenerated per page load (private bucket).
@@ -151,12 +259,12 @@ Deno.serve(async (req) => {
   }
 
   const slotLine = (entry: { meal_plan_id: string; day: number; slot: string }) =>
-    `${DAYS[entry.day] ?? ''} · ${SLOTS[entry.slot] ?? entry.slot} · Week of ${weekById.get(entry.meal_plan_id) ?? ''}`;
+    `${t.days[entry.day] ?? ''} · ${t.slots[entry.slot] ?? entry.slot} · ${t.weekOf} ${weekById.get(entry.meal_plan_id) ?? ''}`;
   const metaLine = (r: RecipeRow) =>
     [
-      r.servings ? `${r.servings} servings` : null,
-      r.prep_minutes ? `prep ${r.prep_minutes} min` : null,
-      r.cook_minutes ? `cook ${r.cook_minutes} min` : null,
+      r.servings ? `${r.servings} ${t.servings}` : null,
+      r.prep_minutes ? `${t.prep} ${r.prep_minutes} ${t.min}` : null,
+      r.cook_minutes ? `${t.cook} ${r.cook_minutes} ${t.min}` : null,
     ]
       .filter(Boolean)
       .join(' · ');
@@ -173,7 +281,7 @@ Deno.serve(async (req) => {
     const occurrences = entries.filter((e) => e.recipe_id === recipe.id);
     const cover = recipe.cover_image_path ? coverUrl.get(recipe.cover_image_path) : undefined;
 
-    let body = `<a class="back" href="?token=${esc(token)}">‹ All meals</a>`;
+    let body = `<a class="back" href="?token=${esc(token)}">${t.allMeals}</a>`;
     if (cover) body += `<img class="cover" src="${esc(cover)}" alt="">`;
     body += `<h1>${esc(recipe.title)}</h1>`;
     const meta = metaLine(recipe);
@@ -183,38 +291,39 @@ Deno.serve(async (req) => {
     }
     const ingredients = (recipe.ingredients ?? []).map((i) => i.raw || i.name || '').filter(Boolean);
     if (ingredients.length > 0) {
-      body += `<h2>Ingredients</h2><ul class="ingredients">${ingredients
+      body += `<h2>${t.ingredients}</h2><ul class="ingredients">${ingredients
         .map((i) => `<li>${esc(i)}</li>`)
         .join('')}</ul>`;
     }
     if ((recipe.steps ?? []).length > 0) {
-      body += '<h2>Steps</h2>';
+      body += `<h2>${t.steps}</h2>`;
       body += recipe.steps
         .map(
-          (s, i) => `<div class="step"><p class="eyebrow">Step ${i + 1}</p><p>${esc(s)}</p></div>`
+          (s, i) =>
+            `<div class="step"><p class="eyebrow">${t.step} ${i + 1}</p><p>${esc(s)}</p></div>`
         )
         .join('');
     }
-    return page(recipe.title, body);
+    return page(recipe.title, body, lang);
   }
 
   // ---- Index: one card per assigned meal --------------------------------
-  let body = `<h1>Meals to cook</h1><p class="muted">For ${esc(person.name)}</p>`;
+  let body = `<h1>${t.mealsToCook}</h1><p class="muted">${t.forName} ${esc(person.name)}</p>`;
   if (entries.length === 0) {
-    body += '<hr class="hairline"><p>No meals assigned right now — check back later.</p>';
+    body += `<hr class="hairline"><p>${t.noMeals}</p>`;
   }
 
   let lastWeek = '';
   for (const entry of entries) {
     const week = weekById.get(entry.meal_plan_id) ?? '';
     if (week !== lastWeek) {
-      body += `<h2>Week of ${esc(week)}</h2>`;
+      body += `<h2>${t.weekOf} ${esc(week)}</h2>`;
       lastWeek = week;
     }
     const recipe = entry.recipe_id ? recipesById.get(entry.recipe_id) : undefined;
     const inner = `${thumb(recipe)}<div><p class="eyebrow">${esc(
-      `${DAYS[entry.day] ?? ''} · ${SLOTS[entry.slot] ?? entry.slot}`
-    )}</p><h3>${esc(recipe?.title ?? entry.custom_title ?? 'Meal')}</h3>${
+      `${t.days[entry.day] ?? ''} · ${t.slots[entry.slot] ?? entry.slot}`
+    )}</p><h3>${esc(recipe?.title ?? entry.custom_title ?? t.meal)}</h3>${
       recipe && metaLine(recipe) ? `<p class="muted">${esc(metaLine(recipe))}</p>` : ''
     }</div>`;
     body += recipe
@@ -229,10 +338,10 @@ Deno.serve(async (req) => {
       : []
   );
   if (notes.length > 0) {
-    body += `<h2>More instructions</h2><ul class="ingredients">${notes
+    body += `<h2>${t.moreInstructions}</h2><ul class="ingredients">${notes
       .map((n) => `<li>${esc(String(n))}</li>`)
       .join('')}</ul>`;
   }
 
-  return page(`Meals to cook — ${person.name}`, body);
+  return page(`${t.mealsToCook} — ${person.name}`, body, lang);
 });

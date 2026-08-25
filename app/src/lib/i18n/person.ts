@@ -10,6 +10,8 @@ const en = {
   webAccessHint:
     'A private link with every meal assigned to the employee cook, this week onward — ingredients and steps included, no account needed. Anyone with the link can read it.',
   shareCookingLink: 'Share cooking link',
+  linkLanguage: 'Link language',
+  linkLanguageHint: 'Recipes and labels on the cooking page are shown in this language.',
   fodmap: 'FODMAP',
   fodmapOff: 'Off',
   fodmapElimination: 'Elimination',
@@ -39,6 +41,8 @@ const es: typeof en = {
   webAccessHint:
     'Un enlace privado con todas las comidas asignadas a la empleada cocinera, desde esta semana en adelante, con ingredientes y pasos incluidos, sin necesidad de cuenta. Cualquiera con el enlace puede leerlo.',
   shareCookingLink: 'Compartir enlace de cocina',
+  linkLanguage: 'Idioma del enlace',
+  linkLanguageHint: 'Las recetas y los textos de la página de cocina se muestran en este idioma.',
   fodmap: 'FODMAP',
   fodmapOff: 'Desactivado',
   fodmapElimination: 'Eliminación',
@@ -68,6 +72,8 @@ const fr: typeof en = {
   webAccessHint:
     'Un lien privé avec tous les repas assignés à l’employée cuisinière, à partir de cette semaine — ingrédients et étapes inclus, sans compte. Toute personne disposant du lien peut le lire.',
   shareCookingLink: 'Partager le lien de cuisine',
+  linkLanguage: 'Langue du lien',
+  linkLanguageHint: 'Les recettes et les libellés de la page de cuisine s\u2019affichent dans cette langue.',
   fodmap: 'FODMAP',
   fodmapOff: 'Désactivé',
   fodmapElimination: 'Élimination',
@@ -97,6 +103,8 @@ const it: typeof en = {
   webAccessHint:
     'Un link privato con tutti i pasti assegnati alla dipendente cuoca, da questa settimana in poi — ingredienti e passaggi inclusi, senza bisogno di account. Chiunque abbia il link può leggerlo.',
   shareCookingLink: 'Condividi link di cucina',
+  linkLanguage: 'Lingua del link',
+  linkLanguageHint: 'Le ricette e le etichette della pagina di cucina sono mostrate in questa lingua.',
   fodmap: 'FODMAP',
   fodmapOff: 'Disattivato',
   fodmapElimination: 'Eliminazione',

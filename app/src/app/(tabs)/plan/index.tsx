@@ -23,6 +23,7 @@ import { isMealUpcoming, normalizeMealTimes, type MealTimes } from '@/lib/meal-t
 import { addWeeks, dayDate, weekStart, type MealSlot } from '@/lib/plan';
 import { entryServings } from '@/lib/servings';
 import { supabase } from '@/lib/supabase';
+import { localizedTitle } from '@/lib/translations';
 import {
   fonts,
   fontSize,
@@ -166,12 +167,21 @@ export default function WeeksScreen() {
     if (recipeIds.length > 0) {
       const { data: recipeRows } = await supabase
         .from('recipes')
-        .select('id, title, cover_image_path')
+        .select('id, title, cover_image_path, recipe_translations(locale, title)')
         .in('id', recipeIds);
-      setRecipesById(new Map(((recipeRows as RecipeLite[]) ?? []).map((r) => [r.id, r])));
+      // Localize titles up front so every downstream display stays unchanged.
+      const rows = (
+        (recipeRows as (RecipeLite & {
+          recipe_translations: { locale: string; title: string }[] | null;
+        })[]) ?? []
+      ).map(({ recipe_translations, ...r }) => ({
+        ...r,
+        title: localizedTitle({ title: r.title, recipe_translations }, locale),
+      }));
+      setRecipesById(new Map(rows.map((r) => [r.id, r])));
     }
     setLoaded(true);
-  }, [householdId]);
+  }, [householdId, locale]);
 
   useFocusEffect(
     useCallback(() => {

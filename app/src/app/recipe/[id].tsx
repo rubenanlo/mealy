@@ -69,6 +69,7 @@ import { assignRecipeToSlot, isRecipeUntouched } from '@/lib/recipes';
 import { rescaleIngredients, servingsFactor } from '@/lib/servings';
 import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, minTapTarget, radius, screenPadding, useTheme } from '@/lib/theme';
+import { localizeContent, queueRecipeTranslation, type TranslationRow } from '@/lib/translations';
 import { useCanonicalIndex } from '@/lib/use-canonical';
 import {
   fetchWebImage,
@@ -376,7 +377,7 @@ export default function RecipeSheetScreen() {
     assignWeek?: string;
   }>();
   const { colors } = useTheme();
-  const { d } = useI18n();
+  const { d, locale } = useI18n();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const reduced = useReducedMotion();
@@ -395,6 +396,7 @@ export default function RecipeSheetScreen() {
   const recipeRef = useRef<RecipeDetail | null>(null);
 
   const [recipe, setRecipe] = useState<RecipeDetail | null>(null);
+  const [translation, setTranslation] = useState<TranslationRow | null>(null);
   const [sources, setSources] = useState<SourceRow[]>([]);
   const [images, setImages] = useState<ImageRow[]>([]);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -461,10 +463,16 @@ export default function RecipeSheetScreen() {
 
   const load = useCallback(async () => {
     if (!id) return;
-    const [r, s, i, weekPlan] = await Promise.all([
+    const [r, s, i, t, weekPlan] = await Promise.all([
       supabase.from('recipes').select('*').eq('id', id).single(),
       supabase.from('recipe_sources').select('*').eq('recipe_id', id).order('captured_at'),
       supabase.from('recipe_images').select('id, storage_path, position').eq('recipe_id', id).order('position'),
+      supabase
+        .from('recipe_translations')
+        .select('locale, title, ingredients, steps')
+        .eq('recipe_id', id)
+        .eq('locale', locale)
+        .maybeSingle(),
       supabase
         .from('meal_plans')
         .select('id')
@@ -475,6 +483,7 @@ export default function RecipeSheetScreen() {
     if (r.data) setRecipe(r.data as RecipeDetail);
     if (s.data) setSources(s.data as SourceRow[]);
     if (i.data) setImages(i.data as ImageRow[]);
+    setTranslation((t.data as TranslationRow | null) ?? null);
     if (weekPlan.data) {
       const { count } = await supabase
         .from('plan_entries')
@@ -485,7 +494,7 @@ export default function RecipeSheetScreen() {
     } else {
       setInThisWeek(false);
     }
-  }, [id, householdId]);
+  }, [id, householdId, locale]);
 
   useEffect(() => {
     void load();
@@ -575,6 +584,17 @@ export default function RecipeSheetScreen() {
         .from('recipes')
         .update({ ...patch, updated_at: new Date().toISOString() })
         .eq('id', recipe.id);
+      // Content edits invalidate the derived translations: regenerate them all
+      // (fire-and-forget) so the other languages never drift from the original.
+      if ('title' in patch || 'ingredients' in patch || 'steps' in patch) {
+        const next = { ...recipe, ...patch } as RecipeDetail;
+        queueRecipeTranslation(recipe.id, {
+          title: next.title,
+          language: next.language,
+          ingredients: next.ingredients,
+          steps: next.steps,
+        });
+      }
       void load();
     },
     [recipe, load]
@@ -859,9 +879,13 @@ export default function RecipeSheetScreen() {
   const onBookmark = () => {
     if (!recipe) return;
     if (inThisWeek) {
-      confirmRemoveFromWeek(recipe.title, () => {
-        void removeRecipeFromCurrentWeek(householdId, recipe.id).then(load);
-      });
+      confirmRemoveFromWeek(
+        localizeContent(recipe, translation).title,
+        () => {
+          void removeRecipeFromCurrentWeek(householdId, recipe.id).then(load);
+        },
+        d
+      );
     } else {
       setSheetOpen(true);
     }
@@ -942,10 +966,23 @@ export default function RecipeSheetScreen() {
   const planServings = planServingsParam ? parseInt(planServingsParam, 10) : null;
   const planFactor =
     planServings != null ? servingsFactor(planServings, recipe.servings) : null;
+  // Active-locale translation, used for DISPLAY only. Edits always operate on
+  // the original content; the fidelity guard (same counts) lets flags/matches
+  // keyed on original raws pair with translated lines by index. A stale or
+  // mismatched translation is ignored rather than half-applied.
+  const contentTranslation =
+    translation &&
+    translation.ingredients.length === recipe.ingredients.length &&
+    translation.steps.length === recipe.steps.length
+      ? translation
+      : null;
+  const localized = localizeContent(recipe, contentTranslation);
+  const displayTitle = localized.title;
+  const displaySteps = localized.steps;
   const viewIngredients =
     planFactor && ingredientsDraft === null
-      ? rescaleIngredients(recipe.ingredients, planFactor)
-      : recipe.ingredients;
+      ? rescaleIngredients(localized.ingredients, planFactor)
+      : localized.ingredients;
   const metaParts = [
     planFactor && planServings != null
       ? fmt(d.recipe.servingsThisWeek, { n: planServings })
@@ -1059,7 +1096,7 @@ export default function RecipeSheetScreen() {
                     fontFamily: fonts.display,
                   }}
                 >
-                  {recipe.title}
+                  {displayTitle}
                 </Text>
                 <Pressable
                   accessibilityRole="button"
@@ -1392,7 +1429,11 @@ export default function RecipeSheetScreen() {
               ) : (
                 <View>
                   {viewIngredients.map((ing, i) => {
-                    const rawKey = ing.raw || ing.name;
+                    // Flags/matches are keyed on the ORIGINAL raw line; the
+                    // fidelity guard guarantees index alignment with the
+                    // translated display line.
+                    const orig = recipe.ingredients[i] ?? ing;
+                    const rawKey = orig.raw || orig.name;
                     const flag = flagByRaw.get(rawKey);
                     const canonical = matches.get(rawKey) ?? null;
                     const isExpanded = expandedRaw === rawKey;
@@ -1487,7 +1528,7 @@ export default function RecipeSheetScreen() {
               </View>
             ) : (
               <View style={{ gap: 20 }}>
-                {recipe.steps.map((step, i) => (
+                {displaySteps.map((step, i) => (
                   <Pressable
                     key={i}
                     accessibilityRole="text"
@@ -1500,7 +1541,7 @@ export default function RecipeSheetScreen() {
                     <Body>{step}</Body>
                   </Pressable>
                 ))}
-                {recipe.steps.length === 0 ? <Muted>{d.recipe.noSteps}</Muted> : null}
+                {displaySteps.length === 0 ? <Muted>{d.recipe.noSteps}</Muted> : null}
               </View>
             )}
           </View>
@@ -1645,7 +1686,7 @@ export default function RecipeSheetScreen() {
       <AddToWeekSheet
         visible={sheetOpen}
         recipeId={recipe.id}
-        recipeTitle={recipe.title}
+        recipeTitle={displayTitle}
         onClose={() => setSheetOpen(false)}
         onAdded={() => void load()}
       />

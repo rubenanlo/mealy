@@ -9,6 +9,7 @@ import { useHousehold } from '@/lib/auth';
 import { resolveProteinCategory, type ProteinCategory } from '@/lib/category';
 import { useI18n, type Dict } from '@/lib/i18n';
 import { supabase } from '@/lib/supabase';
+import { localizedTitle } from '@/lib/translations';
 import { fonts, fontSize, minTapTarget, radius, screenPadding, tabBarClearance, useTheme } from '@/lib/theme';
 import { useCanonicalIndex } from '@/lib/use-canonical';
 
@@ -71,7 +72,7 @@ function FilterChip({
 
 export default function SearchScreen() {
   const { colors } = useTheme();
-  const { d } = useI18n();
+  const { d, locale } = useI18n();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { householdId } = useHousehold();
@@ -88,19 +89,32 @@ export default function SearchScreen() {
       supabase
         .from('recipes')
         .select(
-          'id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes, ingredients, fodmap_override, meal_type'
+          'id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes, ingredients, fodmap_override, meal_type, recipe_translations(locale, title)'
         )
         .eq('household_id', householdId)
         .order('created_at', { ascending: false })
         .then(({ data }) => {
           if (cancelled) return;
-          if (data) setRecipes(data as RecipeListItem[]);
+          if (data) {
+            // Localize titles at the fetch boundary and drop the embed so
+            // state (and title search) uses the plain RecipeListItem shape.
+            setRecipes(
+              (
+                data as (RecipeListItem & {
+                  recipe_translations?: { locale: string; title: string }[] | null;
+                })[]
+              ).map(({ recipe_translations, ...r }) => ({
+                ...r,
+                title: localizedTitle({ title: r.title, recipe_translations }, locale),
+              }))
+            );
+          }
           setLoaded(true);
         });
       return () => {
         cancelled = true;
       };
-    }, [householdId])
+    }, [householdId, locale])
   );
 
   const filtered = useMemo(() => {

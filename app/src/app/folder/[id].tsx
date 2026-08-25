@@ -9,6 +9,7 @@ import { Body, Button, Field, Hairline, Loading, Muted, Title } from '@/componen
 import { useAuth } from '@/lib/auth';
 import { fmt, useI18n } from '@/lib/i18n';
 import { supabase } from '@/lib/supabase';
+import { localizedTitle } from '@/lib/translations';
 import { fonts, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
 
 /** One folder's recipes (spec 2026-08-24). Owner renames/deletes; family views. */
@@ -17,7 +18,7 @@ export default function FolderScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const { session } = useAuth();
-  const { d } = useI18n();
+  const { d, locale } = useI18n();
 
   const [name, setName] = useState('');
   const [ownerId, setOwnerId] = useState<string | null>(null);
@@ -60,17 +61,26 @@ export default function FolderScreen() {
     const { data: recipeRows } = await supabase
       .from('recipes')
       .select(
-        'id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes, created_at, ingredients, fodmap_override'
+        'id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes, created_at, ingredients, fodmap_override, recipe_translations(locale, title)'
       )
       .in('id', ids);
     const order = new Map(ids.map((rid, i) => [rid, i]));
+    // Localize titles at the fetch boundary and drop the embed so state keeps
+    // the plain RecipeListItem shape.
     setRecipes(
-      ((recipeRows as RecipeListItem[]) ?? [])
-        .slice()
+      (
+        ((recipeRows ?? []) as (RecipeListItem & {
+          recipe_translations?: { locale: string; title: string }[] | null;
+        })[])
+      )
+        .map(({ recipe_translations, ...r }) => ({
+          ...r,
+          title: localizedTitle({ title: r.title, recipe_translations }, locale),
+        }))
         .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
     );
     setLoaded(true);
-  }, [id]);
+  }, [id, locale]);
 
   useFocusEffect(
     useCallback(() => {

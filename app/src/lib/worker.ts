@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { queueRecipeTranslation } from '@/lib/translations';
 
 // ---------------------------------------------------------------------------
 // Types mirrored from the worker's IngestResult (worker Task 3 models).
@@ -434,6 +435,14 @@ export async function persistIngestResult(
   if (!rows.recipe.cover_image_path && mediaPaths.length > 0) {
     await supabase.from('recipes').update({ cover_image_path: mediaPaths[0] }).eq('id', recipeId);
   }
+
+  // Derived translation layer: fire-and-forget so capture never waits on it.
+  queueRecipeTranslation(recipeId, {
+    title: rows.recipe.title,
+    language: rows.recipe.language,
+    ingredients: rows.recipe.ingredients,
+    steps: rows.recipe.steps,
+  });
 
   return recipeId;
 }
