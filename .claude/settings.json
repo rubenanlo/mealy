@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "(mcp__claude_ai_Supabase__apply_migration"
+      "Bash(pnpm:*)",
+      "Bash(uv:*)",
+      "Bash(supabase:*)",
+      "Bash(npx wrangler:*)",
+      "mcp__claude_ai_Supabase__apply_migration"
     ]
   }
 }
