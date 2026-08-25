@@ -57,14 +57,14 @@ import { normalizeDietProfile } from '@/lib/diet';
 import { moveItem, removeItem, updateItem } from '@/lib/edit-list';
 import {
   computeRecipeFodmap,
-  FODMAP_DISCLAIMER,
   recipeFodmapTier,
   type RecipeFodmap,
 } from '@/lib/fodmap';
+import { fmt, useI18n, type Dict } from '@/lib/i18n';
 import { resolveMatches } from '@/lib/matching';
 import { useImageUrl } from '@/lib/media';
 import { useReducedMotion } from '@/lib/motion';
-import { DAY_LABELS, type MealSlot, SLOT_LABELS, weekStart } from '@/lib/plan';
+import { type MealSlot, weekStart } from '@/lib/plan';
 import { assignRecipeToSlot, isRecipeUntouched } from '@/lib/recipes';
 import { rescaleIngredients, servingsFactor } from '@/lib/servings';
 import { supabase } from '@/lib/supabase';
@@ -117,6 +117,17 @@ interface ImageRow {
 
 const PINNED_BAR_HEIGHT = 44;
 
+/** Localized display word for a FODMAP tier ('low' | 'moderate' | 'high' | 'check'). */
+function tierWord(d: Dict, tier: FodmapTier): string {
+  return tier === 'low'
+    ? d.recipe.tierLow
+    : tier === 'moderate'
+      ? d.recipe.tierModerate
+      : tier === 'high'
+        ? d.recipe.tierHigh
+        : d.recipe.tierCheck;
+}
+
 /**
  * v3.2 sheet chrome. iOS relies on the native pageSheet (rounded top, peek,
  * swipe-down); Android/web get a self-drawn dimmed backdrop + 95%-height
@@ -124,6 +135,7 @@ const PINNED_BAR_HEIGHT = 44;
  */
 function Sheet({ children, onDismiss }: { children: ReactNode; onDismiss: () => void }) {
   const { colors } = useTheme();
+  const { d } = useI18n();
   const { height: windowHeight } = useWindowDimensions();
   const reduced = useReducedMotion();
   const progress = useRef(new Animated.Value(0)).current;
@@ -158,7 +170,7 @@ function Sheet({ children, onDismiss }: { children: ReactNode; onDismiss: () => 
       >
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Close the recipe"
+          accessibilityLabel={d.recipe.closeRecipe}
           onPress={onDismiss}
           style={{ flex: 1 }}
         />
@@ -196,6 +208,7 @@ function Hero({
   onEdit?: () => void;
 }) {
   const { colors } = useTheme();
+  const { d } = useI18n();
   const url = useImageUrl(path);
   return (
     <View
@@ -208,7 +221,7 @@ function Hero({
       {url ? (
         <Pressable
           accessibilityRole={onPress ? 'button' : undefined}
-          accessibilityLabel={onPress ? 'Expand image' : undefined}
+          accessibilityLabel={onPress ? d.recipe.expandImage : undefined}
           onPress={onPress}
           disabled={!onPress}
           style={{ flex: 1 }}
@@ -223,7 +236,7 @@ function Hero({
       ) : onEdit ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Add a cover photo"
+          accessibilityLabel={d.recipe.addCoverPhoto}
           onPress={onEdit}
           style={({ pressed }) => ({
             flex: 1,
@@ -236,7 +249,7 @@ function Hero({
         >
           <Ionicons name="camera-outline" size={20} color={colors.textMuted} />
           <Text style={{ color: colors.textMuted, fontSize: fontSize.meta, fontFamily: fonts.uiMedium }}>
-            Add a cover photo
+            {d.recipe.addCoverPhoto}
           </Text>
         </Pressable>
       ) : null}
@@ -247,7 +260,7 @@ function Hero({
         <View style={{ position: 'absolute', bottom: 12, right: 12 }}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Edit the cover image"
+            accessibilityLabel={d.recipe.editCoverImage}
             onPress={onEdit}
             style={({ pressed }) => ({
               width: 36,
@@ -272,6 +285,7 @@ function Hero({
 function GalleryImage({ path, onPress }: { path: string; onPress?: () => void }) {
   const url = useImageUrl(path);
   const { colors } = useTheme();
+  const { d } = useI18n();
   const surface = {
     width: 240,
     height: 180,
@@ -286,7 +300,7 @@ function GalleryImage({ path, onPress }: { path: string; onPress?: () => void })
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel="Expand image"
+      accessibilityLabel={d.recipe.expandImage}
       onPress={onPress}
       style={({ pressed }) => [surface, { opacity: pressed ? 0.7 : 1 }]}
     >
@@ -298,10 +312,11 @@ function GalleryImage({ path, onPress }: { path: string; onPress?: () => void })
 /** Clickable original-source link (url/reel captures). */
 function SourceLink({ url }: { url: string }) {
   const { colors } = useTheme();
+  const { d } = useI18n();
   return (
     <Pressable
       accessibilityRole="link"
-      accessibilityLabel={`Open the original source, ${url}`}
+      accessibilityLabel={fmt(d.recipe.openOriginalSourceA11y, { url })}
       onPress={() => Linking.openURL(url).catch(() => {})}
       style={({ pressed }) => ({
         minHeight: minTapTarget,
@@ -323,11 +338,12 @@ function SourceLink({ url }: { url: string }) {
 /** FODMAP tier dot: high = red, moderate = badge, check = hollow, low = none. */
 function TierDot({ tier }: { tier: FodmapTier }) {
   const { colors } = useTheme();
+  const { d } = useI18n();
   if (tier === 'low') return null;
   const filled = tier === 'high' ? colors.danger : tier === 'moderate' ? colors.saffron : null;
   return (
     <View
-      accessibilityLabel={`FODMAP ${tier}`}
+      accessibilityLabel={fmt(d.recipe.fodmapTierLabel, { tier: tierWord(d, tier) })}
       style={{
         width: 10,
         height: 10,
@@ -360,6 +376,7 @@ export default function RecipeSheetScreen() {
     assignWeek?: string;
   }>();
   const { colors } = useTheme();
+  const { d } = useI18n();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const reduced = useReducedMotion();
@@ -581,7 +598,7 @@ export default function RecipeSheetScreen() {
     if (!recipe || webCoverFetchingRef.current) return;
     const imageUrl = webCoverUrl.trim();
     if (!imageUrl) {
-      setWebCoverError('Paste an image URL first.');
+      setWebCoverError(d.recipe.pasteUrlFirst);
       return;
     }
     webCoverFetchingRef.current = true;
@@ -590,7 +607,7 @@ export default function RecipeSheetScreen() {
     try {
       const data = await fetchWebImage(imageUrl);
       if (!data) {
-        setWebCoverError('That image could not be used (too small or unreachable).');
+        setWebCoverError(d.recipe.imageUnusable);
         return;
       }
       const path = `${householdId}/${recipe.id}/cover-web.jpg`;
@@ -598,7 +615,7 @@ export default function RecipeSheetScreen() {
         .from('recipe-media')
         .upload(path, data, { contentType: 'image/jpeg', upsert: true });
       if (error) {
-        setWebCoverError('Upload failed — try again.');
+        setWebCoverError(d.recipe.uploadFailed);
         return;
       }
       setWebCoverOpen(false);
@@ -613,10 +630,10 @@ export default function RecipeSheetScreen() {
 
   /** Trash button in the source-image viewer: delete one gallery image. */
   const deleteSourceImage = (path: string) => {
-    Alert.alert('Delete this image?', 'It is removed from the original source for everyone.', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(d.recipe.deleteImageTitle, d.recipe.deleteImageBody, [
+      { text: d.common.cancel, style: 'cancel' },
       {
-        text: 'Delete',
+        text: d.common.delete,
         style: 'destructive',
         onPress: () => {
           void (async () => {
@@ -657,16 +674,16 @@ export default function RecipeSheetScreen() {
       );
       void saveRecipe({ tags: cat ? [...rest, cat] : rest });
     };
-    Alert.alert('Recipe type', 'Auto derives it from the ingredients.', [
+    Alert.alert(d.recipe.recipeTypeTitle, d.recipe.autoDerivesHint, [
       {
-        text: currentTag === null ? 'Auto ✓' : 'Auto',
+        text: currentTag === null ? `${d.recipe.auto} ✓` : d.recipe.auto,
         onPress: () => pick(null),
       },
       ...PROTEIN_CATEGORIES.map((cat) => ({
         text: currentTag === cat ? `${CATEGORY_LABELS[cat]} ✓` : CATEGORY_LABELS[cat],
         onPress: () => pick(cat),
       })),
-      { text: 'Cancel', style: 'cancel' as const },
+      { text: d.common.cancel, style: 'cancel' as const },
     ]);
   };
 
@@ -675,17 +692,17 @@ export default function RecipeSheetScreen() {
     if (!recipe) return;
     const current = recipe.meal_type ?? 'main';
     const options: ['main' | 'breakfast' | 'dessert' | 'side', string][] = [
-      ['main', 'Lunch / dinner'],
-      ['breakfast', 'Breakfast'],
-      ['dessert', 'Dessert'],
-      ['side', 'Side'],
+      ['main', d.recipe.mealMainOption],
+      ['breakfast', d.recipe.mealBreakfast],
+      ['dessert', d.recipe.mealDessert],
+      ['side', d.recipe.mealSide],
     ];
-    Alert.alert('Meal type', '"Choose for us" only plans lunch/dinner recipes.', [
+    Alert.alert(d.recipe.mealTypeTitle, d.recipe.mealTypeHint, [
       ...options.map(([value, label]) => ({
         text: current === value ? `${label} ✓` : label,
         onPress: () => void saveRecipe({ meal_type: value }),
       })),
-      { text: 'Cancel', style: 'cancel' as const },
+      { text: d.common.cancel, style: 'cancel' as const },
     ]);
   };
 
@@ -694,24 +711,24 @@ export default function RecipeSheetScreen() {
     if (!recipe) return;
     const current = recipe.fodmap_override ?? 'auto';
     const mark = (v: string, label: string) => (current === v ? `${label} ✓` : label);
-    Alert.alert('FODMAP level', 'Auto derives it from the ingredients.', [
+    Alert.alert(d.recipe.fodmapLevelTitle, d.recipe.autoDerivesHint, [
       {
-        text: mark('auto', 'Auto'),
+        text: mark('auto', d.recipe.auto),
         onPress: () => void saveRecipe({ fodmap_override: null }),
       },
       {
-        text: mark('low', 'Low'),
+        text: mark('low', d.recipe.low),
         onPress: () => void saveRecipe({ fodmap_override: 'low' }),
       },
       {
-        text: mark('moderate', 'Moderate'),
+        text: mark('moderate', d.recipe.moderate),
         onPress: () => void saveRecipe({ fodmap_override: 'moderate' }),
       },
       {
-        text: mark('high', 'High'),
+        text: mark('high', d.recipe.high),
         onPress: () => void saveRecipe({ fodmap_override: 'high' }),
       },
-      { text: 'Cancel', style: 'cancel' },
+      { text: d.common.cancel, style: 'cancel' },
     ]);
   };
 
@@ -902,7 +919,7 @@ export default function RecipeSheetScreen() {
       finalizedRef.current = true;
       router.back();
     } catch {
-      Alert.alert('Could not add to the planner', 'Something went wrong. Try again.');
+      Alert.alert(d.recipe.addToPlannerFailTitle, d.common.genericError);
     } finally {
       setBusyAssign(false);
     }
@@ -912,7 +929,7 @@ export default function RecipeSheetScreen() {
     return (
       <Sheet onDismiss={dismiss}>
         <View style={{ padding: screenPadding }}>
-          <Muted>Loading…</Muted>
+          <Muted>{d.common.loading}</Muted>
         </View>
       </Sheet>
     );
@@ -931,12 +948,12 @@ export default function RecipeSheetScreen() {
       : recipe.ingredients;
   const metaParts = [
     planFactor && planServings != null
-      ? `${planServings} servings this week`
+      ? fmt(d.recipe.servingsThisWeek, { n: planServings })
       : recipe.servings
-        ? `${recipe.servings} servings`
+        ? fmt(d.recipe.servingsCount, { n: recipe.servings })
         : null,
-    recipe.prep_minutes ? `Prep ${recipe.prep_minutes} min` : null,
-    recipe.cook_minutes ? `Cook ${recipe.cook_minutes} min` : null,
+    recipe.prep_minutes ? fmt(d.recipe.prepMin, { n: recipe.prep_minutes }) : null,
+    recipe.cook_minutes ? fmt(d.recipe.cookMin, { n: recipe.cook_minutes }) : null,
   ].filter(Boolean);
 
   const galleryPaths =
@@ -953,12 +970,12 @@ export default function RecipeSheetScreen() {
 
   const deleteRecipe = () => {
     Alert.alert(
-      'Delete this recipe?',
-      `“${recipe.title}” will be permanently deleted for the whole family, along with its images, plan entries and folder saves.`,
+      d.recipe.deleteRecipeTitle,
+      fmt(d.recipe.deleteRecipeBody, { title: recipe.title }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: d.common.cancel, style: 'cancel' },
         {
-          text: 'Delete',
+          text: d.common.delete,
           style: 'destructive',
           onPress: () => {
             void (async () => {
@@ -971,7 +988,7 @@ export default function RecipeSheetScreen() {
               }
               const { error } = await supabase.from('recipes').delete().eq('id', recipe.id);
               if (error) {
-                Alert.alert('Could not delete recipe', 'Try again.');
+                Alert.alert(d.recipe.deleteRecipeFailTitle, d.recipe.tryAgain);
                 return;
               }
               dismiss();
@@ -1023,12 +1040,12 @@ export default function RecipeSheetScreen() {
               <View style={{ gap: 12 }}>
                 <Field value={titleDraft} onChangeText={setTitleDraft} />
                 <Button
-                  label="Save"
+                  label={d.common.save}
                   onPress={() =>
                     void saveRecipe({ title: titleDraft.trim() || recipe.title }).then(() => setTitleDraft(null))
                   }
                 />
-                <Button label="Cancel" kind="secondary" onPress={() => setTitleDraft(null)} />
+                <Button label={d.common.cancel} kind="secondary" onPress={() => setTitleDraft(null)} />
               </View>
             ) : (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -1046,7 +1063,7 @@ export default function RecipeSheetScreen() {
                 </Text>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="Edit the title"
+                  accessibilityLabel={d.recipe.editTitleA11y}
                   onPress={() => setTitleDraft(recipe.title)}
                   hitSlop={8}
                   style={({ pressed }) => ({
@@ -1067,7 +1084,9 @@ export default function RecipeSheetScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`Recipe type ${category ? CATEGORY_LABELS[category] : 'unset'} — tap to change`}
+                accessibilityLabel={fmt(d.recipe.recipeTypeA11y, {
+                  type: category ? CATEGORY_LABELS[category] : d.recipe.typeUnset,
+                })}
                 onPress={editCategory}
                 hitSlop={8}
                 style={({ pressed }) => ({
@@ -1078,7 +1097,7 @@ export default function RecipeSheetScreen() {
                 })}
               >
                 {category ? <CategoryDot category={category} /> : null}
-                <Muted>{category ? CATEGORY_LABELS[category] : 'Type ?'}</Muted>
+                <Muted>{category ? CATEGORY_LABELS[category] : d.recipe.typeUnknown}</Muted>
                 <Ionicons name="chevron-down" size={12} color={colors.textMuted} />
               </Pressable>
               {recipeTier ? (
@@ -1086,7 +1105,7 @@ export default function RecipeSheetScreen() {
                   <Muted>·</Muted>
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel={`FODMAP level ${recipeTier} — tap to change`}
+                    accessibilityLabel={fmt(d.recipe.fodmapLevelA11y, { tier: tierWord(d, recipeTier) })}
                     onPress={editFodmapLevel}
                     hitSlop={8}
                     style={({ pressed }) => ({
@@ -1111,12 +1130,12 @@ export default function RecipeSheetScreen() {
                       }}
                     >
                       {recipeTier === 'high'
-                        ? 'High FODMAP'
+                        ? d.recipe.highFodmap
                         : recipeTier === 'moderate'
-                          ? 'Moderate FODMAP'
+                          ? d.recipe.moderateFodmap
                           : recipeTier === 'low'
-                            ? 'Low FODMAP'
-                            : 'FODMAP ?'}
+                            ? d.recipe.lowFodmap
+                            : d.recipe.fodmapUnknown}
                     </Text>
                     <Ionicons name="chevron-down" size={12} color={colors.textMuted} />
                   </Pressable>
@@ -1125,7 +1144,7 @@ export default function RecipeSheetScreen() {
               <Muted>·</Muted>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Meal type — tap to change"
+                accessibilityLabel={d.recipe.mealTypeA11y}
                 onPress={editMealType}
                 hitSlop={8}
                 style={({ pressed }) => ({
@@ -1137,19 +1156,19 @@ export default function RecipeSheetScreen() {
               >
                 <Muted>
                   {recipe.meal_type === 'breakfast'
-                    ? 'Breakfast'
+                    ? d.recipe.mealBreakfast
                     : recipe.meal_type === 'dessert'
-                      ? 'Dessert'
+                      ? d.recipe.mealDessert
                       : recipe.meal_type === 'side'
-                        ? 'Side'
-                        : 'Lunch/dinner'}
+                        ? d.recipe.mealSide
+                        : d.recipe.mealMain}
                 </Muted>
                 <Ionicons name="chevron-down" size={12} color={colors.textMuted} />
               </Pressable>
               {metaParts.length > 0 ? <Muted>·</Muted> : null}
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Edit servings and times"
+                accessibilityLabel={d.recipe.editServingsTimesA11y}
                 onPress={() => {
                   setDetails({
                     servings: recipe.servings?.toString() ?? '',
@@ -1163,13 +1182,13 @@ export default function RecipeSheetScreen() {
                 {metaParts.length > 0 ? (
                   <Muted>{metaParts.join(' · ')}</Muted>
                 ) : (
-                  <Muted>Add servings & time</Muted>
+                  <Muted>{d.recipe.addServingsTime}</Muted>
                 )}
               </Pressable>
               {swappableRaws.length > 0 ? (
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="Suggest low-FODMAP swaps"
+                  accessibilityLabel={d.recipe.suggestSwapsA11y}
                   onPress={() => void runSwaps()}
                   style={({ pressed }) => ({
                     flexDirection: 'row',
@@ -1186,24 +1205,24 @@ export default function RecipeSheetScreen() {
                 >
                   <Ionicons name="leaf-outline" size={14} color={colors.accent} />
                   <Text style={{ color: colors.accent, fontSize: fontSize.meta, fontFamily: fonts.uiSemi }}>
-                    {swapsLoading ? 'Working…' : 'Low-FODMAP'}
+                    {swapsLoading ? d.recipe.working : d.recipe.lowFodmapChip}
                   </Text>
                 </Pressable>
               ) : null}
               {recipe.needs_review ? (
                 <Text style={{ color: colors.saffron, fontSize: fontSize.meta, fontFamily: fonts.uiSemi }}>
-                  needs review
+                  {d.recipe.needsReview}
                 </Text>
               ) : null}
             </View>
 
             {recipe.needs_review ? (
-              <Button label="Mark as reviewed" kind="secondary" onPress={() => void markReviewed()} />
+              <Button label={d.recipe.markReviewed} kind="secondary" onPress={() => void markReviewed()} />
             ) : null}
 
             {sources.length > 0 ? (
               <LinkButton
-                label={reExtracting ? 'Re-extracting…' : 'Re-extract from source'}
+                label={reExtracting ? d.recipe.reExtracting : d.recipe.reExtractFromSource}
                 onPress={() => void runReExtract()}
               />
             ) : null}
@@ -1213,7 +1232,7 @@ export default function RecipeSheetScreen() {
             <View style={{ gap: 18 }}>
               {hasSource ? (
                 <View style={{ gap: 12 }}>
-                  <Title>Original source</Title>
+                  <Title>{d.recipe.originalSource}</Title>
                   {sourceUrl ? <SourceLink url={sourceUrl} /> : null}
                   {restPaths.length > 0 ? (
                     <ScrollView
@@ -1242,7 +1261,7 @@ export default function RecipeSheetScreen() {
               ) : null}
 
               <SectionTitle
-                title="Ingredients"
+                title={d.recipe.ingredients}
                 editing={ingredientsDraft !== null}
                 onToggle={() =>
                   setIngredientsDraft(
@@ -1261,9 +1280,15 @@ export default function RecipeSheetScreen() {
                       .filter((f) => f.tier === 'moderate')
                       .map((f) => f.name);
                     const partsList = [
-                      high.length > 0 ? `High for ${personName}: ${high.join(', ')}` : null,
-                      moderate.length > 0 ? `Moderate: ${moderate.join(', ')}` : null,
-                      check.length > 0 ? `Check: ${check.join(', ')}` : null,
+                      high.length > 0
+                        ? fmt(d.recipe.highFor, { name: personName, items: high.join(', ') })
+                        : null,
+                      moderate.length > 0
+                        ? fmt(d.recipe.moderateList, { items: moderate.join(', ') })
+                        : null,
+                      check.length > 0
+                        ? fmt(d.recipe.checkList, { items: check.join(', ') })
+                        : null,
                     ].filter(Boolean);
                     return partsList.length > 0 ? (
                       <Body key={personName} style={{ fontSize: fontSize.small }}>
@@ -1281,15 +1306,21 @@ export default function RecipeSheetScreen() {
                     ).values(),
                   ].map((flag) => (
                     <Muted key={`swap-${flag.name}`}>
-                      {`Swap ${flag.name} → ${flag.swaps.join(' or ')}`}
+                      {fmt(d.recipe.swapLine, {
+                        name: flag.name,
+                        swaps: flag.swaps.join(` ${d.common.or} `),
+                      })}
                     </Muted>
                   ))}
                   {fodmap.stacking.map((warning) => (
                     <Muted key={warning.group}>
-                      {`Stacking: ${warning.ingredients.join(' + ')} share ${warning.group} — check the combined amount.`}
+                      {fmt(d.recipe.stackingWarning, {
+                        ingredients: warning.ingredients.join(' + '),
+                        group: warning.group,
+                      })}
                     </Muted>
                   ))}
-                  <Muted style={{ fontStyle: 'italic' }}>{FODMAP_DISCLAIMER}</Muted>
+                  <Muted style={{ fontStyle: 'italic' }}>{d.recipe.fodmapDisclaimer}</Muted>
                 </View>
               ) : null}
 
@@ -1309,7 +1340,7 @@ export default function RecipeSheetScreen() {
                           );
                         }}
                         keyboardType="decimal-pad"
-                        placeholder="qty"
+                        placeholder={d.recipe.qtyPlaceholder}
                         style={{ width: 64 }}
                       />
                       <Field
@@ -1317,7 +1348,7 @@ export default function RecipeSheetScreen() {
                         onChangeText={(v) =>
                           setIngredientsDraft(updateItem(ingredientsDraft, i, { ...ing, unit: v || null }))
                         }
-                        placeholder="unit"
+                        placeholder={d.recipe.unitPlaceholder}
                         style={{ width: 64 }}
                       />
                       <View style={{ flex: 1 }}>
@@ -1326,7 +1357,7 @@ export default function RecipeSheetScreen() {
                           onChangeText={(v) =>
                             setIngredientsDraft(updateItem(ingredientsDraft, i, { ...ing, name: v }))
                           }
-                          placeholder="ingredient"
+                          placeholder={d.recipe.ingredientPlaceholder}
                         />
                       </View>
                       <EditRowControls
@@ -1338,7 +1369,7 @@ export default function RecipeSheetScreen() {
                     </View>
                   ))}
                   <Button
-                    label="Add ingredient"
+                    label={d.recipe.addIngredient}
                     kind="secondary"
                     onPress={() =>
                       setIngredientsDraft([
@@ -1348,7 +1379,7 @@ export default function RecipeSheetScreen() {
                     }
                   />
                   <Button
-                    label="Save ingredients"
+                    label={d.recipe.saveIngredients}
                     onPress={() =>
                       void saveRecipe({
                         ingredients: ingredientsDraft
@@ -1370,7 +1401,7 @@ export default function RecipeSheetScreen() {
                         {i > 0 ? <Hairline /> : null}
                         <Pressable
                           accessibilityRole="button"
-                          accessibilityLabel={`Details for ${ing.name}`}
+                          accessibilityLabel={fmt(d.recipe.ingredientDetailsA11y, { name: ing.name })}
                           accessibilityState={{ expanded: isExpanded }}
                           onPress={() => setExpandedRaw(isExpanded ? null : rawKey)}
                           style={({ pressed }) => ({
@@ -1389,14 +1420,19 @@ export default function RecipeSheetScreen() {
                           <View style={{ paddingBottom: 10, gap: 4 }}>
                             <Muted>
                               {canonical
-                                ? `Matched to ${canonical.name_fr}.`
-                                : 'Not matched to the ingredient table.'}
+                                ? fmt(d.recipe.matchedTo, { name: canonical.name_fr })
+                                : d.recipe.notMatched}
                             </Muted>
                             {fodmapPersons.length > 0 && flag ? (
-                              <Muted>{`FODMAP ${flag.tier} — ${flag.explanation}`}</Muted>
+                              <Muted>
+                                {fmt(d.recipe.fodmapTierLine, {
+                                  tier: tierWord(d, flag.tier),
+                                  explanation: flag.explanation,
+                                })}
+                              </Muted>
                             ) : null}
                             <LinkButton
-                              label="Correct the match"
+                              label={d.recipe.correctMatch}
                               onPress={() => setFixRaw(rawKey)}
                               style={{ minHeight: 36 }}
                               textStyle={{ fontSize: fontSize.small }}
@@ -1406,7 +1442,7 @@ export default function RecipeSheetScreen() {
                       </View>
                     );
                   })}
-                  {recipe.ingredients.length === 0 ? <Muted>No ingredients extracted.</Muted> : null}
+                  {recipe.ingredients.length === 0 ? <Muted>{d.recipe.noIngredients}</Muted> : null}
                 </View>
               )}
             </View>
@@ -1419,7 +1455,7 @@ export default function RecipeSheetScreen() {
             style={{ paddingHorizontal: screenPadding, gap: 18 }}
           >
             <SectionTitle
-              title="Steps"
+              title={d.recipe.steps}
               editing={stepsDraft !== null}
               onToggle={() => setStepsDraft(stepsDraft === null ? [...recipe.steps] : null)}
             />
@@ -1428,7 +1464,7 @@ export default function RecipeSheetScreen() {
                 {stepsDraft.map((step, i) => (
                   <View key={i} style={{ gap: 4 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <Eyebrow>Step {i + 1}</Eyebrow>
+                      <Eyebrow>{fmt(d.recipe.stepN, { n: i + 1 })}</Eyebrow>
                       <EditRowControls
                         index={i}
                         count={stepsDraft.length}
@@ -1439,9 +1475,9 @@ export default function RecipeSheetScreen() {
                     <Field value={step} onChangeText={(v) => setStepsDraft(updateItem(stepsDraft, i, v))} multiline />
                   </View>
                 ))}
-                <Button label="Add step" kind="secondary" onPress={() => setStepsDraft([...stepsDraft, ''])} />
+                <Button label={d.recipe.addStep} kind="secondary" onPress={() => setStepsDraft([...stepsDraft, ''])} />
                 <Button
-                  label="Save steps"
+                  label={d.recipe.saveSteps}
                   onPress={() =>
                     void saveRecipe({ steps: stepsDraft.map((s) => s.trim()).filter(Boolean) }).then(() =>
                       setStepsDraft(null)
@@ -1460,17 +1496,17 @@ export default function RecipeSheetScreen() {
                     }}
                     style={{ gap: 6 }}
                   >
-                    <Eyebrow>Step {i + 1}</Eyebrow>
+                    <Eyebrow>{fmt(d.recipe.stepN, { n: i + 1 })}</Eyebrow>
                     <Body>{step}</Body>
                   </Pressable>
                 ))}
-                {recipe.steps.length === 0 ? <Muted>No steps extracted.</Muted> : null}
+                {recipe.steps.length === 0 ? <Muted>{d.recipe.noSteps}</Muted> : null}
               </View>
             )}
           </View>
 
           <View style={{ paddingHorizontal: screenPadding, paddingTop: 32 }}>
-            <Button label="Delete recipe" kind="danger" onPress={deleteRecipe} />
+            <Button label={d.recipe.deleteRecipe} kind="danger" onPress={deleteRecipe} />
           </View>
         </ScrollView>
 
@@ -1479,7 +1515,7 @@ export default function RecipeSheetScreen() {
           <View style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 15 }}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={panelOpen ? 'Hide ingredients' : 'Show ingredients'}
+              accessibilityLabel={panelOpen ? d.recipe.hideIngredients : d.recipe.showIngredients}
               accessibilityState={{ expanded: panelOpen }}
               onPress={() => togglePanel(!panelOpen)}
               style={({ pressed }) => ({
@@ -1495,7 +1531,7 @@ export default function RecipeSheetScreen() {
               })}
             >
               <Text style={{ color: colors.text, fontSize: fontSize.small, fontFamily: fonts.uiSemi }}>
-                Ingredients
+                {d.recipe.ingredients}
               </Text>
               <Ionicons
                 name={panelOpen ? 'chevron-up' : 'chevron-down'}
@@ -1588,15 +1624,18 @@ export default function RecipeSheetScreen() {
         >
           {assignTarget ? (
             <Button
-              label={`Add to ${DAY_LABELS[assignTarget.day]} ${SLOT_LABELS[assignTarget.slot]}`}
+              label={fmt(d.recipe.addToSlot, {
+                day: d.common.days[assignTarget.day],
+                slot: assignTarget.slot === 'lunch' ? d.common.lunch : d.common.dinner,
+              })}
               onPress={() => void finishAssign()}
               loading={busyAssign}
             />
           ) : isNew ? (
-            <Button label="Done" onPress={finishManual} />
+            <Button label={d.common.done} onPress={finishManual} />
           ) : (
             <Button
-              label={inThisWeek ? 'Add again this week' : 'Add to this week'}
+              label={inThisWeek ? d.recipe.addAgainThisWeek : d.recipe.addToThisWeek}
               onPress={() => setSheetOpen(true)}
             />
           )}
@@ -1623,33 +1662,33 @@ export default function RecipeSheetScreen() {
             borderTopRightRadius: 16,
           }}
         >
-          <Eyebrow>Servings</Eyebrow>
+          <Eyebrow>{d.recipe.servings}</Eyebrow>
           <Field
             value={details.servings}
             onChangeText={(v) => setDetails({ ...details, servings: v })}
             keyboardType="number-pad"
           />
-          <Eyebrow>Prep (min)</Eyebrow>
+          <Eyebrow>{d.recipe.prepMinLabel}</Eyebrow>
           <Field
             value={details.prep}
             onChangeText={(v) => setDetails({ ...details, prep: v })}
             keyboardType="number-pad"
           />
-          <Eyebrow>Cook (min)</Eyebrow>
+          <Eyebrow>{d.recipe.cookMinLabel}</Eyebrow>
           <Field
             value={details.cook}
             onChangeText={(v) => setDetails({ ...details, cook: v })}
             keyboardType="number-pad"
           />
-          <Eyebrow>FODMAP level</Eyebrow>
-          <Muted>Auto derives it from the ingredients; pick a level to override.</Muted>
+          <Eyebrow>{d.recipe.fodmapLevelTitle}</Eyebrow>
+          <Muted>{d.recipe.fodmapOverrideHint}</Muted>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             {(
               [
-                ['auto', 'Auto'],
-                ['low', 'Low'],
-                ['moderate', 'Mod.'],
-                ['high', 'High'],
+                ['auto', d.recipe.auto],
+                ['low', d.recipe.low],
+                ['moderate', d.recipe.modShort],
+                ['high', d.recipe.high],
               ] as ['auto' | 'low' | 'moderate' | 'high', string][]
             ).map(([value, label]) => {
               const selected = details.fodmap === value;
@@ -1687,8 +1726,8 @@ export default function RecipeSheetScreen() {
               );
             })}
           </View>
-          <Button label="Save" onPress={() => void saveDetails()} />
-          <Button label="Cancel" kind="secondary" onPress={() => setDetailsOpen(false)} />
+          <Button label={d.common.save} onPress={() => void saveDetails()} />
+          <Button label={d.common.cancel} kind="secondary" onPress={() => setDetailsOpen(false)} />
         </View>
       </Modal>
 
@@ -1712,10 +1751,10 @@ export default function RecipeSheetScreen() {
             borderTopRightRadius: 16,
           }}
         >
-          <Eyebrow>Cover image</Eyebrow>
+          <Eyebrow>{d.recipe.coverImage}</Eyebrow>
           {heroPath ? (
             <Button
-              label="Reposition"
+              label={d.recipe.reposition}
               kind="secondary"
               onPress={() => {
                 setCoverMenuOpen(false);
@@ -1725,7 +1764,7 @@ export default function RecipeSheetScreen() {
           ) : null}
           {images.length > 0 ? (
             <Button
-              label="Choose from captured"
+              label={d.recipe.chooseFromCaptured}
               kind="secondary"
               onPress={() => {
                 setCoverMenuOpen(false);
@@ -1734,7 +1773,7 @@ export default function RecipeSheetScreen() {
             />
           ) : null}
           <Button
-            label="Choose from library"
+            label={d.recipe.chooseFromLibrary}
             kind="secondary"
             onPress={() => {
               setCoverMenuOpen(false);
@@ -1742,7 +1781,7 @@ export default function RecipeSheetScreen() {
             }}
           />
           <Button
-            label="From the web"
+            label={d.recipe.fromTheWeb}
             kind="secondary"
             onPress={() => {
               setCoverMenuOpen(false);
@@ -1751,7 +1790,7 @@ export default function RecipeSheetScreen() {
               setWebCoverOpen(true);
             }}
           />
-          <Button label="Cancel" kind="secondary" onPress={() => setCoverMenuOpen(false)} />
+          <Button label={d.common.cancel} kind="secondary" onPress={() => setCoverMenuOpen(false)} />
         </View>
       </Modal>
 
@@ -1775,14 +1814,14 @@ export default function RecipeSheetScreen() {
             borderTopRightRadius: 16,
           }}
         >
-          <Eyebrow>From the web</Eyebrow>
+          <Eyebrow>{d.recipe.fromTheWeb}</Eyebrow>
           <Field
             value={webCoverUrl}
             onChangeText={(v) => {
               setWebCoverUrl(v);
               setWebCoverError(null);
             }}
-            placeholder="Paste an image URL"
+            placeholder={d.recipe.pasteImageUrl}
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="url"
@@ -1791,12 +1830,12 @@ export default function RecipeSheetScreen() {
             <Body style={{ color: colors.danger }}>{webCoverError}</Body>
           ) : null}
           <Button
-            label={webCoverFetching ? 'Fetching…' : 'Fetch'}
+            label={webCoverFetching ? d.recipe.fetching : d.recipe.fetchBtn}
             disabled={webCoverFetching}
             onPress={() => void replaceCoverFromWeb()}
           />
           <Button
-            label="Cancel"
+            label={d.common.cancel}
             kind="secondary"
             onPress={() => {
               setWebCoverOpen(false);
@@ -1827,7 +1866,7 @@ export default function RecipeSheetScreen() {
             borderTopRightRadius: 16,
           }}
         >
-          <Eyebrow>Choose from captured</Eyebrow>
+          <Eyebrow>{d.recipe.chooseFromCaptured}</Eyebrow>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
             {galleryPaths.map((path) => (
               <GalleryImage
@@ -1840,7 +1879,7 @@ export default function RecipeSheetScreen() {
               />
             ))}
           </ScrollView>
-          <Button label="Cancel" kind="secondary" onPress={() => setPickCapturedOpen(false)} />
+          <Button label={d.common.cancel} kind="secondary" onPress={() => setPickCapturedOpen(false)} />
         </View>
       </Modal>
 
@@ -1864,29 +1903,38 @@ export default function RecipeSheetScreen() {
             borderTopRightRadius: 16,
           }}
         >
-          <Eyebrow>Re-extract from source</Eyebrow>
+          <Eyebrow>{d.recipe.reExtractFromSource}</Eyebrow>
           {reExtractFailed ? (
             <>
-              <Body>Could not re-extract — try again later.</Body>
-              <Button label="Close" kind="secondary" onPress={closeReExtractSheet} />
+              <Body>{d.recipe.reExtractFailedMsg}</Body>
+              <Button label={d.common.close} kind="secondary" onPress={closeReExtractSheet} />
             </>
           ) : reExtractResult ? (
             <>
               <Title>{reExtractResult.title}</Title>
               <Muted>
-                {`${reExtractResult.ingredients.length} ingredients · ${reExtractResult.steps.length} steps`}
+                {fmt(d.recipe.ingredientsStepsCount, {
+                  ingredients: reExtractResult.ingredients.length,
+                  steps: reExtractResult.steps.length,
+                })}
               </Muted>
               <Muted>
                 {[
-                  reExtractResult.servings ? `${reExtractResult.servings} servings` : null,
-                  reExtractResult.prep_minutes ? `Prep ${reExtractResult.prep_minutes} min` : null,
-                  reExtractResult.cook_minutes ? `Cook ${reExtractResult.cook_minutes} min` : null,
+                  reExtractResult.servings
+                    ? fmt(d.recipe.servingsCount, { n: reExtractResult.servings })
+                    : null,
+                  reExtractResult.prep_minutes
+                    ? fmt(d.recipe.prepMin, { n: reExtractResult.prep_minutes })
+                    : null,
+                  reExtractResult.cook_minutes
+                    ? fmt(d.recipe.cookMin, { n: reExtractResult.cook_minutes })
+                    : null,
                 ]
                   .filter(Boolean)
-                  .join(' · ') || 'No servings or time extracted.'}
+                  .join(' · ') || d.recipe.noServingsOrTime}
               </Muted>
-              <Button label="Apply" onPress={() => void applyReExtract()} />
-              <Button label="Cancel" kind="secondary" onPress={closeReExtractSheet} />
+              <Button label={d.recipe.apply} onPress={() => void applyReExtract()} />
+              <Button label={d.common.cancel} kind="secondary" onPress={closeReExtractSheet} />
             </>
           ) : null}
         </View>
@@ -1904,11 +1952,11 @@ export default function RecipeSheetScreen() {
             borderTopRightRadius: 16,
           }}
         >
-          <Eyebrow>Low-FODMAP swaps</Eyebrow>
+          <Eyebrow>{d.recipe.lowFodmapSwaps}</Eyebrow>
           {swapsFailed ? (
             <>
-              <Body>Could not fetch suggestions — try again later.</Body>
-              <Button label="Close" kind="secondary" onPress={closeSwapsSheet} />
+              <Body>{d.recipe.swapsFailedMsg}</Body>
+              <Button label={d.common.close} kind="secondary" onPress={closeSwapsSheet} />
             </>
           ) : swapsResult ? (
             <>
@@ -1922,10 +1970,10 @@ export default function RecipeSheetScreen() {
                     </View>
                   );
                 })}
-                {swapsResult.swaps.length === 0 ? <Muted>No swaps suggested.</Muted> : null}
+                {swapsResult.swaps.length === 0 ? <Muted>{d.recipe.noSwaps}</Muted> : null}
               </ScrollView>
-              <Button label="Apply all" onPress={() => void applySwaps()} />
-              <Button label="Cancel" kind="secondary" onPress={closeSwapsSheet} />
+              <Button label={d.recipe.applyAll} onPress={() => void applySwaps()} />
+              <Button label={d.common.cancel} kind="secondary" onPress={closeSwapsSheet} />
             </>
           ) : null}
         </View>

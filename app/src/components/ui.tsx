@@ -19,6 +19,7 @@ import {
 import { SafeAreaView, type Edges } from 'react-native-safe-area-context';
 
 import { spineColor, type ProteinCategory } from '@/lib/category';
+import { useI18n } from '@/lib/i18n';
 import { BOOKMARK_FILL_MS, useReducedMotion } from '@/lib/motion';
 import {
   controlHeight,
@@ -545,6 +546,7 @@ export function Bookmark({
   style?: StyleProp<ViewStyle>;
 }) {
   const { colors } = useTheme();
+  const { d } = useI18n();
   const reduced = useReducedMotion();
   const scale = useRef(new Animated.Value(1)).current;
   const previous = useRef(saved);
@@ -574,7 +576,9 @@ export function Bookmark({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel ?? (saved ? 'Planned this week' : 'Add to this week')}
+      accessibilityLabel={
+        accessibilityLabel ?? (saved ? d.components.plannedThisWeek : d.components.addToThisWeek)
+      }
       accessibilityState={{ selected: saved }}
       onPress={onPress}
       hitSlop={8}
@@ -641,6 +645,7 @@ export function CalendarChip({
   style?: StyleProp<ViewStyle>;
 }) {
   const { colors } = useTheme();
+  const { d } = useI18n();
   return (
     <View
       style={[
@@ -663,7 +668,7 @@ export function CalendarChip({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={
-          accessibilityLabel ?? (planned ? 'Planned this week' : 'Add to this week')
+          accessibilityLabel ?? (planned ? d.components.plannedThisWeek : d.components.addToThisWeek)
         }
         accessibilityState={{ selected: planned }}
         onPress={onPress}

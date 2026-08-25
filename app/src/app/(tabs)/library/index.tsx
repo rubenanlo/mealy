@@ -45,6 +45,7 @@ import { matchCanonical, normalizeRaw } from "@/lib/canonical";
 import type { ProteinCategory } from "@/lib/category";
 import { resolveProteinCategory } from "@/lib/category";
 import { computeRecipeFodmap } from "@/lib/fodmap";
+import { fmt, useI18n } from "@/lib/i18n";
 import {
   collageCovers,
   groupByOwner,
@@ -74,6 +75,7 @@ const FOLDER_VIEW_KEY = "mealy.folder-view";
 
 export default function HomeScreen() {
   const { colors } = useTheme();
+  const { d } = useI18n();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { householdId } = useHousehold();
@@ -88,7 +90,7 @@ export default function HomeScreen() {
   const [sheetRecipe, setSheetRecipe] = useState<RecipeListItem | null>(null);
   const [saveRecipe, setSaveRecipe] = useState<RecipeListItem | null>(null);
   const [folders, setFolders] = useState<FolderSummary[]>([]);
-  const [memberEmails, setMemberEmails] = useState<Map<string, string>>(
+  const [memberEmails, setMemberEmails] = useState<Map<string, string | null>>(
     new Map(),
   );
   const [folderView, setFolderView] = useState<FolderView>("grid");
@@ -178,7 +180,7 @@ export default function HomeScreen() {
     setMemberEmails(
       new Map(
         ((memberRows ?? []) as { user_id: string; email: string | null }[]).map(
-          (m) => [m.user_id, m.email ?? "Family member"],
+          (m) => [m.user_id, m.email],
         ),
       ),
     );
@@ -347,7 +349,7 @@ export default function HomeScreen() {
   const renameFolderPrompt = (folder: FolderSummary) => {
     // Alert.prompt is iOS-only; elsewhere rename lives on the folder page.
     Alert.prompt(
-      "Rename folder",
+      d.library.renameFolder,
       undefined,
       (name) => {
         const trimmed = name?.trim();
@@ -365,12 +367,12 @@ export default function HomeScreen() {
 
   const deleteFolderConfirm = (folder: FolderSummary) => {
     Alert.alert(
-      "Delete this folder?",
-      `“${folder.name}” will be deleted. Recipes stay in your library.`,
+      d.library.deleteFolderTitle,
+      fmt(d.library.deleteFolderBody, { name: folder.name }),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: d.common.cancel, style: "cancel" },
         {
-          text: "Delete",
+          text: d.common.delete,
           style: "destructive",
           onPress: () => {
             void supabase
@@ -387,23 +389,23 @@ export default function HomeScreen() {
   /** ⋯ on a folder I own: quick actions without opening the folder. */
   const folderMenu = (folder: FolderSummary) => {
     Alert.alert(folder.name, undefined, [
-      { text: "Open", onPress: () => router.push(`/folder/${folder.id}`) },
+      { text: d.library.open, onPress: () => router.push(`/folder/${folder.id}`) },
       ...(Platform.OS === "ios"
-        ? [{ text: "Rename", onPress: () => renameFolderPrompt(folder) }]
+        ? [{ text: d.library.rename, onPress: () => renameFolderPrompt(folder) }]
         : []),
       {
-        text: "Delete",
+        text: d.common.delete,
         style: "destructive" as const,
         onPress: () => deleteFolderConfirm(folder),
       },
-      { text: "Cancel", style: "cancel" as const },
+      { text: d.common.cancel, style: "cancel" as const },
     ]);
   };
 
   const createFolderPrompt = () => {
     // Alert.prompt is iOS-only; elsewhere folders are created from the save sheet.
     if (Platform.OS === "ios") {
-      Alert.prompt("New folder", undefined, (name) => {
+      Alert.prompt(d.library.newFolder, undefined, (name) => {
         const trimmed = name?.trim();
         if (!trimmed) return;
         void supabase
@@ -416,7 +418,7 @@ export default function HomeScreen() {
           .then(() => void load());
       });
     } else {
-      Alert.alert("New folder", "Create folders from any recipe's bookmark.");
+      Alert.alert(d.library.newFolder, d.library.newFolderHint);
     }
   };
 
@@ -480,7 +482,7 @@ export default function HomeScreen() {
           </Text>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Add a recipe"
+            accessibilityLabel={d.library.addRecipeA11y}
             onPress={() => router.push("/capture")}
             style={({ pressed }) => ({
               width: minTapTarget,
@@ -496,7 +498,7 @@ export default function HomeScreen() {
           {/* v3.1b: Settings left the tab bar — NYT top-right gear, icon only */}
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Settings"
+            accessibilityLabel={d.library.settingsA11y}
             onPress={() => router.push("/settings")}
             style={({ pressed }) => ({
               width: minTapTarget,
@@ -519,8 +521,8 @@ export default function HomeScreen() {
           <Loading />
         ) : recipes.length === 0 ? (
           <EmptyState
-            message="Your cooking notebook starts here."
-            actionLabel="Add your first recipe"
+            message={d.library.emptyLibrary}
+            actionLabel={d.library.addFirstRecipe}
             onAction={() => router.push("/capture")}
           />
         ) : activeFilters.size > 0 ? (
@@ -536,8 +538,8 @@ export default function HomeScreen() {
             ))}
             {filteredRecipes.length === 0 ? (
               <EmptyState
-                message="No recipes match these filters."
-                actionLabel="Clear filters"
+                message={d.library.noFilterMatches}
+                actionLabel={d.library.clearFilters}
                 onAction={() => setActiveFilters(new Set())}
               />
             ) : null}
@@ -557,7 +559,7 @@ export default function HomeScreen() {
 
             {carousel.length > 0 ? (
               <View style={{ paddingTop: 16, gap: 12 }}>
-                <SectionHeader title="Suggested for you" />
+                <SectionHeader title={d.library.suggestedForYou} />
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -583,8 +585,8 @@ export default function HomeScreen() {
             {thisWeek.length > 0 ? (
               <View style={{ paddingTop: 16, gap: 12 }}>
                 <SectionHeader
-                  title="This week"
-                  linkLabel="See all"
+                  title={d.library.thisWeek}
+                  linkLabel={d.library.seeAll}
                   onLinkPress={() => router.navigate("/plan")}
                 />
                 <ScrollView
@@ -621,7 +623,7 @@ export default function HomeScreen() {
 
             {recentlyAdded.length > 0 ? (
               <View style={{ paddingTop: 16, gap: 12 }}>
-                <SectionHeader title="Recently added" />
+                <SectionHeader title={d.library.recentlyAdded} />
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -648,8 +650,8 @@ export default function HomeScreen() {
             {allRecipes.length > 0 ? (
               <View style={{ paddingTop: 16, gap: 12 }}>
                 <SectionHeader
-                  title="All recipes"
-                  linkLabel="See all"
+                  title={d.library.allRecipes}
+                  linkLabel={d.library.seeAll}
                   onLinkPress={() => router.navigate("/search")}
                 />
                 <ScrollView
@@ -684,8 +686,8 @@ export default function HomeScreen() {
               >
                 <View style={{ flex: 1 }}>
                   <SectionHeader
-                    title="Your folders"
-                    linkLabel="+ New"
+                    title={d.library.yourFolders}
+                    linkLabel={d.library.newFolderLink}
                     onLinkPress={createFolderPrompt}
                     style={{ marginRight: 5 }}
                   />
@@ -701,7 +703,11 @@ export default function HomeScreen() {
                     <Pressable
                       key={view}
                       accessibilityRole="button"
-                      accessibilityLabel={`${view === "grid" ? "Grid" : "List"} view`}
+                      accessibilityLabel={
+                        view === "grid"
+                          ? d.library.gridViewA11y
+                          : d.library.listViewA11y
+                      }
                       accessibilityState={{ selected }}
                       onPress={() => changeFolderView(view)}
                       hitSlop={4}
@@ -734,14 +740,12 @@ export default function HomeScreen() {
                 onMenu={folderMenu}
               />
               {myFolders.length === 0 ? (
-                <Muted>
-                  Save any recipe with the bookmark to start a folder.
-                </Muted>
+                <Muted>{d.library.foldersEmptyHint}</Muted>
               ) : null}
               {otherFolders.map((group) => (
                 <View key={group.ownerId} style={{ gap: 12, paddingTop: 8 }}>
                   <Eyebrow>
-                    {memberEmails.get(group.ownerId) ?? "Family member"}
+                    {memberEmails.get(group.ownerId) ?? d.library.familyMember}
                   </Eyebrow>
                   <FolderCollection
                     folders={group.folders}
@@ -847,10 +851,11 @@ function FolderMenuButton({
   onPress: () => void;
 }) {
   const { colors } = useTheme();
+  const { d } = useI18n();
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Folder options for ${name}`}
+      accessibilityLabel={fmt(d.library.folderOptionsA11y, { name })}
       onPress={onPress}
       hitSlop={8}
       style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1, padding: 4 })}
@@ -873,10 +878,11 @@ function FolderGridItem({
   onMenu?: () => void;
 }) {
   const { colors } = useTheme();
+  const { d } = useI18n();
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Open folder ${folder.name}`}
+      accessibilityLabel={fmt(d.library.openFolderA11y, { name: folder.name })}
       onPress={onPress}
       style={({ pressed }) => ({
         width: "47.5%",
@@ -921,8 +927,12 @@ function FolderGridItem({
           ) : null}
         </View>
         <Muted>
-          {folder.recipeIds.length}{" "}
-          {folder.recipeIds.length === 1 ? "recipe" : "recipes"}
+          {fmt(
+            folder.recipeIds.length === 1
+              ? d.library.recipeCountOne
+              : d.library.recipeCountMany,
+            { count: folder.recipeIds.length },
+          )}
         </Muted>
       </View>
     </Pressable>
@@ -942,10 +952,11 @@ function FolderRowItem({
   onMenu?: () => void;
 }) {
   const { colors } = useTheme();
+  const { d } = useI18n();
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Open folder ${folder.name}`}
+      accessibilityLabel={fmt(d.library.openFolderA11y, { name: folder.name })}
       onPress={onPress}
       style={({ pressed }) => ({
         flexDirection: "row",
@@ -972,8 +983,12 @@ function FolderRowItem({
           {folder.name}
         </Text>
         <Muted>
-          {folder.recipeIds.length}{" "}
-          {folder.recipeIds.length === 1 ? "recipe" : "recipes"}
+          {fmt(
+            folder.recipeIds.length === 1
+              ? d.library.recipeCountOne
+              : d.library.recipeCountMany,
+            { count: folder.recipeIds.length },
+          )}
         </Muted>
       </View>
       {onMenu ? <FolderMenuButton name={folder.name} onPress={onMenu} /> : null}

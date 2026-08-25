@@ -1,6 +1,7 @@
 import { Pressable, ScrollView, Text } from 'react-native';
 
-import { QUICK_FILTERS, QUICK_FILTER_LABELS, type QuickFilter } from '@/lib/quick-filters';
+import { useI18n } from '@/lib/i18n';
+import { QUICK_FILTERS, type QuickFilter } from '@/lib/quick-filters';
 import { fonts, fontSize, screenPadding, useTheme } from '@/lib/theme';
 
 /** Horizontal stackable filter chips for the Home feed (spec Part 2). */
@@ -12,6 +13,15 @@ export function QuickFilters({
   onToggle: (filter: QuickFilter) => void;
 }) {
   const { colors } = useTheme();
+  const { d } = useI18n();
+  const labels: Record<QuickFilter, string> = {
+    under30: d.components.filterUnder30,
+    fodmapFriendly: d.components.filterFodmap,
+    meat: d.components.catMeat,
+    fish: d.components.catFish,
+    vegetarian: d.components.catVegetarian,
+    needsReview: d.components.filterNeedsReview,
+  };
   return (
     <ScrollView
       horizontal
@@ -44,7 +54,7 @@ export function QuickFilters({
                 fontFamily: fonts.uiMedium,
               }}
             >
-              {QUICK_FILTER_LABELS[filter]}
+              {labels[filter]}
             </Text>
           </Pressable>
         );

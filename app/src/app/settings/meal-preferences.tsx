@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Body, Button, Eyebrow, Field, Muted, SettingsGroup, Title } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
 import { normalizeDietProfile, QUOTA_CATEGORIES, type DietProfile } from '@/lib/diet';
+import { fmt, useI18n } from '@/lib/i18n';
 import { normalizeMealTimes, parseHHMM, type MealTimes } from '@/lib/meal-times';
 import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
@@ -31,6 +32,7 @@ function Stepper({
   label: string;
 }) {
   const { colors } = useTheme();
+  const { d } = useI18n();
   const dec = () => {
     if (value === null) onChange(7);
     else if (value > 0) onChange(value - 1);
@@ -54,7 +56,7 @@ function Stepper({
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Decrease ${label}`}
+        accessibilityLabel={fmt(d.mealPrefs.decrease, { label })}
         onPress={dec}
         hitSlop={8}
         style={({ pressed }) => buttonStyle(pressed)}
@@ -75,7 +77,7 @@ function Stepper({
       </Text>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Increase ${label}`}
+        accessibilityLabel={fmt(d.mealPrefs.increase, { label })}
         onPress={inc}
         hitSlop={8}
         style={({ pressed }) => buttonStyle(pressed)}
@@ -88,6 +90,7 @@ function Stepper({
 
 export default function MealPreferencesScreen() {
   const { colors } = useTheme();
+  const { d } = useI18n();
   const router = useRouter();
   const { householdId } = useHousehold();
 
@@ -160,7 +163,7 @@ export default function MealPreferencesScreen() {
       mealTimes.dinner.end,
     ];
     if (values.some((v) => parseHHMM(v) === null)) {
-      setTimesError('Times must be HH:MM, e.g. 13:30.');
+      setTimesError(d.mealPrefs.timesError);
       return;
     }
     setTimesError(null);
@@ -184,6 +187,13 @@ export default function MealPreferencesScreen() {
 
   const diners = persons.filter((p) => !p.is_employee);
 
+  // Display labels only — the stored category values never change.
+  const categoryLabels: Record<string, string> = {
+    fish: d.mealPrefs.categoryFish,
+    meat: d.mealPrefs.categoryMeat,
+    vegetarian: d.mealPrefs.categoryVegetarian,
+  };
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bgGrouped }} edges={['top']}>
       <ScrollView
@@ -192,7 +202,7 @@ export default function MealPreferencesScreen() {
       >
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Back to settings"
+          accessibilityLabel={d.mealPrefs.backToSettings}
           onPress={() => router.back()}
           style={({ pressed }) => ({
             flexDirection: 'row',
@@ -204,10 +214,10 @@ export default function MealPreferencesScreen() {
           })}
         >
           <Ionicons name="chevron-back" size={20} color={colors.text} />
-          <Body style={{ fontFamily: fonts.uiSemi }}>Settings</Body>
+          <Body style={{ fontFamily: fonts.uiSemi }}>{d.mealPrefs.settings}</Body>
         </Pressable>
-        <Title>Meal preferences</Title>
-        <Muted>Protein quotas per person, per week (min – max).</Muted>
+        <Title>{d.mealPrefs.title}</Title>
+        <Muted>{d.mealPrefs.quotasHint}</Muted>
 
         {diners.map((person) => {
           const profile = normalizeDietProfile(person.diet_profile);
@@ -227,6 +237,7 @@ export default function MealPreferencesScreen() {
                   const target = profile.proteinQuotas.targets.find(
                     (t) => t.category === category
                   )!;
+                  const displayLabel = categoryLabels[category] ?? label;
                   return (
                     <View
                       key={category}
@@ -238,17 +249,17 @@ export default function MealPreferencesScreen() {
                         paddingHorizontal: 16,
                       }}
                     >
-                      <Body style={{ flex: 1 }}>{label}</Body>
+                      <Body style={{ flex: 1 }}>{displayLabel}</Body>
                       <Stepper
                         value={target.min}
-                        label={`minimum ${label}`}
+                        label={fmt(d.mealPrefs.minimumOf, { label: displayLabel })}
                         onChange={(v) => void updateQuota(person, category, 'min', v)}
                       />
                       <Muted>–</Muted>
                       <Stepper
                         value={target.max}
                         allowNull
-                        label={`maximum ${label}`}
+                        label={fmt(d.mealPrefs.maximumOf, { label: displayLabel })}
                         onChange={(v) => void updateQuota(person, category, 'max', v)}
                       />
                     </View>
@@ -259,14 +270,11 @@ export default function MealPreferencesScreen() {
           );
         })}
         {diners.length === 0 ? (
-          <Muted>No people yet — add your household under Manage your account.</Muted>
+          <Muted>{d.mealPrefs.noPeople}</Muted>
         ) : null}
 
-        <Eyebrow style={{ marginTop: 16 }}>Suggestions</Eyebrow>
-        <Muted>
-          Weeks a recipe rests after being planned before it reappears in Suggested for you. 0
-          hides only this week's picks.
-        </Muted>
+        <Eyebrow style={{ marginTop: 16 }}>{d.mealPrefs.suggestions}</Eyebrow>
+        <Muted>{d.mealPrefs.suggestionsHint}</Muted>
         <SettingsGroup>
           <View
             style={{
@@ -277,19 +285,17 @@ export default function MealPreferencesScreen() {
               paddingHorizontal: 16,
             }}
           >
-            <Body style={{ flex: 1 }}>Rest weeks</Body>
+            <Body style={{ flex: 1 }}>{d.mealPrefs.restWeeks}</Body>
             <Stepper
               value={restWeeks}
-              label="rest weeks"
+              label={d.mealPrefs.restWeeks}
               onChange={(v) => void updateRestWeeks(v)}
             />
           </View>
         </SettingsGroup>
 
-        <Eyebrow style={{ marginTop: 16 }}>Meal times</Eyebrow>
-        <Muted>
-          When lunch and dinner happen. The week page uses the end time to know a meal is done.
-        </Muted>
+        <Eyebrow style={{ marginTop: 16 }}>{d.mealPrefs.mealTimes}</Eyebrow>
+        <Muted>{d.mealPrefs.mealTimesHint}</Muted>
         <SettingsGroup>
           {(['lunch', 'dinner'] as const).map((slot) => (
             <View
@@ -303,7 +309,9 @@ export default function MealPreferencesScreen() {
                 paddingVertical: 8,
               }}
             >
-              <Body style={{ flex: 1, textTransform: 'capitalize' }}>{slot}</Body>
+              <Body style={{ flex: 1, textTransform: 'capitalize' }}>
+                {slot === 'lunch' ? d.common.lunch : d.common.dinner}
+              </Body>
               <Field
                 value={mealTimes[slot].start}
                 onChangeText={(v) => setTime(slot, 'start', v)}
@@ -326,22 +334,22 @@ export default function MealPreferencesScreen() {
         </SettingsGroup>
         {timesError ? <Body style={{ color: colors.danger }}>{timesError}</Body> : null}
         <Button
-          label={timesSaved ? 'Saved' : 'Save meal times'}
+          label={timesSaved ? d.mealPrefs.saved : d.mealPrefs.saveMealTimes}
           kind="secondary"
           onPress={() => void saveMealTimes()}
         />
 
-        <Eyebrow style={{ marginTop: 16 }}>Other requirements</Eyebrow>
-        <Muted>Free text for the whole household, used as-is when planning.</Muted>
+        <Eyebrow style={{ marginTop: 16 }}>{d.mealPrefs.otherRequirements}</Eyebrow>
+        <Muted>{d.mealPrefs.otherRequirementsHint}</Muted>
         <Field
           value={householdNotes}
           onChangeText={setHouseholdNotes}
-          placeholder="e.g. no pork, light dinner on Sundays…"
+          placeholder={d.mealPrefs.otherRequirementsPlaceholder}
           multiline
           style={{ minHeight: 100, textAlignVertical: 'top', backgroundColor: colors.card }}
         />
         <Button
-          label={notesSaved ? 'Saved' : 'Save'}
+          label={notesSaved ? d.mealPrefs.saved : d.common.save}
           kind="secondary"
           onPress={() => void saveHouseholdNotes()}
         />

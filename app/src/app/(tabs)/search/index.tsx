@@ -7,6 +7,7 @@ import { RecipeRow, type RecipeListItem } from '@/components/recipe-cards';
 import { EmptyState, Field, Hairline, LinkButton, Loading, Muted, Title } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
 import { resolveProteinCategory, type ProteinCategory } from '@/lib/category';
+import { useI18n, type Dict } from '@/lib/i18n';
 import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, minTapTarget, radius, screenPadding, tabBarClearance, useTheme } from '@/lib/theme';
 import { useCanonicalIndex } from '@/lib/use-canonical';
@@ -16,18 +17,18 @@ type Filter = 'all' | ProteinCategory | MealTypeFilter | 'needs_review';
 
 const MEAL_TYPE_FILTERS: readonly MealTypeFilter[] = ['main', 'breakfast', 'dessert', 'side'];
 
-const FILTERS: { value: Filter; label: string }[] = [
-  { value: 'all', label: 'All' },
-  { value: 'fish', label: 'Fish' },
-  { value: 'meat', label: 'Meat' },
-  { value: 'vegan', label: 'Vegan' },
-  { value: 'vegetarian', label: 'Vegetarian' },
-  { value: 'legume', label: 'Legume' },
-  { value: 'main', label: 'Lunch/dinner' },
-  { value: 'breakfast', label: 'Breakfast' },
-  { value: 'side', label: 'Side' },
-  { value: 'dessert', label: 'Dessert' },
-  { value: 'needs_review', label: 'Needs review' },
+const FILTERS: { value: Filter; labelKey: keyof Dict['search'] }[] = [
+  { value: 'all', labelKey: 'filterAll' },
+  { value: 'fish', labelKey: 'filterFish' },
+  { value: 'meat', labelKey: 'filterMeat' },
+  { value: 'vegan', labelKey: 'filterVegan' },
+  { value: 'vegetarian', labelKey: 'filterVegetarian' },
+  { value: 'legume', labelKey: 'filterLegume' },
+  { value: 'main', labelKey: 'filterMain' },
+  { value: 'breakfast', labelKey: 'filterBreakfast' },
+  { value: 'side', labelKey: 'filterSide' },
+  { value: 'dessert', labelKey: 'filterDessert' },
+  { value: 'needs_review', labelKey: 'filterNeedsReview' },
 ];
 
 function FilterChip({
@@ -70,6 +71,7 @@ function FilterChip({
 
 export default function SearchScreen() {
   const { colors } = useTheme();
+  const { d } = useI18n();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { householdId } = useHousehold();
@@ -126,12 +128,12 @@ export default function SearchScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
       <View style={{ paddingHorizontal: screenPadding, paddingVertical: 8, gap: 12 }}>
-        <Title>Search</Title>
+        <Title>{d.search.title}</Title>
         <Field
           icon="search-outline"
           value={query}
           onChangeText={setQuery}
-          placeholder="Search recipes"
+          placeholder={d.search.placeholder}
           autoCapitalize="none"
           returnKeyType="search"
           style={{ minHeight: minTapTarget }}
@@ -142,10 +144,10 @@ export default function SearchScreen() {
           contentContainerStyle={{ gap: 8, paddingHorizontal: screenPadding }}
           style={{ marginHorizontal: -screenPadding }}
         >
-          {FILTERS.map(({ value, label }) => (
+          {FILTERS.map(({ value, labelKey }) => (
             <FilterChip
               key={value}
-              label={label}
+              label={d.search[labelKey]}
               selected={filter === value}
               onPress={() => setFilter(value)}
             />
@@ -165,16 +167,16 @@ export default function SearchScreen() {
             <Loading />
           ) : recipes.length === 0 ? (
             <EmptyState
-              message="Your cooking notebook starts here."
-              actionLabel="Add your first recipe"
+              message={d.search.emptyLibrary}
+              actionLabel={d.search.addFirstRecipe}
               onAction={() => router.push('/capture')}
             />
           ) : (
             <View style={{ paddingVertical: 32, alignItems: 'flex-start', gap: 4 }}>
-              <Muted>No recipes match.</Muted>
+              <Muted>{d.search.noMatches}</Muted>
               {hasActiveFilters ? (
                 <LinkButton
-                  label="Clear filters"
+                  label={d.search.clearFilters}
                   onPress={clearFilters}
                   style={{ minHeight: minTapTarget, borderRadius: radius.control }}
                 />

@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Pressable, View } from "react-native";
 
 import { Title } from "@/components/ui";
+import { fmt, useI18n } from "@/lib/i18n";
 import { minTapTarget, useTheme } from "@/lib/theme";
 
 /** Section title with a pencil toggle (spec Part 5). */
@@ -15,6 +16,7 @@ export function SectionTitle({
   onToggle: () => void;
 }) {
   const { colors } = useTheme();
+  const { d } = useI18n();
   return (
     <View
       style={{
@@ -26,7 +28,10 @@ export function SectionTitle({
       <Title>{title}</Title>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={editing ? `Stop editing ${title}` : `Edit ${title}`}
+        accessibilityLabel={fmt(
+          editing ? d.components.stopEditingSection : d.components.editSection,
+          { title },
+        )}
         onPress={onToggle}
         hitSlop={8}
         style={({ pressed }) => ({
@@ -61,6 +66,7 @@ export function EditRowControls({
   onRemove: (index: number) => void;
 }) {
   const { colors } = useTheme();
+  const { d } = useI18n();
   const iconButton = (
     label: string,
     icon: keyof typeof Ionicons.glyphMap,
@@ -81,18 +87,18 @@ export function EditRowControls({
   return (
     <View style={{ flexDirection: "row", alignItems: "center" }}>
       {iconButton(
-        "Move up",
+        d.components.moveUp,
         "chevron-up",
         () => onMove(index, index - 1),
         index === 0,
       )}
       {iconButton(
-        "Move down",
+        d.components.moveDown,
         "chevron-down",
         () => onMove(index, index + 1),
         index === count - 1,
       )}
-      {iconButton("Remove", "trash-outline", () => onRemove(index))}
+      {iconButton(d.components.remove, "trash-outline", () => onRemove(index))}
     </View>
   );
 }

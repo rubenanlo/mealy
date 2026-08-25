@@ -4,6 +4,7 @@ import { Tabs } from 'expo-router';
 import { Platform, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useI18n } from '@/lib/i18n';
 import { fonts, useTheme } from '@/lib/theme';
 
 type IconName = keyof typeof Ionicons.glyphMap;
@@ -105,6 +106,7 @@ function CapsuleTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
 
 export default function TabsLayout() {
   const { colors, dark } = useTheme();
+  const { d } = useI18n();
 
   return (
     <Tabs
@@ -118,10 +120,10 @@ export default function TabsLayout() {
       {/* Exactly four tabs (v3.1b — Settings moved to the Home header gear).
           Each directory has its own Stack layout, so no nested route
           (library/[id], …) can ever register as a tab again. */}
-      <Tabs.Screen name="library" options={{ title: 'Home' }} />
-      <Tabs.Screen name="search" options={{ title: 'Search' }} />
-      <Tabs.Screen name="plan" options={{ title: 'Week' }} />
-      <Tabs.Screen name="groceries" options={{ title: 'Groceries' }} />
+      <Tabs.Screen name="library" options={{ title: d.common.tabHome }} />
+      <Tabs.Screen name="search" options={{ title: d.common.tabSearch }} />
+      <Tabs.Screen name="plan" options={{ title: d.common.tabWeek }} />
+      <Tabs.Screen name="groceries" options={{ title: d.common.tabGroceries }} />
     </Tabs>
   );
 }

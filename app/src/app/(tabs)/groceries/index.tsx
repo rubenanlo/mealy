@@ -16,6 +16,7 @@ import { useAuth, useHousehold } from '@/lib/auth';
 import type { CanonicalIngredient } from '@/lib/canonical';
 import { normalizeDietProfile } from '@/lib/diet';
 import { buildShoppingText, type ExportGroup } from '@/lib/export';
+import { fmt, useI18n } from '@/lib/i18n';
 import { resolveMatches } from '@/lib/matching';
 import { dayDate, weekStart } from '@/lib/plan';
 import { collectWeekIngredients } from '@/lib/shopping';
@@ -45,6 +46,9 @@ function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+/** BCP 47 tags for date formatting per app locale. */
+const dateLocales = { en: 'en-US', es: 'es-ES', fr: 'fr-FR', it: 'it-IT' } as const;
+
 /** Small round checkbox row shared by matched + unmatched items. */
 function CheckRow({
   label,
@@ -70,6 +74,7 @@ function CheckRow({
   sub?: { text: string; onPress?: () => void }[];
 }) {
   const { colors } = useTheme();
+  const { d } = useI18n();
   const textColor = checked ? colors.textMuted : colors.text;
   const dotColor =
     fodmapTier === 'high' ? colors.danger : fodmapTier === 'check' ? colors.saffron : null;
@@ -117,7 +122,7 @@ function CheckRow({
             </Text>
             {dotColor ? (
               <View
-                accessibilityLabel={`FODMAP ${fodmapTier}`}
+                accessibilityLabel={fmt(d.groceries.fodmap, { tier: fodmapTier ?? '' })}
                 style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: dotColor }}
               />
             ) : null}
@@ -132,7 +137,7 @@ function CheckRow({
                 }}
               >
                 <Text style={{ color: colors.textMuted, fontSize: 11, fontFamily: fonts.uiMedium }}>
-                  mixed units
+                  {d.groceries.mixedUnits}
                 </Text>
               </View>
             ) : null}
@@ -155,7 +160,9 @@ function CheckRow({
         {expandable ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={expanded ? `Hide details for ${label}` : `Show details for ${label}`}
+            accessibilityLabel={fmt(expanded ? d.groceries.hideDetails : d.groceries.showDetails, {
+              name: label,
+            })}
             accessibilityState={{ expanded }}
             onPress={onExpand}
             hitSlop={8}
@@ -182,7 +189,7 @@ function CheckRow({
               <Pressable
                 key={i}
                 accessibilityRole="button"
-                accessibilityLabel={`Open recipe — ${part.text}`}
+                accessibilityLabel={fmt(d.groceries.openRecipe, { text: part.text })}
                 onPress={part.onPress}
                 style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, minHeight: 28, justifyContent: 'center' })}
               >
@@ -200,6 +207,7 @@ function CheckRow({
 
 export default function GroceriesScreen() {
   const { colors } = useTheme();
+  const { d, locale } = useI18n();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { householdId } = useHousehold();
@@ -402,12 +410,12 @@ export default function GroceriesScreen() {
     }));
     if (unmatched.length > 0) {
       groups.push({
-        aisle: 'Other',
+        aisle: d.groceries.other,
         items: unmatched.map((u) => ({ label: u.raw, checked: checked.has(u.key) })),
       });
     }
     return groups;
-  }, [aisles, unmatched, checked]);
+  }, [aisles, unmatched, checked, d]);
 
   const share = async () => {
     const message = buildShoppingText(exportGroups);
@@ -419,10 +427,12 @@ export default function GroceriesScreen() {
     }
   };
 
-  const weekLabel = `Week of ${dayDate(weekIso, 0).toLocaleDateString('en-US', {
-    month: 'long',
-    day: 'numeric',
-  })}`;
+  const weekLabel = fmt(d.groceries.weekOf, {
+    date: dayDate(weekIso, 0).toLocaleDateString(dateLocales[locale], {
+      month: 'long',
+      day: 'numeric',
+    }),
+  });
   const isEmpty = aisles.length === 0 && unmatched.length === 0;
 
   return (
@@ -437,11 +447,11 @@ export default function GroceriesScreen() {
       >
         <View style={{ flex: 1, gap: 2 }}>
           <Eyebrow>{weekLabel}</Eyebrow>
-          <Title>Groceries</Title>
+          <Title>{d.groceries.title}</Title>
         </View>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Share the shopping list"
+          accessibilityLabel={d.groceries.shareList}
           onPress={() => void share()}
           disabled={isEmpty}
           style={({ pressed }) => ({
@@ -460,12 +470,12 @@ export default function GroceriesScreen() {
 
       {loading && isEmpty ? (
         <View style={{ padding: screenPadding }}>
-          <Muted>Building your list…</Muted>
+          <Muted>{d.groceries.building}</Muted>
         </View>
       ) : isEmpty ? (
         <EmptyState
-          message={hasEntries ? 'Nothing to buy this week.' : 'No meals planned this week.'}
-          actionLabel="Open the week"
+          message={hasEntries ? d.groceries.nothingToBuy : d.groceries.noMeals}
+          actionLabel={d.groceries.openWeek}
           onAction={() => router.navigate('/plan')}
         />
       ) : (
@@ -516,7 +526,7 @@ export default function GroceriesScreen() {
 
           {unmatched.length > 0 ? (
             <View style={{ paddingTop: 24 }}>
-              <Eyebrow style={{ paddingBottom: 6 }}>Unmatched</Eyebrow>
+              <Eyebrow style={{ paddingBottom: 6 }}>{d.groceries.unmatched}</Eyebrow>
               {unmatched.map((item, itemIndex) => (
                 <View key={item.key}>
                   {itemIndex > 0 ? <Hairline /> : null}

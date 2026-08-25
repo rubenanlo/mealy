@@ -4,6 +4,7 @@ import { Image, KeyboardAvoidingView, Platform, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Body, Button, Eyebrow, Field, Muted } from '@/components/ui';
+import { fmt, useI18n } from '@/lib/i18n';
 import {
   appleAvailable,
   googleAvailable,
@@ -15,6 +16,7 @@ import { fonts, fontSize, screenPadding, useTheme } from '@/lib/theme';
 
 export default function SignInScreen() {
   const { colors } = useTheme();
+  const { d } = useI18n();
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [password, setPassword] = useState('');
@@ -43,7 +45,7 @@ export default function SignInScreen() {
     const { error: err } = await supabase.auth.signInWithOtp({ email: email.trim() });
     setBusy(false);
     if (err) {
-      setError('Could not send the code. Check the email address.');
+      setError(d.auth.sendFailed);
     } else {
       setStep('code');
     }
@@ -59,7 +61,7 @@ export default function SignInScreen() {
     });
     setBusy(false);
     if (err) {
-      setError('Invalid or expired code. Request a new one and try again.');
+      setError(d.auth.otpInvalid);
     }
     // On success the auth listener re-routes to the tabs.
   };
@@ -73,7 +75,7 @@ export default function SignInScreen() {
     });
     setBusy(false);
     if (err) {
-      setError('Incorrect email or password. Try again.');
+      setError(d.auth.passwordWrong);
     }
   };
 
@@ -100,8 +102,8 @@ export default function SignInScreen() {
           >
             Mealy
           </Text>
-          <Eyebrow>The family cooking notebook</Eyebrow>
-          <Muted>Sign in or create your family&apos;s account.</Muted>
+          <Eyebrow>{d.auth.tagline}</Eyebrow>
+          <Muted>{d.auth.signInIntro}</Muted>
         </View>
 
         {step === 'email' ? (
@@ -109,7 +111,7 @@ export default function SignInScreen() {
             <Field
               value={email}
               onChangeText={setEmail}
-              placeholder="Email address"
+              placeholder={d.auth.emailAddress}
               autoCapitalize="none"
               autoComplete="email"
               keyboardType="email-address"
@@ -117,23 +119,23 @@ export default function SignInScreen() {
               onSubmitEditing={sendCode}
             />
             <Button
-              label="Send a code"
+              label={d.auth.sendCode}
               onPress={sendCode}
               loading={busy}
               disabled={!email.includes('@')}
             />
             <Button
-              label="Use a password"
+              label={d.auth.usePassword}
               kind="secondary"
               onPress={() => setStep('password')}
               disabled={!email.includes('@')}
             />
             {googleReady || appleReady ? (
               <View style={{ gap: 12, marginTop: 8 }}>
-                <Muted style={{ textAlign: 'center' }}>or</Muted>
+                <Muted style={{ textAlign: 'center' }}>{d.common.or}</Muted>
                 {googleReady ? (
                   <Button
-                    label="Continue with Google"
+                    label={d.auth.continueGoogle}
                     kind="secondary"
                     onPress={() => void withProvider(signInWithGoogle)}
                     disabled={busy}
@@ -141,7 +143,7 @@ export default function SignInScreen() {
                 ) : null}
                 {appleReady ? (
                   <Button
-                    label="Continue with Apple"
+                    label={d.auth.continueApple}
                     kind="secondary"
                     onPress={() => void withProvider(signInWithApple)}
                     disabled={busy}
@@ -150,7 +152,7 @@ export default function SignInScreen() {
               </View>
             ) : null}
             <Button
-              label="Have a signup code? Create your family"
+              label={d.auth.haveCode}
               kind="secondary"
               onPress={() => router.push('/sign-up')}
               disabled={busy}
@@ -158,43 +160,43 @@ export default function SignInScreen() {
           </View>
         ) : step === 'password' ? (
           <View style={{ gap: 12 }}>
-            <Muted>Signing in with a password as {email.trim()}.</Muted>
+            <Muted>{fmt(d.auth.passwordAs, { email: email.trim() })}</Muted>
             <Field
               value={password}
               onChangeText={setPassword}
-              placeholder="Password"
+              placeholder={d.auth.password}
               secureTextEntry
               autoCapitalize="none"
               autoFocus
               onSubmitEditing={signInWithPassword}
             />
             <Button
-              label="Sign in"
+              label={d.auth.signIn}
               onPress={signInWithPassword}
               loading={busy}
               disabled={password.length < 8}
             />
-            <Button label="Use a different email" kind="secondary" onPress={() => setStep('email')} />
+            <Button label={d.auth.useDifferentEmail} kind="secondary" onPress={() => setStep('email')} />
           </View>
         ) : (
           <View style={{ gap: 12 }}>
-            <Muted>A 6-digit code was sent to {email.trim()}.</Muted>
+            <Muted>{fmt(d.auth.codeSentTo, { email: email.trim() })}</Muted>
             <Field
               value={code}
               onChangeText={setCode}
-              placeholder="6-digit code"
+              placeholder={d.auth.sixDigitCode}
               keyboardType="number-pad"
               maxLength={6}
               autoFocus
               onSubmitEditing={verifyCode}
             />
             <Button
-              label="Sign in"
+              label={d.auth.signIn}
               onPress={verifyCode}
               loading={busy}
               disabled={code.trim().length < 6}
             />
-            <Button label="Use a different email" kind="secondary" onPress={() => setStep('email')} />
+            <Button label={d.auth.useDifferentEmail} kind="secondary" onPress={() => setStep('email')} />
           </View>
         )}
         {error ? <Body style={{ color: colors.danger }}>{error}</Body> : null}

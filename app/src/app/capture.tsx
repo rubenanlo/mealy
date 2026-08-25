@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Body, Button, Eyebrow, Field, Muted, Title } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
+import { fmt, useI18n } from '@/lib/i18n';
 import { createBlankRecipe } from '@/lib/recipes';
 import { supabase } from '@/lib/supabase';
 import { controlHeight, fonts, fontSize, radius, screenPadding, useTheme } from '@/lib/theme';
@@ -23,6 +24,7 @@ import {
 
 export default function CaptureScreen() {
   const { colors } = useTheme();
+  const { d } = useI18n();
   const router = useRouter();
   const membership = useHousehold();
   // When opened from the planner: seed the manual title and remember the slot
@@ -75,7 +77,7 @@ export default function CaptureScreen() {
         params: { id, isNew: '1', ...assignParams() },
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not create the recipe. Try again.');
+      setError(e instanceof Error ? e.message : d.capture.createError);
       setBusy(false);
     }
   };
@@ -87,10 +89,10 @@ export default function CaptureScreen() {
     try {
       const { data } = await supabase.auth.getSession();
       const userId = data.session?.user.id;
-      if (!userId) throw new Error('Session expired — sign in again.');
+      if (!userId) throw new Error(d.capture.sessionExpired);
       finish(await fn({ householdId: membership.householdId, userId }));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong during the import. Try again.');
+      setError(e instanceof Error ? e.message : d.capture.importError);
     } finally {
       setBusy(false);
     }
@@ -143,33 +145,31 @@ export default function CaptureScreen() {
           contentContainerStyle={{ padding: screenPadding, gap: 16 }}
           keyboardShouldPersistTaps="handled"
         >
-          <Title>Add a recipe</Title>
-          {seedTitle ? <Muted>Creating “{seedTitle}”.</Muted> : null}
+          <Title>{d.capture.title}</Title>
+          {seedTitle ? <Muted>{fmt(d.capture.creating, { title: seedTitle })}</Muted> : null}
 
           {/* Section 1 — type everything in yourself on a blank recipe page. */}
-          <Eyebrow style={{ marginTop: 4 }}>Manual input</Eyebrow>
-          <Muted>Start from a blank recipe and fill in the details yourself.</Muted>
-          <Button label="Create it yourself" onPress={() => void createManual()} loading={busy} />
+          <Eyebrow style={{ marginTop: 4 }}>{d.capture.manualSection}</Eyebrow>
+          <Muted>{d.capture.manualHint}</Muted>
+          <Button label={d.capture.createManual} onPress={() => void createManual()} loading={busy} />
 
           {/* Section 2 — let the worker extract from a link, text, photos or a PDF. */}
-          <Eyebrow style={{ marginTop: 16 }}>Automatic</Eyebrow>
-          <Muted>Paste a link (website, Instagram, TikTok) or the full recipe text.</Muted>
+          <Eyebrow style={{ marginTop: 16 }}>{d.capture.autoSection}</Eyebrow>
+          <Muted>{d.capture.autoHint}</Muted>
           <Field
             value={input}
             onChangeText={setInput}
-            placeholder="Paste a link or text"
+            placeholder={d.capture.pastePlaceholder}
             multiline
             style={{ minHeight: 140, textAlignVertical: 'top' }}
             autoCapitalize="none"
           />
           {needsPaste ? (
-            <Body style={{ color: colors.danger }}>
-              Could not fetch the recipe. Paste the text below.
-            </Body>
+            <Body style={{ color: colors.danger }}>{d.capture.fetchFailed}</Body>
           ) : null}
           {error ? <Body style={{ color: colors.danger }}>{error}</Body> : null}
           <Button
-            label="Capture"
+            label={d.capture.captureButton}
             onPress={capturePasted}
             loading={busy}
             disabled={input.trim().length === 0}
@@ -177,8 +177,8 @@ export default function CaptureScreen() {
           <View style={{ flexDirection: 'row', gap: 12 }}>
             {(
               [
-                ['Photos', 'images-outline', () => void pickPhotos(), 'Import from photos'],
-                ['PDF', 'document-outline', () => void pickPdf(), 'Import a PDF'],
+                [d.capture.photos, 'images-outline', () => void pickPhotos(), d.capture.importPhotos],
+                [d.capture.pdf, 'document-outline', () => void pickPdf(), d.capture.importPdf],
               ] as const
             ).map(([label, icon, onPress, a11y]) => (
               <Pressable
@@ -208,8 +208,8 @@ export default function CaptureScreen() {
               </Pressable>
             ))}
           </View>
-          {busy ? <Muted>Analyzing…</Muted> : null}
-          <Button label="Cancel" kind="secondary" onPress={() => router.back()} disabled={busy} />
+          {busy ? <Muted>{d.capture.analyzing}</Muted> : null}
+          <Button label={d.common.cancel} kind="secondary" onPress={() => router.back()} disabled={busy} />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

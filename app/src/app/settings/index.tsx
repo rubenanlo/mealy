@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Body, Eyebrow, SettingsGroup, SettingsRow, Title } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
+import { useI18n } from '@/lib/i18n';
 import {
   fonts,
   fontSize,
@@ -19,13 +20,14 @@ export default function SettingsScreen() {
   const { colors, override, setOverride } = useTheme();
   const router = useRouter();
   const { session, signOut } = useAuth();
+  const { d } = useI18n();
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bgGrouped }} edges={['top']}>
       <ScrollView contentContainerStyle={{ padding: screenPadding, gap: 12, paddingBottom: 48 }}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Back"
+          accessibilityLabel={d.common.back}
           onPress={() => router.back()}
           style={({ pressed }) => ({
             flexDirection: 'row',
@@ -37,36 +39,36 @@ export default function SettingsScreen() {
           })}
         >
           <Ionicons name="chevron-back" size={20} color={colors.text} />
-          <Body style={{ fontFamily: fonts.uiSemi }}>Home</Body>
+          <Body style={{ fontFamily: fonts.uiSemi }}>{d.settings.home}</Body>
         </Pressable>
-        <Title>Settings</Title>
+        <Title>{d.settings.title}</Title>
         {session?.user.email ? <Body>{session.user.email}</Body> : null}
 
-        <Eyebrow style={{ marginTop: 16 }}>Account</Eyebrow>
+        <Eyebrow style={{ marginTop: 16 }}>{d.settings.account}</Eyebrow>
         <SettingsGroup>
           <SettingsRow
-            label="Manage your account"
+            label={d.settings.manageAccount}
             onPress={() => router.push('/settings/account')}
           />
-          <SettingsRow label="Log out" chevron={false} onPress={() => void signOut()} />
+          <SettingsRow label={d.settings.logOut} chevron={false} onPress={() => void signOut()} />
         </SettingsGroup>
 
-        <Eyebrow style={{ marginTop: 16 }}>Preferences</Eyebrow>
+        <Eyebrow style={{ marginTop: 16 }}>{d.settings.preferences}</Eyebrow>
         <SettingsGroup>
           <SettingsRow
-            label="Meal preferences"
+            label={d.settings.mealPreferences}
             onPress={() => router.push('/settings/meal-preferences')}
           />
         </SettingsGroup>
 
-        <Eyebrow style={{ marginTop: 16 }}>Appearance</Eyebrow>
+        <Eyebrow style={{ marginTop: 16 }}>{d.settings.appearance}</Eyebrow>
         <SettingsGroup>
           <View style={{ flexDirection: 'row', gap: 10, padding: 16 }}>
             {(
               [
-                ['system', 'System'],
-                ['light', 'Light'],
-                ['dark', 'Dark'],
+                ['system', d.settings.themeSystem],
+                ['light', d.settings.themeLight],
+                ['dark', d.settings.themeDark],
               ] as [ThemeOverride, string][]
             ).map(([value, label]) => {
               const selected = override === value;

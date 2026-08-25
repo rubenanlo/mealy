@@ -19,6 +19,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useI18n } from '@/lib/i18n';
 import { useImageUrl } from '@/lib/media';
 
 const MAX_SCALE = 4;
@@ -159,6 +160,7 @@ export function ImageLightbox({
   onDelete?: (path: string) => void;
 }) {
   const { width, height } = useWindowDimensions();
+  const { d } = useI18n();
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
   const [zoomed, setZoomed] = useState(false);
@@ -217,7 +219,7 @@ export function ImageLightbox({
 
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Close image viewer"
+            accessibilityLabel={d.components.closeViewer}
             onPress={onClose}
             hitSlop={12}
             style={({ pressed }) => ({
@@ -239,7 +241,7 @@ export function ImageLightbox({
           {onDelete ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Delete this image"
+              accessibilityLabel={d.components.deleteImage}
               onPress={() => onDelete(paths[safeIndex])}
               hitSlop={12}
               style={({ pressed }) => ({

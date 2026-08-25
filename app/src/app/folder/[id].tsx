@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { RecipeRow, type RecipeListItem } from '@/components/recipe-cards';
 import { Body, Button, Field, Hairline, Loading, Muted, Title } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
+import { fmt, useI18n } from '@/lib/i18n';
 import { supabase } from '@/lib/supabase';
 import { fonts, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
 
@@ -16,6 +17,7 @@ export default function FolderScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const { session } = useAuth();
+  const { d } = useI18n();
 
   const [name, setName] = useState('');
   const [ownerId, setOwnerId] = useState<string | null>(null);
@@ -82,8 +84,8 @@ export default function FolderScreen() {
     const { error } = await supabase.from('folders').update({ name: trimmed }).eq('id', id);
     if (error) {
       Alert.alert(
-        'Could not rename',
-        error.code === '23505' ? 'You already have a folder with that name.' : 'Try again.'
+        d.library.couldNotRename,
+        error.code === '23505' ? d.library.duplicateFolderName : d.library.tryAgain
       );
       return;
     }
@@ -91,10 +93,10 @@ export default function FolderScreen() {
   };
 
   const removeFolder = () => {
-    Alert.alert('Delete this folder?', `“${name}” will be deleted. Recipes stay in your library.`, [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(d.library.deleteFolderTitle, fmt(d.library.deleteFolderBody, { name }), [
+      { text: d.common.cancel, style: 'cancel' },
       {
-        text: 'Delete',
+        text: d.common.delete,
         style: 'destructive',
         onPress: () => {
           void (async () => {
@@ -114,7 +116,7 @@ export default function FolderScreen() {
       >
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Back"
+          accessibilityLabel={d.common.back}
           onPress={() => router.back()}
           style={({ pressed }) => ({
             flexDirection: 'row',
@@ -126,7 +128,7 @@ export default function FolderScreen() {
           })}
         >
           <Ionicons name="chevron-back" size={20} color={colors.text} />
-          <Body style={{ fontFamily: fonts.uiSemi }}>Back</Body>
+          <Body style={{ fontFamily: fonts.uiSemi }}>{d.common.back}</Body>
         </Pressable>
 
         {renaming ? (
@@ -138,15 +140,17 @@ export default function FolderScreen() {
               onSubmitEditing={() => void rename()}
               autoFocus
             />
-            <Button label="Save" kind="secondary" onPress={() => void rename()} />
+            <Button label={d.common.save} kind="secondary" onPress={() => void rename()} />
           </View>
         ) : (
-          <Title>{name || 'Folder'}</Title>
+          <Title>{name || d.library.folderFallback}</Title>
         )}
         {!loaded ? <Loading /> : null}
         {loaded ? (
         <Muted>
-          {recipes.length} {recipes.length === 1 ? 'recipe' : 'recipes'}
+          {fmt(recipes.length === 1 ? d.library.recipeCountOne : d.library.recipeCountMany, {
+            count: recipes.length,
+          })}
           {!isMine && ownerEmail ? ` · ${ownerEmail}` : ''}
         </Muted>
         ) : null}
@@ -159,18 +163,20 @@ export default function FolderScreen() {
             </View>
           )) : null}
           {loaded && recipes.length === 0 ? (
-            <Muted>
-              Nothing saved here yet{isMine ? ' — use the bookmark on any recipe.' : '.'}
-            </Muted>
+            <Muted>{isMine ? d.library.folderEmptyMine : d.library.folderEmptyOther}</Muted>
           ) : null}
         </View>
 
         {isMine ? (
           <View style={{ gap: 10 }}>
             {!renaming ? (
-              <Button label="Rename folder" kind="secondary" onPress={() => setRenaming(true)} />
+              <Button
+                label={d.library.renameFolder}
+                kind="secondary"
+                onPress={() => setRenaming(true)}
+              />
             ) : null}
-            <Button label="Delete folder" kind="danger" onPress={removeFolder} />
+            <Button label={d.library.deleteFolder} kind="danger" onPress={removeFolder} />
           </View>
         ) : null}
       </ScrollView>

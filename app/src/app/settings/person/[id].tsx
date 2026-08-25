@@ -5,7 +5,8 @@ import { Alert, Pressable, ScrollView, Share, Switch, Text, View } from 'react-n
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Body, Button, Eyebrow, Field, Hairline, Muted, Title } from '@/components/ui';
-import { FODMAP_MODES, normalizeDietProfile, type DietProfile } from '@/lib/diet';
+import { FODMAP_MODES, normalizeDietProfile, type DietProfile, type FodmapMode } from '@/lib/diet';
+import { fmt, useI18n } from '@/lib/i18n';
 import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, minTapTarget, radius, screenPadding, useTheme } from '@/lib/theme';
 
@@ -21,6 +22,7 @@ function TagEditor({
   onChange: (next: string[]) => void;
 }) {
   const { colors } = useTheme();
+  const { d } = useI18n();
   const [draft, setDraft] = useState('');
   const add = () => {
     const value = draft.trim();
@@ -36,7 +38,7 @@ function TagEditor({
           <Pressable
             key={value}
             accessibilityRole="button"
-            accessibilityLabel={`Remove ${value}`}
+            accessibilityLabel={fmt(d.person.removeValue, { value })}
             onPress={() => onChange(values.filter((v) => v !== value))}
             style={({ pressed }) => ({
               flexDirection: 'row',
@@ -56,7 +58,7 @@ function TagEditor({
             <Ionicons name="close" size={16} color={colors.textMuted} />
           </Pressable>
         ))}
-        {values.length === 0 ? <Muted>None</Muted> : null}
+        {values.length === 0 ? <Muted>{d.person.none}</Muted> : null}
       </View>
       <View style={{ flexDirection: 'row', gap: 10 }}>
         <Field
@@ -66,7 +68,7 @@ function TagEditor({
           style={{ flex: 1 }}
           onSubmitEditing={add}
         />
-        <Button label="Add" kind="secondary" onPress={add} />
+        <Button label={d.common.add} kind="secondary" onPress={add} />
       </View>
     </View>
   );
@@ -75,6 +77,7 @@ function TagEditor({
 export default function PersonScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { colors } = useTheme();
+  const { d } = useI18n();
   const router = useRouter();
 
   const [name, setName] = useState('');
@@ -84,6 +87,14 @@ export default function PersonScreen() {
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
+
+  // Display labels only — the stored mode values never change.
+  const fodmapLabels: Record<FodmapMode, string> = {
+    off: d.person.fodmapOff,
+    elimination: d.person.fodmapElimination,
+    reintroduction: d.person.fodmapReintroduction,
+    personalized: d.person.fodmapPersonalized,
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -121,10 +132,10 @@ export default function PersonScreen() {
   };
 
   const remove = () => {
-    Alert.alert('Remove this person?', `${name} will be removed from the household.`, [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(d.person.removeTitle, fmt(d.person.removeBody, { name }), [
+      { text: d.common.cancel, style: 'cancel' },
       {
-        text: 'Remove',
+        text: d.person.remove,
         style: 'destructive',
         onPress: () => {
           void (async () => {
@@ -140,7 +151,7 @@ export default function PersonScreen() {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bgGrouped }}>
         <View style={{ padding: screenPadding }}>
-          <Muted>Loading…</Muted>
+          <Muted>{d.common.loading}</Muted>
         </View>
       </SafeAreaView>
     );
@@ -151,7 +162,7 @@ export default function PersonScreen() {
       <ScrollView contentContainerStyle={{ padding: screenPadding, gap: 20, paddingBottom: 48 }}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Back to account"
+          accessibilityLabel={d.person.backToAccount}
           onPress={() => router.back()}
           style={({ pressed }) => ({
             flexDirection: 'row',
@@ -162,13 +173,13 @@ export default function PersonScreen() {
           })}
         >
           <Ionicons name="chevron-back" size={20} color={colors.text} />
-          <Body style={{ fontFamily: fonts.uiSemi }}>Account</Body>
+          <Body style={{ fontFamily: fonts.uiSemi }}>{d.person.account}</Body>
         </Pressable>
-        <Title>{name || 'Person'}</Title>
+        <Title>{name || d.person.personFallback}</Title>
 
         <View style={{ gap: 10 }}>
-          <Eyebrow>Name</Eyebrow>
-          <Field value={name} onChangeText={setName} placeholder="Name" />
+          <Eyebrow>{d.person.name}</Eyebrow>
+          <Field value={name} onChangeText={setName} placeholder={d.person.name} />
         </View>
 
         <View>
@@ -181,7 +192,7 @@ export default function PersonScreen() {
               minHeight: 52,
             }}
           >
-            <Body>Household employee</Body>
+            <Body>{d.person.householdEmployee}</Body>
             <Switch
               value={isEmployee}
               onValueChange={(value) => {
@@ -198,13 +209,10 @@ export default function PersonScreen() {
 
         {isEmployee && shareToken ? (
           <View style={{ gap: 10 }}>
-            <Eyebrow>Web access</Eyebrow>
-            <Muted>
-              A private link with every meal assigned to the employee cook, this week onward —
-              ingredients and steps included, no account needed. Anyone with the link can read it.
-            </Muted>
+            <Eyebrow>{d.person.webAccess}</Eyebrow>
+            <Muted>{d.person.webAccessHint}</Muted>
             <Button
-              label="Share cooking link"
+              label={d.person.shareCookingLink}
               kind="secondary"
               onPress={() => {
                 // Served from workers.dev: supabase.co refuses to render HTML
@@ -217,9 +225,9 @@ export default function PersonScreen() {
         ) : null}
 
         <View style={{ gap: 10 }}>
-          <Eyebrow>FODMAP</Eyebrow>
+          <Eyebrow>{d.person.fodmap}</Eyebrow>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {FODMAP_MODES.map(({ mode, label }) => {
+            {FODMAP_MODES.map(({ mode }) => {
               const selected = profile.fodmap.mode === mode;
               return (
                 <Pressable
@@ -251,7 +259,7 @@ export default function PersonScreen() {
                       fontFamily: fonts.uiMedium,
                     }}
                   >
-                    {label}
+                    {fodmapLabels[mode]}
                   </Text>
                 </Pressable>
               );
@@ -260,32 +268,32 @@ export default function PersonScreen() {
         </View>
 
         <TagEditor
-          label="Allergens (strict exclusion)"
-          placeholder="e.g. peanuts"
+          label={d.person.allergens}
+          placeholder={d.person.allergensPlaceholder}
           values={profile.allergens}
           onChange={(allergens) => setProfile({ ...profile, allergens })}
         />
 
         <TagEditor
-          label="Dislikes"
-          placeholder="e.g. cauliflower"
+          label={d.person.dislikes}
+          placeholder={d.person.dislikesPlaceholder}
           values={profile.dislikes}
           onChange={(dislikes) => setProfile({ ...profile, dislikes })}
         />
 
         <View style={{ gap: 10 }}>
-          <Eyebrow>Other requirements</Eyebrow>
+          <Eyebrow>{d.person.otherRequirements}</Eyebrow>
           <Field
             value={notes}
             onChangeText={setNotes}
-            placeholder="Free text, used as-is when planning"
+            placeholder={d.person.otherRequirementsPlaceholder}
             multiline
             style={{ minHeight: 100, textAlignVertical: 'top' }}
           />
         </View>
 
-        <Button label="Save" onPress={() => void save()} loading={saving} />
-        <Button label="Remove this person" kind="danger" onPress={remove} />
+        <Button label={d.common.save} onPress={() => void save()} loading={saving} />
+        <Button label={d.person.removePerson} kind="danger" onPress={remove} />
       </ScrollView>
     </SafeAreaView>
   );

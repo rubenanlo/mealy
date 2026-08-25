@@ -6,9 +6,8 @@ import { GuestStepper } from '@/components/guest-stepper';
 import { PersonChip } from '@/components/person-chip';
 import { Body, Button, Eyebrow, Muted, Title } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
+import { dictionaries, fmt, useI18n, type Dict } from '@/lib/i18n';
 import {
-  DAY_LABELS,
-  SLOT_LABELS,
   dayDate,
   upsertEntryPayload,
   weekStart,
@@ -40,18 +39,27 @@ export async function removeRecipeFromCurrentWeek(
   await supabase.from('plan_entries').delete().eq('meal_plan_id', plan.id).eq('recipe_id', recipeId);
 }
 
-/** Small cross-platform confirm for the bookmark's remove action. */
-export function confirmRemoveFromWeek(recipeTitle: string, onConfirm: () => void): void {
+/** Small cross-platform confirm for the bookmark's remove action.
+ *  Not a component, so it takes the dictionary as a parameter; call sites
+ *  pass `d` from their own useI18n() (English when omitted). */
+export function confirmRemoveFromWeek(
+  recipeTitle: string,
+  onConfirm: () => void,
+  d: Dict = dictionaries.en
+): void {
   if (Platform.OS === 'web') {
     // Alert with buttons is a no-op on react-native-web.
-    if (typeof window !== 'undefined' && window.confirm(`Remove “${recipeTitle}” from this week?`)) {
+    if (
+      typeof window !== 'undefined' &&
+      window.confirm(fmt(d.components.removeFromWeekWeb, { title: recipeTitle }))
+    ) {
       onConfirm();
     }
     return;
   }
-  Alert.alert('Remove from this week?', recipeTitle, [
-    { text: 'Cancel', style: 'cancel' },
-    { text: 'Remove', style: 'destructive', onPress: onConfirm },
+  Alert.alert(d.components.removeFromWeekTitle, recipeTitle, [
+    { text: d.common.cancel, style: 'cancel' },
+    { text: d.components.remove, style: 'destructive', onPress: onConfirm },
   ]);
 }
 
@@ -74,6 +82,7 @@ export function AddToWeekSheet({
   onAdded?: () => void;
 }) {
   const { colors } = useTheme();
+  const { d, locale } = useI18n();
   const { householdId } = useHousehold();
   const weekIso = weekStart(new Date());
 
@@ -125,7 +134,7 @@ export function AddToWeekSheet({
           .insert({ household_id: householdId, week_start: weekIso })
           .select('id')
           .single();
-        if (createErr || !created) throw new Error(createErr?.message ?? 'Could not create the week');
+        if (createErr || !created) throw new Error(createErr?.message ?? d.components.createWeekError);
         plan = created;
       }
       const { count } = await supabase
@@ -149,16 +158,16 @@ export function AddToWeekSheet({
       onAdded?.();
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not add the recipe. Try again.');
+      setError(e instanceof Error ? e.message : d.components.addRecipeError);
     } finally {
       setBusy(false);
     }
   };
 
-  const weekLabel = `Week of ${dayDate(weekIso, 0).toLocaleDateString('en-US', {
-    month: 'long',
-    day: 'numeric',
-  })}`;
+  const slotLabels: Record<MealSlot, string> = { lunch: d.common.lunch, dinner: d.common.dinner };
+  const weekLabel = fmt(d.components.weekOf, {
+    date: dayDate(weekIso, 0).toLocaleDateString(locale, { month: 'long', day: 'numeric' }),
+  });
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -169,12 +178,12 @@ export function AddToWeekSheet({
         >
           <View style={{ gap: 4 }}>
             <Eyebrow>{weekLabel}</Eyebrow>
-            <Title>Add to this week</Title>
+            <Title>{d.components.addToThisWeek}</Title>
             <Muted>{recipeTitle}</Muted>
           </View>
 
           <View style={{ gap: 10 }}>
-            {DAY_LABELS.map((dayLabel, day) => (
+            {d.common.days.map((dayLabel, day) => (
               <View key={day} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <Text
                   style={{
@@ -192,7 +201,7 @@ export function AddToWeekSheet({
                     <Pressable
                       key={slot}
                       accessibilityRole="button"
-                      accessibilityLabel={`${dayLabel} ${SLOT_LABELS[slot]}`}
+                      accessibilityLabel={`${dayLabel} ${slotLabels[slot]}`}
                       accessibilityState={{ selected }}
                       onPress={() => setCell({ day, slot })}
                       style={({ pressed }) => ({
@@ -217,7 +226,7 @@ export function AddToWeekSheet({
                           fontFamily: fonts.uiMedium,
                         }}
                       >
-                        {SLOT_LABELS[slot]}
+                        {slotLabels[slot]}
                       </Text>
                     </Pressable>
                   );
@@ -228,8 +237,8 @@ export function AddToWeekSheet({
 
           {eaters.length > 0 ? (
             <View style={{ gap: 10 }}>
-              <Eyebrow>Who eats</Eyebrow>
-              <Muted>No selection means the whole household.</Muted>
+              <Eyebrow>{d.components.whoEats}</Eyebrow>
+              <Muted>{d.components.wholeHousehold}</Muted>
               <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
                 {eaters.map((person) => (
                   <PersonChip
@@ -250,21 +259,23 @@ export function AddToWeekSheet({
           ) : null}
 
           <View style={{ gap: 10 }}>
-            <Eyebrow>Guests</Eyebrow>
-            <Muted>Extra people (not in the household) eating this meal.</Muted>
+            <Eyebrow>{d.components.guests}</Eyebrow>
+            <Muted>{d.components.guestsHint}</Muted>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <GuestStepper value={guests} onChange={setGuests} />
-              <Muted>{`Serves ${entryServings(personIds, guests, eaters.length)}`}</Muted>
+              <Muted>
+                {fmt(d.components.serves, { count: entryServings(personIds, guests, eaters.length) })}
+              </Muted>
             </View>
           </View>
 
           <View style={{ gap: 10 }}>
-            <Eyebrow>Who cooks</Eyebrow>
+            <Eyebrow>{d.components.whoCooks}</Eyebrow>
             <View style={{ flexDirection: 'row', gap: 10 }}>
               {(
                 [
-                  ['family', 'Family'],
-                  ['employee', '👩‍🍳 Employee'],
+                  ['family', d.components.cookFamily],
+                  ['employee', d.components.cookEmployee],
                 ] as const
               ).map(([value, label]) => {
                 const selected = cook === value;
@@ -305,8 +316,8 @@ export function AddToWeekSheet({
           </View>
 
           {error ? <Body style={{ color: colors.danger }}>{error}</Body> : null}
-          <Button label="Add to the week" onPress={() => void confirm()} loading={busy} disabled={!cell} />
-          <Button label="Cancel" kind="secondary" onPress={onClose} disabled={busy} />
+          <Button label={d.components.addToWeekCta} onPress={() => void confirm()} loading={busy} disabled={!cell} />
+          <Button label={d.common.cancel} kind="secondary" onPress={onClose} disabled={busy} />
         </ScrollView>
       </SafeAreaView>
     </Modal>

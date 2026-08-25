@@ -4,6 +4,7 @@ import { Modal, Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Body, Button, Eyebrow, Field, Hairline, Muted, Title } from '@/components/ui';
+import { useI18n } from '@/lib/i18n';
 import { supabase } from '@/lib/supabase';
 import { minTapTarget, radius, screenPadding, useTheme } from '@/lib/theme';
 
@@ -34,6 +35,7 @@ export function SaveSheet({
   onChanged: () => void;
 }) {
   const { colors } = useTheme();
+  const { d } = useI18n();
   const [folders, setFolders] = useState<FolderOption[]>([]);
   const [newName, setNewName] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -87,9 +89,7 @@ export function SaveSheet({
       .single();
     if (err || !data) {
       setError(
-        err?.code === '23505'
-          ? 'You already have a folder with that name.'
-          : 'Could not create the folder.'
+        err?.code === '23505' ? d.components.folderExistsError : d.components.createFolderError
       );
       return;
     }
@@ -103,7 +103,7 @@ export function SaveSheet({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Close"
+        accessibilityLabel={d.common.close}
         style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' }}
         onPress={onClose}
       />
@@ -120,12 +120,12 @@ export function SaveSheet({
             contentContainerStyle={{ padding: screenPadding, gap: 12 }}
             keyboardShouldPersistTaps="handled"
           >
-            <Title>Save recipe</Title>
+            <Title>{d.components.saveRecipe}</Title>
             <Muted>{recipeTitle}</Muted>
 
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Add to this week"
+              accessibilityLabel={d.components.addToThisWeek}
               onPress={onAddToWeek}
               style={({ pressed }) => ({
                 flexDirection: 'row',
@@ -136,12 +136,12 @@ export function SaveSheet({
               })}
             >
               <Ionicons name="calendar-outline" size={20} color={colors.text} />
-              <Body style={{ flex: 1 }}>Add to this week</Body>
+              <Body style={{ flex: 1 }}>{d.components.addToThisWeek}</Body>
               <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
             </Pressable>
             <Hairline />
 
-            <Eyebrow>Your folders</Eyebrow>
+            <Eyebrow>{d.components.yourFolders}</Eyebrow>
             {folders.map((folder) => (
               <Pressable
                 key={folder.id}
@@ -165,17 +165,17 @@ export function SaveSheet({
                 <Body style={{ flex: 1 }}>{folder.name}</Body>
               </Pressable>
             ))}
-            {folders.length === 0 ? <Muted>No folders yet — create one below.</Muted> : null}
+            {folders.length === 0 ? <Muted>{d.components.noFoldersYet}</Muted> : null}
 
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <Field
                 value={newName}
                 onChangeText={setNewName}
-                placeholder="New folder name"
+                placeholder={d.components.newFolderName}
                 style={{ flex: 1 }}
                 onSubmitEditing={() => void createAndSave()}
               />
-              <Button label="Create" kind="secondary" onPress={() => void createAndSave()} />
+              <Button label={d.components.create} kind="secondary" onPress={() => void createAndSave()} />
             </View>
             {error ? <Body style={{ color: colors.danger }}>{error}</Body> : null}
           </ScrollView>

@@ -18,8 +18,9 @@ import {
   Title,
 } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
+import { fmt, useI18n } from '@/lib/i18n';
 import { isMealUpcoming, normalizeMealTimes, type MealTimes } from '@/lib/meal-times';
-import { addWeeks, DAY_LABELS, dayDate, SLOT_LABELS, weekStart, type MealSlot } from '@/lib/plan';
+import { addWeeks, dayDate, weekStart, type MealSlot } from '@/lib/plan';
 import { entryServings } from '@/lib/servings';
 import { supabase } from '@/lib/supabase';
 import {
@@ -69,18 +70,12 @@ interface MealCell {
   servings: number[];
 }
 
-function weekLabel(weekIso: string): string {
-  return `Week of ${dayDate(weekIso, 0).toLocaleDateString('en-US', {
-    month: 'long',
-    day: 'numeric',
-  })}`;
-}
-
 /** Group a week's entries into ordered meal cells (day asc, lunch first). */
 function buildCells(
   entries: EntryRow[],
   recipesById: Map<string, RecipeLite>,
-  eaterCount: number
+  eaterCount: number,
+  recipeFallback: string
 ): MealCell[] {
   const byKey = new Map<string, MealCell>();
   for (const entry of entries) {
@@ -90,7 +85,7 @@ function buildCells(
       { day: entry.day, slot: entry.slot, titles: [], covers: [], recipeIds: [], servings: [] };
     if (entry.recipe_id) {
       const recipe = recipesById.get(entry.recipe_id);
-      cell.titles.push(recipe?.title ?? 'Recipe');
+      cell.titles.push(recipe?.title ?? recipeFallback);
       cell.covers.push(recipe?.cover_image_path ?? null);
       cell.recipeIds.push(entry.recipe_id);
       cell.servings.push(entryServings(entry.person_ids, entry.guest_count, eaterCount));
@@ -107,9 +102,16 @@ function buildCells(
 
 export default function WeeksScreen() {
   const { colors } = useTheme();
+  const { d, locale } = useI18n();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { householdId } = useHousehold();
+
+  /** Just the date part of a week label, in the active language. */
+  const weekDate = (weekIso: string) =>
+    dayDate(weekIso, 0).toLocaleDateString(locale, { month: 'long', day: 'numeric' });
+  const weekLabel = (weekIso: string) => fmt(d.plan.weekOf, { date: weekDate(weekIso) });
+  const slotLabel = (slot: MealSlot) => (slot === 'lunch' ? d.common.lunch : d.common.dinner);
 
   const [plans, setPlans] = useState<PlanRow[]>([]);
   const [entries, setEntries] = useState<EntryRow[]>([]);
@@ -187,7 +189,8 @@ export default function WeeksScreen() {
     const cells = buildCells(
       entries.filter((e) => e.meal_plan_id === plan.id),
       recipesById,
-      eaterCount
+      eaterCount,
+      d.plan.recipeFallback
     );
     const now = new Date();
     const todayIndex = Math.floor(
@@ -197,7 +200,7 @@ export default function WeeksScreen() {
     return cells.filter((c) =>
       isMealUpcoming(c.day, c.slot, todayIndex, nowMinutes, mealTimes)
     );
-  }, [plans, entries, recipesById, currentWeek, mealTimes, eaterCount]);
+  }, [plans, entries, recipesById, currentWeek, mealTimes, eaterCount, d]);
 
   /** This week's meals the employee cooks (whole week, not just upcoming). */
   const employeeCells = useMemo(() => {
@@ -206,9 +209,10 @@ export default function WeeksScreen() {
     return buildCells(
       entries.filter((e) => e.meal_plan_id === plan.id && e.assigned_cook === 'employee'),
       recipesById,
-      eaterCount
+      eaterCount,
+      d.plan.recipeFallback
     );
-  }, [plans, entries, recipesById, currentWeek, eaterCount]);
+  }, [plans, entries, recipesById, currentWeek, eaterCount, d]);
 
   /** Past weeks with a plan, newest first. */
   const pastWeeks = useMemo(
@@ -220,10 +224,11 @@ export default function WeeksScreen() {
           cells: buildCells(
             entries.filter((e) => e.meal_plan_id === p.id),
             recipesById,
-            eaterCount
+            eaterCount,
+            d.plan.recipeFallback
           ),
         })),
-    [plans, entries, recipesById, currentWeek, eaterCount]
+    [plans, entries, recipesById, currentWeek, eaterCount, d]
   );
 
   const currentPlan = plans.find((p) => p.week_start === currentWeek);
@@ -258,12 +263,16 @@ export default function WeeksScreen() {
     const options = [0, 1, 2, 3].map((delta) => {
       const week = addWeeks(currentWeek, delta);
       const label =
-        delta === 0 ? 'This week' : delta === 1 ? 'Next week' : `In ${delta} weeks`;
-      return { text: `${label} — ${weekLabel(week).replace('Week of ', '')}`, week };
+        delta === 0
+          ? d.plan.thisWeek
+          : delta === 1
+            ? d.plan.nextWeek
+            : fmt(d.plan.inWeeks, { n: delta });
+      return { text: `${label} — ${weekDate(week)}`, week };
     });
-    Alert.alert('Plan which week?', undefined, [
+    Alert.alert(d.plan.planWhichWeek, undefined, [
       ...options.map((o) => ({ text: o.text, onPress: () => openWeek(o.week) })),
-      { text: 'Cancel', style: 'cancel' as const },
+      { text: d.common.cancel, style: 'cancel' as const },
     ]);
   };
 
@@ -283,10 +292,10 @@ export default function WeeksScreen() {
         <View style={{ paddingVertical: 8, gap: 2 }}>
           <Eyebrow>
             {new Date()
-              .toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+              .toLocaleDateString(locale, { weekday: 'long', month: 'long', day: 'numeric' })
               .toUpperCase()}
           </Eyebrow>
-          <Title>Meal plans</Title>
+          <Title>{d.plan.mealPlans}</Title>
         </View>
 
         {!loaded ? <Loading /> : null}
@@ -296,8 +305,8 @@ export default function WeeksScreen() {
         <>
         <View style={{ gap: 12 }}>
           <SectionHeader
-            title="This week"
-            linkLabel="Open"
+            title={d.plan.thisWeek}
+            linkLabel={d.plan.open}
             onLinkPress={() => openWeek(currentWeek)}
           />
           {upcoming.length > 0 ? (
@@ -311,7 +320,7 @@ export default function WeeksScreen() {
                 <Pressable
                   key={`${cell.day}-${cell.slot}`}
                   accessibilityRole="button"
-                  accessibilityLabel={`${DAY_LABELS[cell.day]} ${SLOT_LABELS[cell.slot]}: ${cell.titles.join(', ')}`}
+                  accessibilityLabel={`${d.common.days[cell.day]} ${slotLabel(cell.slot)}: ${cell.titles.join(', ')}`}
                   onPress={() =>
                     cell.recipeIds.length === 1
                       ? router.push({
@@ -352,8 +361,8 @@ export default function WeeksScreen() {
                   )}
                   <View style={{ paddingTop: 8, gap: 2 }}>
                     <Eyebrow style={i === 0 ? { color: colors.saffron } : undefined}>
-                      {`${cell.day === todayIndex ? 'Today' : DAY_LABELS[cell.day]} · ${SLOT_LABELS[cell.slot]}`}
-                      {i === 0 ? ' · next' : ''}
+                      {`${cell.day === todayIndex ? d.plan.today : d.common.days[cell.day]} · ${slotLabel(cell.slot)}`}
+                      {i === 0 ? ` · ${d.plan.next}` : ''}
                     </Eyebrow>
                     <Text
                       numberOfLines={2}
@@ -367,7 +376,7 @@ export default function WeeksScreen() {
                       {cell.titles.join(' · ')}
                     </Text>
                     {cell.recipeIds.length === 1 ? (
-                      <Muted>{`Serves ${cell.servings[0]}`}</Muted>
+                      <Muted>{fmt(d.plan.serves, { n: cell.servings[0] })}</Muted>
                     ) : null}
                   </View>
                 </Pressable>
@@ -376,7 +385,7 @@ export default function WeeksScreen() {
           ) : (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Plan this week"
+              accessibilityLabel={d.plan.planThisWeek}
               onPress={() => openWeek(currentWeek)}
               style={({ pressed }) => ({
                 minHeight: 110,
@@ -390,7 +399,7 @@ export default function WeeksScreen() {
               })}
             >
               <Ionicons name="calendar-outline" size={24} color={colors.textMuted} />
-              <Muted>Nothing planned yet — plan this week</Muted>
+              <Muted>{d.plan.nothingPlanned}</Muted>
             </Pressable>
           )}
         </View>
@@ -398,7 +407,7 @@ export default function WeeksScreen() {
         {/* The employee's cooking list for this week (mirrors her web link). */}
         {employeeNames.length > 0 && employeeCells.length > 0 ? (
           <View style={{ gap: 12, paddingTop: 8 }}>
-            <SectionHeader title={`Assigned to ${employeeNames.join(' & ')}`} />
+            <SectionHeader title={fmt(d.plan.assignedTo, { names: employeeNames.join(' & ') })} />
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -409,7 +418,7 @@ export default function WeeksScreen() {
                 <Pressable
                   key={`emp-${cell.day}-${cell.slot}`}
                   accessibilityRole="button"
-                  accessibilityLabel={`${DAY_LABELS[cell.day]} ${SLOT_LABELS[cell.slot]}: ${cell.titles.join(', ')}`}
+                  accessibilityLabel={`${d.common.days[cell.day]} ${slotLabel(cell.slot)}: ${cell.titles.join(', ')}`}
                   onPress={() =>
                     cell.recipeIds.length === 1
                       ? router.push({
@@ -426,7 +435,7 @@ export default function WeeksScreen() {
                   />
                   <View style={{ paddingTop: 8, gap: 2 }}>
                     <Eyebrow>
-                      {`${cell.day === todayIndex ? 'Today' : DAY_LABELS[cell.day]} · ${SLOT_LABELS[cell.slot]}`}
+                      {`${cell.day === todayIndex ? d.plan.today : d.common.days[cell.day]} · ${slotLabel(cell.slot)}`}
                     </Eyebrow>
                     <Text
                       numberOfLines={2}
@@ -447,16 +456,16 @@ export default function WeeksScreen() {
             {/* Extra checklist for the employee, mirrored on her web link. */}
             {notesOpen ? (
               <View style={{ gap: 10 }}>
-                <Muted>One instruction per line — Enter starts the next one.</Muted>
+                <Muted>{d.plan.oneInstructionPerLine}</Muted>
                 <Field
                   value={noteDraft}
                   onChangeText={setNoteDraft}
-                  placeholder={'e.g. prep the lunch boxes\niron the shirts…'}
+                  placeholder={d.plan.notesPlaceholder}
                   multiline
                   autoFocus
                   style={{ minHeight: 110, textAlignVertical: 'top' }}
                 />
-                <Button label="Save instructions" kind="secondary" onPress={saveNotesDraft} />
+                <Button label={d.plan.saveInstructions} kind="secondary" onPress={saveNotesDraft} />
               </View>
             ) : (
               <>
@@ -464,7 +473,7 @@ export default function WeeksScreen() {
                   // Collapsed: first line only, ellipsized; tap to edit.
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel="Edit instructions"
+                    accessibilityLabel={d.plan.editInstructions}
                     onPress={openNotesEditor}
                     style={({ pressed }) => ({
                       flexDirection: 'row',
@@ -481,7 +490,7 @@ export default function WeeksScreen() {
                   </Pressable>
                 ) : (
                   <LinkButton
-                    label="+ Add more instructions"
+                    label={d.plan.addMoreInstructions}
                     onPress={openNotesEditor}
                     style={{ alignSelf: 'flex-start', minHeight: 32 }}
                   />
@@ -493,7 +502,7 @@ export default function WeeksScreen() {
 
         {/* Past weeks grid; the first tile creates a new plan. */}
         <View style={{ gap: 12, paddingTop: 8 }}>
-          <SectionHeader title="Past weeks" />
+          <SectionHeader title={d.plan.pastWeeks} />
           <View
             style={{
               flexDirection: 'row',
@@ -504,7 +513,7 @@ export default function WeeksScreen() {
           >
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="New meal plan"
+              accessibilityLabel={d.plan.newMealPlan}
               onPress={newPlan}
               style={({ pressed }) => ({
                 width: '47.5%',
@@ -531,7 +540,7 @@ export default function WeeksScreen() {
               >
                 <Ionicons name="add" size={28} color={colors.text} />
               </View>
-              <Muted>New plan</Muted>
+              <Muted>{d.plan.newPlan}</Muted>
             </Pressable>
 
             {pastWeeks.map((week) => {
@@ -545,7 +554,7 @@ export default function WeeksScreen() {
                 <Pressable
                   key={week.id}
                   accessibilityRole="button"
-                  accessibilityLabel={`Open ${weekLabel(week.week_start)}`}
+                  accessibilityLabel={fmt(d.plan.openWeek, { week: weekLabel(week.week_start) })}
                   onPress={() => openWeek(week.week_start)}
                   style={({ pressed }) => ({ width: '47.5%', opacity: pressed ? 0.7 : 1 })}
                 >
@@ -581,7 +590,7 @@ export default function WeeksScreen() {
                       {weekLabel(week.week_start)}
                     </Text>
                     <Muted>
-                      {meals} {meals === 1 ? 'meal' : 'meals'}
+                      {meals} {meals === 1 ? d.plan.mealOne : d.plan.mealMany}
                     </Muted>
                   </View>
                 </Pressable>
@@ -589,7 +598,7 @@ export default function WeeksScreen() {
             })}
           </View>
           {pastWeeks.length === 0 ? (
-            <Muted>Planned weeks land here once they wrap up.</Muted>
+            <Muted>{d.plan.pastWeeksEmpty}</Muted>
           ) : null}
         </View>
         </>

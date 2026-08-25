@@ -13,6 +13,7 @@ import { useEffect } from 'react';
 import { ActivityIndicator, Platform, View } from 'react-native';
 
 import { AuthProvider, useAuth } from '@/lib/auth';
+import { LanguageProvider } from '@/lib/i18n';
 import { ThemeProvider, useTheme } from '@/lib/theme';
 
 // Keep the splash up until the display faces are ready (design.md §Type).
@@ -97,9 +98,11 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider>
-      <AuthProvider>
-        <RootStack />
-      </AuthProvider>
+      <LanguageProvider>
+        <AuthProvider>
+          <RootStack />
+        </AuthProvider>
+      </LanguageProvider>
     </ThemeProvider>
   );
 }
