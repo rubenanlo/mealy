@@ -66,7 +66,7 @@ import { useImageUrl } from '@/lib/media';
 import { useReducedMotion } from '@/lib/motion';
 import { type MealSlot, weekStart } from '@/lib/plan';
 import { assignRecipeToSlot, isRecipeUntouched } from '@/lib/recipes';
-import { rescaleIngredients, servingsFactor } from '@/lib/servings';
+import { entryServings, rescaleIngredients, servingsFactor } from '@/lib/servings';
 import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, minTapTarget, radius, screenPadding, useTheme } from '@/lib/theme';
 import { localizeContent, queueRecipeTranslation, type TranslationRow } from '@/lib/translations';
@@ -100,6 +100,8 @@ interface RecipeDetail {
   fodmap_override: 'low' | 'moderate' | 'high' | null;
   /** Planner classification; null is treated as 'main' (lunch/dinner). */
   meal_type: 'main' | 'breakfast' | 'dessert' | 'side' | null;
+  /** Bumped on every edit — used to ignore not-yet-regenerated translations. */
+  updated_at: string | null;
 }
 
 interface SourceRow {
@@ -396,7 +398,11 @@ export default function RecipeSheetScreen() {
   const recipeRef = useRef<RecipeDetail | null>(null);
 
   const [recipe, setRecipe] = useState<RecipeDetail | null>(null);
-  const [translation, setTranslation] = useState<TranslationRow | null>(null);
+  const [translation, setTranslation] = useState<
+    (TranslationRow & { translated_at: string | null }) | null
+  >(null);
+  /** Live "who eats this" servings for this week's plan (null = not planned). */
+  const [livePlanServings, setLivePlanServings] = useState<number | null>(null);
   const [sources, setSources] = useState<SourceRow[]>([]);
   const [images, setImages] = useState<ImageRow[]>([]);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -469,7 +475,7 @@ export default function RecipeSheetScreen() {
       supabase.from('recipe_images').select('id, storage_path, position').eq('recipe_id', id).order('position'),
       supabase
         .from('recipe_translations')
-        .select('locale, title, ingredients, steps')
+        .select('locale, title, ingredients, steps, translated_at')
         .eq('recipe_id', id)
         .eq('locale', locale)
         .maybeSingle(),
@@ -483,16 +489,36 @@ export default function RecipeSheetScreen() {
     if (r.data) setRecipe(r.data as RecipeDetail);
     if (s.data) setSources(s.data as SourceRow[]);
     if (i.data) setImages(i.data as ImageRow[]);
-    setTranslation((t.data as TranslationRow | null) ?? null);
+    setTranslation((t.data as (TranslationRow & { translated_at: string | null }) | null) ?? null);
     if (weekPlan.data) {
-      const { count } = await supabase
-        .from('plan_entries')
-        .select('id', { count: 'exact', head: true })
-        .eq('meal_plan_id', weekPlan.data.id)
-        .eq('recipe_id', id);
-      setInThisWeek((count ?? 0) > 0);
+      // Live meal servings: reflects who eats this right now, so quantities
+      // rescale immediately when people/guests are added to the meal.
+      const [{ data: entryRows }, { data: personRows }] = await Promise.all([
+        supabase
+          .from('plan_entries')
+          .select('person_ids, guest_count')
+          .eq('meal_plan_id', weekPlan.data.id)
+          .eq('recipe_id', id),
+        supabase.from('persons').select('is_employee').eq('household_id', householdId),
+      ]);
+      const entries = (entryRows as { person_ids: string[]; guest_count: number }[]) ?? [];
+      setInThisWeek(entries.length > 0);
+      if (entries.length > 0) {
+        const eaterCount = (((personRows as { is_employee: boolean }[]) ?? [])).filter(
+          (p) => !p.is_employee
+        ).length;
+        // Planned more than once this week: scale to the largest meal.
+        setLivePlanServings(
+          Math.max(
+            ...entries.map((e) => entryServings(e.person_ids ?? [], e.guest_count ?? 0, eaterCount))
+          )
+        );
+      } else {
+        setLivePlanServings(null);
+      }
     } else {
       setInThisWeek(false);
+      setLivePlanServings(null);
     }
   }, [id, householdId, locale]);
 
@@ -960,18 +986,30 @@ export default function RecipeSheetScreen() {
   }
 
   const category = resolveProteinCategory(recipe.tags, recipe.ingredients, canonicalIndex);
-  // When reached from the planner / "what's next", scale ingredient amounts to
-  // that meal's servings (eaters + guests). Display only — the recipe itself is
-  // never rewritten, so opening it from the library shows the base amounts.
-  const planServings = planServingsParam ? parseInt(planServingsParam, 10) : null;
+  // Scale ingredient amounts to the meal's servings (eaters + guests) whenever
+  // the recipe is planned this week — live from the plan, so adding people to
+  // the meal updates the quantities on the next load. The route param is only
+  // the fallback while the live value hasn't loaded. Display only — the
+  // recipe's stored quantities always stay at its own base yield.
+  const planServings =
+    livePlanServings ?? (planServingsParam ? parseInt(planServingsParam, 10) : null);
   const planFactor =
     planServings != null ? servingsFactor(planServings, recipe.servings) : null;
   // Active-locale translation, used for DISPLAY only. Edits always operate on
   // the original content; the fidelity guard (same counts) lets flags/matches
   // keyed on original raws pair with translated lines by index. A stale or
   // mismatched translation is ignored rather than half-applied.
+  // Freshness: after an edit (e.g. a servings change rescaled the parsed
+  // quantities) the translations regenerate asynchronously — until the fresh
+  // rows land, the stale ones would show the OLD quantities, so ignore any
+  // translation older than the recipe's last edit.
+  const translationFresh =
+    !translation?.translated_at ||
+    !recipe.updated_at ||
+    translation.translated_at >= recipe.updated_at;
   const contentTranslation =
     translation &&
+    translationFresh &&
     translation.ingredients.length === recipe.ingredients.length &&
     translation.steps.length === recipe.steps.length
       ? translation
