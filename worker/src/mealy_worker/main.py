@@ -23,6 +23,7 @@ from .matching import IngredientMatch, match_ingredients
 from .models import CanonicalRecipe, IngestResult, Verbatim
 from .structure import structure_text
 from .translate import TranslateRequest, TranslateResponse, translate_recipe
+from .units import UnitConversion, classify_units
 
 app = FastAPI(title="Mealy Worker", version="0.1.0")
 
@@ -55,6 +56,14 @@ class ImageUrlBody(BaseModel):
 
 class JobBody(BaseModel):
     job_id: str
+
+
+class UnitsBody(BaseModel):
+    units: list[str]
+
+
+class UnitsResponse(BaseModel):
+    conversions: list[UnitConversion]
 
 
 @app.get("/health")
@@ -92,6 +101,14 @@ async def match_ingredients_route(
 ) -> MatchResponse:
     """LLM fallback matcher: raw lines → candidate slug or null (Phase 2 §4)."""
     return MatchResponse(matches=await match_ingredients(body.lines, body.candidates))
+
+
+@app.post("/units/classify", response_model=UnitsResponse)
+async def classify_units_route(
+    body: UnitsBody, _claims: dict = Depends(verify_token)
+) -> UnitsResponse:
+    """LLM fallback unit classifier for grocery aggregation (units.py)."""
+    return UnitsResponse(conversions=await classify_units(body.units))
 
 
 @app.post("/jobs/run", status_code=202)

@@ -191,13 +191,33 @@ export default function PersonScreen() {
   };
 
   const remove = () => {
-    Alert.alert(d.person.removeTitle, fmt(d.person.removeBody, { name }), [
+    // A linked login must go with the person — otherwise it lingers as an
+    // unlinked member with full access (household_members.person_id is
+    // on delete set null). Owners can't be revoked this way.
+    const revokable =
+      linkedMember && linkedMember.user_id !== session?.user.id && linkedMember.role === 'member'
+        ? linkedMember
+        : null;
+    const body = revokable
+      ? fmt(d.person.removeBodyWithAccess, {
+          name,
+          email: revokable.email ?? d.settings.unknownMember,
+        })
+      : fmt(d.person.removeBody, { name });
+    Alert.alert(d.person.removeTitle, body, [
       { text: d.common.cancel, style: 'cancel' },
       {
         text: d.person.remove,
         style: 'destructive',
         onPress: () => {
           void (async () => {
+            if (revokable) {
+              // Deletes the auth account entirely; membership cascades.
+              await supabase.functions.invoke('remove-member', {
+                body: { user_id: revokable.user_id },
+              });
+            }
+            await supabase.from('invites').delete().eq('person_id', id);
             await supabase.from('persons').delete().eq('id', id);
             router.back();
           })();

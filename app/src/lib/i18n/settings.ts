@@ -30,6 +30,11 @@ const en = {
   roleMember: 'member',
   pending: 'pending',
   revokeInvite: 'Revoke invite for {email}',
+  revokeMemberA11y: 'Remove member {email}',
+  revokeMemberTitle: 'Remove this member?',
+  revokeMemberBody:
+    '{email} will lose access and their account will be deleted entirely. Recipes and plans they added stay with the family.',
+  revokeMemberFailedTitle: 'Could not remove the member',
   inviteHint: 'Invited members get full access to every recipe and plan in this family.',
   emailAddress: 'Email address',
   invite: 'Invite',
@@ -94,6 +99,11 @@ const es: typeof en = {
   roleMember: 'miembro',
   pending: 'pendiente',
   revokeInvite: 'Revocar invitación de {email}',
+  revokeMemberA11y: 'Eliminar al miembro {email}',
+  revokeMemberTitle: '¿Eliminar a este miembro?',
+  revokeMemberBody:
+    '{email} perderá el acceso y su cuenta se eliminará por completo. Las recetas y planes que añadió se conservan en la familia.',
+  revokeMemberFailedTitle: 'No se pudo eliminar al miembro',
   inviteHint:
     'Los miembros invitados tienen acceso completo a todas las recetas y planes de esta familia.',
   emailAddress: 'Correo electrónico',
@@ -159,6 +169,11 @@ const fr: typeof en = {
   roleMember: 'membre',
   pending: 'en attente',
   revokeInvite: "Révoquer l'invitation de {email}",
+  revokeMemberA11y: 'Retirer le membre {email}',
+  revokeMemberTitle: 'Retirer ce membre ?',
+  revokeMemberBody:
+    "{email} perdra l'accès et son compte sera entièrement supprimé. Les recettes et menus ajoutés restent dans la famille.",
+  revokeMemberFailedTitle: 'Impossible de retirer le membre',
   inviteHint:
     'Les membres invités ont un accès complet à toutes les recettes et tous les plans de cette famille.',
   emailAddress: 'Adresse e-mail',
@@ -224,6 +239,11 @@ const it: typeof en = {
   roleMember: 'membro',
   pending: 'in attesa',
   revokeInvite: "Revoca l'invito per {email}",
+  revokeMemberA11y: 'Rimuovi il membro {email}',
+  revokeMemberTitle: 'Rimuovere questo membro?',
+  revokeMemberBody:
+    "{email} perderà l'accesso e il suo account sarà eliminato del tutto. Le ricette e i piani aggiunti restano alla famiglia.",
+  revokeMemberFailedTitle: 'Impossibile rimuovere il membro',
   inviteHint:
     'I membri invitati hanno accesso completo a tutte le ricette e i piani di questa famiglia.',
   emailAddress: 'Indirizzo email',

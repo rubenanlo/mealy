@@ -280,6 +280,50 @@ export async function matchIngredients(
 }
 
 // ---------------------------------------------------------------------------
+// Unit classification fallback (groceries aggregation).
+// ---------------------------------------------------------------------------
+
+export interface UnitConversionReply {
+  unit: string;
+  kind: 'mass' | 'volume' | 'count' | null;
+  factor: number | null;
+}
+
+/**
+ * Ask the worker to classify unknown units of measure. Returns null when the
+ * worker is unreachable — callers degrade gracefully (units stay unmerged,
+ * nothing is cached).
+ */
+export async function classifyUnits(units: string[]): Promise<UnitConversionReply[] | null> {
+  if (units.length === 0) return [];
+  if (!WORKER_URL) return null;
+  try {
+    const token = await accessToken();
+    const response = await fetch(`${WORKER_URL}/units/classify`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ units }),
+    });
+    if (!response.ok) return null;
+    const payload = (await response.json()) as { conversions?: unknown };
+    if (!Array.isArray(payload.conversions)) return null;
+    // Defense in depth: only accept well-formed kinds and finite factors.
+    return payload.conversions
+      .filter(
+        (c): c is { unit: string; kind: unknown; factor: unknown } =>
+          !!c && typeof (c as { unit?: unknown }).unit === 'string'
+      )
+      .map((c) => ({
+        unit: c.unit,
+        kind: c.kind === 'mass' || c.kind === 'volume' || c.kind === 'count' ? c.kind : null,
+        factor: typeof c.factor === 'number' && Number.isFinite(c.factor) && c.factor > 0 ? c.factor : null,
+      }));
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Re-extraction from a stored source (Phase 2 Task 13 / spec Part 6).
 // ---------------------------------------------------------------------------
 

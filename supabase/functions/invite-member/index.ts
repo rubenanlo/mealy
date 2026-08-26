@@ -49,7 +49,11 @@ Deno.serve(async (req) => {
     .maybeSingle();
   if (!membership) return json(403, { error: 'not a member of this household' });
 
-  const { error } = await admin.auth.admin.inviteUserByEmail(email);
+  // Lands on the worker's set-your-password page (must be in the Auth
+  // redirect allowlist, else Supabase falls back to the Site URL).
+  const { error } = await admin.auth.admin.inviteUserByEmail(email, {
+    redirectTo: 'https://mealy-menu.mealy-rubenanlo.workers.dev/invite',
+  });
   if (error) {
     // Already-registered users need no email: their next sign-in claims the invite.
     const already = /already/i.test(error.message);

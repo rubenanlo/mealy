@@ -98,6 +98,32 @@ export default function AccountScreen() {
     await load();
   };
 
+  const myRole = members.find((m) => m.user_id === session?.user.id)?.role;
+
+  /** Owner-only: delete a member's account entirely (remove-member function). */
+  const revokeMember = (member: MemberRow) => {
+    const email = member.email ?? d.settings.unknownMember;
+    Alert.alert(d.settings.revokeMemberTitle, fmt(d.settings.revokeMemberBody, { email }), [
+      { text: d.common.cancel, style: 'cancel' },
+      {
+        text: d.common.delete,
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            const { error } = await supabase.functions.invoke('remove-member', {
+              body: { user_id: member.user_id },
+            });
+            if (error) {
+              Alert.alert(d.settings.revokeMemberFailedTitle, d.common.genericError);
+              return;
+            }
+            await load();
+          })();
+        },
+      },
+    ]);
+  };
+
   const copyCode = async (code: string) => {
     await Clipboard.setStringAsync(code);
     setCopiedCode(code);
@@ -201,19 +227,44 @@ export default function AccountScreen() {
               accessibilityLabel={fmt(d.settings.editPerson, { name: person.name })}
             />
           ))}
-          {members.filter((m) => !m.person_id).map((member) => (
-            <SettingsRow
-              key={member.user_id}
-              label={member.email ?? d.settings.unknownMember}
-              value={
-                member.user_id === session?.user.id
-                  ? d.settings.you
-                  : member.role === 'owner'
-                    ? d.settings.roleOwner
-                    : d.settings.roleMember
-              }
-            />
-          ))}
+          {members.filter((m) => !m.person_id).map((member) => {
+            const label = member.email ?? d.settings.unknownMember;
+            const removable =
+              myRole === 'owner' &&
+              member.user_id !== session?.user.id &&
+              member.role === 'member';
+            return (
+              <View
+                key={member.user_id}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 10,
+                  minHeight: controlHeight + 4,
+                  paddingHorizontal: 16,
+                }}
+              >
+                <Body style={{ flex: 1 }}>{label}</Body>
+                <Muted>
+                  {member.user_id === session?.user.id
+                    ? d.settings.you
+                    : member.role === 'owner'
+                      ? d.settings.roleOwner
+                      : d.settings.roleMember}
+                </Muted>
+                {removable ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={fmt(d.settings.revokeMemberA11y, { email: label })}
+                    onPress={() => revokeMember(member)}
+                    hitSlop={8}
+                  >
+                    <Ionicons name="close-circle-outline" size={20} color={colors.textMuted} />
+                  </Pressable>
+                ) : null}
+              </View>
+            );
+          })}
           {invites.filter((i) => !i.person_id).map((inv) => (
             <View
               key={inv.email}

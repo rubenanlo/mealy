@@ -40,6 +40,8 @@ export interface UnmatchedItem {
   key: string; // normalized raw — grocery_checks item_key
   raw: string;
   recipeTitle: string;
+  /** Source recipe id, when known — lets the recipe card deep-link. */
+  recipeId?: string;
 }
 
 export interface AggregateResult {
@@ -58,10 +60,27 @@ const MASS_UNITS: Record<string, number> = {
   gr: 1,
   gramme: 1,
   grammes: 1,
+  gram: 1,
+  grams: 1,
+  gramo: 1,
+  gramos: 1,
+  grammo: 1,
+  grammi: 1,
   kg: 1000,
+  kilo: 1000,
+  kilos: 1000,
   mg: 0.001,
+  oz: 28.35,
+  ounce: 28.35,
+  ounces: 28.35,
+  lb: 453.6,
+  lbs: 453.6,
+  pound: 453.6,
+  pounds: 453.6,
 };
 
+// Spoons/cups are nominal ml (tbsp 15, tsp 5, cup 240) across EN/FR/ES/IT,
+// including the misspellings recipes actually contain (tbps, tbs).
 const VOLUME_UNITS: Record<string, number> = {
   ml: 1,
   cl: 10,
@@ -69,25 +88,146 @@ const VOLUME_UNITS: Record<string, number> = {
   l: 1000,
   litre: 1000,
   litres: 1000,
+  liter: 1000,
+  liters: 1000,
+  litro: 1000,
+  litros: 1000,
+  litri: 1000,
   'c. à s.': 15,
+  'c. à s': 15,
   cas: 15,
+  'càs': 15,
   'cuillère à soupe': 15,
   'cuillères à soupe': 15,
   'c. à c.': 5,
+  'c. à c': 5,
   cac: 5,
+  'càc': 5,
   'cuillère à café': 5,
   'cuillères à café': 5,
+  tbsp: 15,
+  tbs: 15,
+  tbps: 15,
+  tablespoon: 15,
+  tablespoons: 15,
+  tsp: 5,
+  teaspoon: 5,
+  teaspoons: 5,
+  cup: 240,
+  cups: 240,
+  'fl oz': 29.6,
+  cucharada: 15,
+  cucharadas: 15,
+  cda: 15,
+  cucharadita: 5,
+  cucharaditas: 5,
+  cdta: 5,
+  taza: 240,
+  tazas: 240,
+  cucchiaio: 15,
+  cucchiai: 15,
+  cucchiaino: 5,
+  cucchiaini: 5,
+  tazza: 240,
+  tazze: 240,
+  verre: 200,
+  verres: 200,
 };
 
-const COUNT_UNITS = new Set(['', 'pièce', 'pièces', 'piece', 'pieces', 'unité', 'unités', 'u']);
+const COUNT_UNITS = new Set([
+  '',
+  'pièce',
+  'pièces',
+  'piece',
+  'pieces',
+  'unité',
+  'unités',
+  'u',
+  'unidad',
+  'unidades',
+  'pezzo',
+  'pezzi',
+  // Size adjectives extracted as "units" ("6 large eggs", "1 large onion").
+  'whole',
+  'large',
+  'lg',
+  'medium',
+  'med',
+  'small',
+  'gros',
+  'grosse',
+  'grosses',
+  'moyen',
+  'moyenne',
+  'petit',
+  'petite',
+  'petits',
+  'petites',
+  'grande',
+  'grandes',
+  'mediano',
+  'medianos',
+  'pequeño',
+  'pequeños',
+  'grandi',
+  'medio',
+  'piccolo',
+  'piccoli',
+]);
+
+/**
+ * Egg-style size letters ("4 huevos L"). Ambiguous with real measures
+ * (litres!), so they only count as size marks on countable ingredients —
+ * ones with a per-piece weight and no liquid density.
+ */
+const SIZE_LETTERS = new Set(['l', 'm', 's', 'xl', 'xxl']);
+
+function isSizeMark(
+  u: string,
+  canonical: Pick<CanonicalIngredient, 'avg_unit_weight_g' | 'density_g_per_ml'>
+): boolean {
+  return (
+    SIZE_LETTERS.has(u) &&
+    canonical.avg_unit_weight_g !== null &&
+    canonical.density_g_per_ml === null
+  );
+}
+
+/**
+ * Cached AI classifications for units the static tables don't know
+ * (unit_conversions table, resolved via lib/units.ts). Key: trimmed
+ * lowercase unit. factor = g per unit (mass) / ml per unit (volume).
+ */
+export interface UnitOverride {
+  kind: 'mass' | 'volume' | 'count';
+  factor: number | null;
+}
+export type UnitOverrides = Map<string, UnitOverride>;
 
 /** Classify a unit string; unknown units become their own 'other' family. */
-export function classifyUnit(unit: string | null): UnitFamily {
+export function classifyUnit(unit: string | null, overrides?: UnitOverrides): UnitFamily {
   const u = (unit ?? '').trim().toLowerCase();
   if (COUNT_UNITS.has(u)) return { kind: 'count' };
   if (u in MASS_UNITS) return { kind: 'mass', grams: MASS_UNITS[u] };
   if (u in VOLUME_UNITS) return { kind: 'volume', ml: VOLUME_UNITS[u] };
+  const override = overrides?.get(u);
+  if (override) {
+    if (override.kind === 'count') return { kind: 'count' };
+    if (override.kind === 'mass' && override.factor) return { kind: 'mass', grams: override.factor };
+    if (override.kind === 'volume' && override.factor) return { kind: 'volume', ml: override.factor };
+  }
   return { kind: 'other', label: u };
+}
+
+/** classifyUnit with ingredient context: size letters on countables → count. */
+export function classifyUnitFor(
+  unit: string | null,
+  canonical: Pick<CanonicalIngredient, 'avg_unit_weight_g' | 'density_g_per_ml'>,
+  overrides?: UnitOverrides
+): UnitFamily {
+  const u = (unit ?? '').trim().toLowerCase();
+  if (isSizeMark(u, canonical)) return { kind: 'count' };
+  return classifyUnit(unit, overrides);
 }
 
 /** Round to a kitchen-sane precision. */
@@ -114,9 +254,10 @@ function formatMl(ml: number): string {
 export function lineGrams(
   quantity: number,
   unit: string | null,
-  canonical: Pick<CanonicalIngredient, 'avg_unit_weight_g' | 'density_g_per_ml'>
+  canonical: Pick<CanonicalIngredient, 'avg_unit_weight_g' | 'density_g_per_ml'>,
+  overrides?: UnitOverrides
 ): number | null {
-  const family = classifyUnit(unit);
+  const family = classifyUnitFor(unit, canonical, overrides);
   switch (family.kind) {
     case 'mass':
       return quantity * family.grams;
@@ -144,7 +285,8 @@ function partQty(line: AggregateLine): string {
  */
 export function aggregate(
   lines: AggregateLine[],
-  match: (line: AggregateLine) => CanonicalIngredient | null
+  match: (line: AggregateLine) => CanonicalIngredient | null,
+  overrides?: UnitOverrides
 ): AggregateResult {
   const buckets = new Map<string, { canonical: CanonicalIngredient; lines: AggregateLine[] }>();
   const unmatched: UnmatchedItem[] = [];
@@ -152,7 +294,12 @@ export function aggregate(
   for (const line of lines) {
     const canonical = match(line);
     if (!canonical) {
-      unmatched.push({ key: normalizeRaw(line.raw || line.name), raw: line.raw || line.name, recipeTitle: line.recipeTitle });
+      unmatched.push({
+        key: normalizeRaw(line.raw || line.name),
+        raw: line.raw || line.name,
+        recipeTitle: line.recipeTitle,
+        recipeId: line.recipeId,
+      });
       continue;
     }
     const bucket = buckets.get(canonical.slug) ?? { canonical, lines: [] };
@@ -171,14 +318,14 @@ export function aggregate(
 
     for (const line of bucketLines) {
       if (line.quantity === null) continue; // presence-only line
-      const asGrams = lineGrams(line.quantity, line.unit, canonical);
+      const asGrams = lineGrams(line.quantity, line.unit, canonical, overrides);
       if (asGrams !== null) {
         grams += asGrams;
         hasGrams = true;
         continue;
       }
       unconverted += 1;
-      const family = classifyUnit(line.unit);
+      const family = classifyUnitFor(line.unit, canonical, overrides);
       if (family.kind === 'volume') ml += line.quantity * family.ml;
       else if (family.kind === 'count') count += line.quantity;
       else if (family.kind === 'other') {

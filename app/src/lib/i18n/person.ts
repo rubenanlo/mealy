@@ -34,6 +34,8 @@ const en = {
   removePerson: 'Remove this person',
   removeTitle: 'Remove this person?',
   removeBody: '{name} will be removed from the household.',
+  removeBodyWithAccess:
+    '{name} will be removed from the household, and the account {email} will be deleted entirely.',
   remove: 'Remove',
 };
 
@@ -71,6 +73,8 @@ const es: typeof en = {
   removePerson: 'Eliminar a esta persona',
   removeTitle: '¿Eliminar a esta persona?',
   removeBody: '{name} se eliminará del hogar.',
+  removeBodyWithAccess:
+    '{name} se eliminará del hogar y la cuenta {email} se eliminará por completo.',
   remove: 'Eliminar',
 };
 
@@ -108,6 +112,8 @@ const fr: typeof en = {
   removePerson: 'Supprimer cette personne',
   removeTitle: 'Supprimer cette personne ?',
   removeBody: '{name} sera retiré du foyer.',
+  removeBodyWithAccess:
+    '{name} sera retiré du foyer et le compte {email} sera entièrement supprimé.',
   remove: 'Supprimer',
 };
 
@@ -145,6 +151,8 @@ const it: typeof en = {
   removePerson: 'Rimuovi questa persona',
   removeTitle: 'Rimuovere questa persona?',
   removeBody: '{name} sarà rimosso dal nucleo familiare.',
+  removeBodyWithAccess:
+    '{name} sarà rimosso dal nucleo familiare e l’account {email} sarà eliminato del tutto.',
   remove: 'Rimuovi',
 };
 

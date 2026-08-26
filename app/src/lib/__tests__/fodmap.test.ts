@@ -14,6 +14,7 @@ const canonical = (
   name_en: over.slug,
   name_fr: over.slug,
   name_es: over.slug,
+  name_it: null,
   aliases: [],
   category: null,
   aisle: null,
