@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Image,
   Platform,
@@ -42,6 +43,14 @@ import {
 } from "@/components/ui";
 import { useAuth, useHousehold } from "@/lib/auth";
 import { matchCanonical, normalizeRaw } from "@/lib/canonical";
+import {
+  dismissCaptureJob,
+  JOB_ERROR_NO_RECIPE,
+  loadActiveCaptureJobs,
+  retriggerStaleJobs,
+  retryCaptureJob,
+  type CaptureJobRow,
+} from "@/lib/capture-jobs";
 import type { ProteinCategory } from "@/lib/category";
 import { resolveProteinCategory } from "@/lib/category";
 import { computeRecipeFodmap } from "@/lib/fodmap";
@@ -95,6 +104,7 @@ export default function HomeScreen() {
     new Map(),
   );
   const [folderView, setFolderView] = useState<FolderView>("grid");
+  const [captureJobs, setCaptureJobs] = useState<CaptureJobRow[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -138,6 +148,7 @@ export default function HomeScreen() {
       { data: folderRows },
       { data: linkRows },
       { data: memberRows },
+      jobRows,
     ] = await Promise.all([
       supabase
         .from("recipes")
@@ -170,7 +181,12 @@ export default function HomeScreen() {
         .from("household_members")
         .select("user_id, email")
         .eq("household_id", householdId),
+      loadActiveCaptureJobs(householdId),
     ]);
+    setCaptureJobs(jobRows);
+    // Heal lost pings (app closed too fast / worker was down); the worker
+    // claims jobs atomically so duplicates are harmless.
+    retriggerStaleJobs(jobRows);
     if (recipeRows) {
       // Localize titles once at the fetch boundary, then drop the embed so
       // downstream state keeps the plain RecipeListItem shape.
@@ -241,6 +257,17 @@ export default function HomeScreen() {
       void load();
     }, [load]),
   );
+
+  // While a background import runs, poll so its card resolves into the
+  // finished recipe without a manual refresh.
+  useEffect(() => {
+    const active = captureJobs.some(
+      (j) => j.status === "pending" || j.status === "processing",
+    );
+    if (!active) return;
+    const timer = setInterval(() => void load(), 4000);
+    return () => clearInterval(timer);
+  }, [captureJobs, load]);
 
   // Recipes not planned within the rest window, newest first, max 6; hero = first.
   const suggestions = useMemo(
@@ -531,6 +558,15 @@ export default function HomeScreen() {
 
         <View style={{ marginBottom: 20 }} />
 
+        {/* Background imports (capture_jobs): running + failed, newest first. */}
+        {captureJobs.length > 0 ? (
+          <View style={{ gap: 10, marginBottom: 20 }}>
+            {captureJobs.map((job) => (
+              <CaptureJobCard key={job.id} job={job} onChanged={() => void load()} />
+            ))}
+          </View>
+        ) : null}
+
         {!loaded ? (
           <Loading />
         ) : recipes.length === 0 ? (
@@ -801,6 +837,90 @@ export default function HomeScreen() {
         />
       ) : null}
     </SafeAreaView>
+  );
+}
+
+/** Background import status card: spinner while running, retry/dismiss on failure. */
+function CaptureJobCard({
+  job,
+  onChanged,
+}: {
+  job: CaptureJobRow;
+  onChanged: () => void;
+}) {
+  const { colors } = useTheme();
+  const { d } = useI18n();
+  const failed = job.status === "failed";
+  const detail =
+    job.error === JOB_ERROR_NO_RECIPE || !job.error
+      ? d.library.importNoRecipe
+      : job.error;
+  return (
+    <View
+      style={{
+        backgroundColor: colors.card,
+        borderRadius: radius.card,
+        padding: 14,
+        gap: 8,
+      }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+        {failed ? (
+          <Ionicons name="alert-circle-outline" size={20} color={colors.danger} />
+        ) : (
+          <ActivityIndicator size="small" color={colors.textMuted} />
+        )}
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text
+            style={{
+              color: failed ? colors.danger : colors.text,
+              fontSize: fontSize.base,
+              fontFamily: fonts.uiSemi,
+            }}
+          >
+            {failed ? d.library.importFailed : d.library.importingRecipe}
+          </Text>
+          <Muted numberOfLines={1}>{job.input}</Muted>
+        </View>
+      </View>
+      {failed ? (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 18 }}>
+          <Muted style={{ flex: 1 }} numberOfLines={2}>
+            {detail}
+          </Muted>
+          {(
+            [
+              [
+                d.library.importRetry,
+                () => void retryCaptureJob(job.id).then(onChanged),
+              ],
+              [
+                d.library.importDismiss,
+                () => void dismissCaptureJob(job.id).then(onChanged),
+              ],
+            ] as const
+          ).map(([label, onPress]) => (
+            <Pressable
+              key={label}
+              accessibilityRole="button"
+              onPress={onPress}
+              hitSlop={8}
+              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+            >
+              <Text
+                style={{
+                  color: colors.text,
+                  fontSize: fontSize.base,
+                  fontFamily: fonts.uiSemi,
+                }}
+              >
+                {label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+    </View>
   );
 }
 

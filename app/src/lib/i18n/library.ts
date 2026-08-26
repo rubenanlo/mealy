@@ -38,6 +38,11 @@ const en = {
   folderFallback: 'Folder',
   folderEmptyMine: 'Nothing saved here yet — use the bookmark on any recipe.',
   folderEmptyOther: 'Nothing saved here yet.',
+  importingRecipe: 'Importing recipe…',
+  importFailed: 'Import failed',
+  importNoRecipe: 'No recipe found in that link or text.',
+  importRetry: 'Retry',
+  importDismiss: 'Dismiss',
 };
 
 const es: typeof en = {
@@ -76,6 +81,11 @@ const es: typeof en = {
   folderFallback: 'Carpeta',
   folderEmptyMine: 'Aún no hay nada guardado aquí. Usa el marcador en cualquier receta.',
   folderEmptyOther: 'Aún no hay nada guardado aquí.',
+  importingRecipe: 'Importando receta…',
+  importFailed: 'Importación fallida',
+  importNoRecipe: 'No se encontró ninguna receta en ese enlace o texto.',
+  importRetry: 'Reintentar',
+  importDismiss: 'Descartar',
 };
 
 const fr: typeof en = {
@@ -114,6 +124,11 @@ const fr: typeof en = {
   folderFallback: 'Dossier',
   folderEmptyMine: 'Rien d’enregistré ici pour l’instant. Utilisez le marque-page sur une recette.',
   folderEmptyOther: 'Rien d’enregistré ici pour l’instant.',
+  importingRecipe: 'Importation de la recette…',
+  importFailed: 'Échec de l’importation',
+  importNoRecipe: 'Aucune recette trouvée dans ce lien ou ce texte.',
+  importRetry: 'Réessayer',
+  importDismiss: 'Ignorer',
 };
 
 const it: typeof en = {
@@ -152,6 +167,11 @@ const it: typeof en = {
   folderFallback: 'Cartella',
   folderEmptyMine: 'Ancora niente salvato qui. Usa il segnalibro su qualsiasi ricetta.',
   folderEmptyOther: 'Ancora niente salvato qui.',
+  importingRecipe: 'Importazione della ricetta…',
+  importFailed: 'Importazione non riuscita',
+  importNoRecipe: 'Nessuna ricetta trovata in quel link o testo.',
+  importRetry: 'Riprova',
+  importDismiss: 'Ignora',
 };
 
 export const library = { en, es, fr, it };

@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Body, Button, Eyebrow, Field, Muted, Title } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
+import { createCaptureJob, createMediaCaptureJob } from '@/lib/capture-jobs';
 import { fmt, useI18n } from '@/lib/i18n';
 import { createBlankRecipe } from '@/lib/recipes';
 import { supabase } from '@/lib/supabase';
@@ -98,12 +99,44 @@ export default function CaptureScreen() {
     }
   };
 
+  /**
+   * All automatic captures import in the background (capture_jobs): the
+   * sheet closes immediately and the library shows the progress. The planner
+   * flow keeps the synchronous path throughout — it needs the finished
+   * recipe to fill its slot.
+   */
   const capturePasted = () => {
-    const kind = detectCaptureKind(input);
-    void run((ctx) =>
-      kind === 'text' ? captureFromText(input, ctx) : captureFromUrl(input, ctx)
-    );
+    if (assigning) {
+      const kind = detectCaptureKind(input);
+      void run((ctx) =>
+        kind === 'text' ? captureFromText(input, ctx) : captureFromUrl(input, ctx)
+      );
+      return;
+    }
+    void queueCapture();
   };
+
+  /** Shared background-queue wrapper: close the sheet once the job exists. */
+  const queue = async (create: (ctx: Ctx) => Promise<string>) => {
+    setBusy(true);
+    setError(null);
+    setNeedsPaste(false);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const userId = data.session?.user.id;
+      if (!userId) throw new Error(d.capture.sessionExpired);
+      await create({ householdId: membership.householdId, userId });
+      router.back();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : d.capture.importError);
+      setBusy(false);
+    }
+  };
+
+  const queueCapture = () => queue((ctx) => createCaptureJob(input, ctx));
+
+  /** Planner flow (fill a specific slot) needs the finished recipe now. */
+  const assigning = Boolean(assignWeek || assignDay != null || assignSlot);
 
   const pickPhotos = async () => {
     const picked = await ImagePicker.launchImageLibraryAsync({
@@ -117,7 +150,13 @@ export default function CaptureScreen() {
       mimeType: a.mimeType ?? 'image/jpeg',
       fileName: a.fileName ?? null,
     }));
-    void run((ctx) => captureFromImages(assets, ctx));
+    if (assigning) {
+      void run((ctx) => captureFromImages(assets, ctx));
+      return;
+    }
+    void queue((ctx) =>
+      createMediaCaptureJob('images', assets, `${d.capture.photos} (${assets.length})`, ctx)
+    );
   };
 
   const pickPdf = async () => {
@@ -127,12 +166,16 @@ export default function CaptureScreen() {
     });
     if (picked.canceled || picked.assets.length === 0) return;
     const asset = picked.assets[0];
-    void run((ctx) =>
-      captureFromPdf(
-        { uri: asset.uri, mimeType: asset.mimeType ?? 'application/pdf', fileName: asset.name },
-        ctx
-      )
-    );
+    const media: MediaAsset = {
+      uri: asset.uri,
+      mimeType: asset.mimeType ?? 'application/pdf',
+      fileName: asset.name,
+    };
+    if (assigning) {
+      void run((ctx) => captureFromPdf(media, ctx));
+      return;
+    }
+    void queue((ctx) => createMediaCaptureJob('pdf', [media], asset.name ?? d.capture.pdf, ctx));
   };
 
   return (

@@ -176,10 +176,19 @@ export function Body({
 }
 
 /** Meta line — Franklin 500, 13, muted (design.md §Type). */
-export function Muted({ children, style }: { children: ReactNode; style?: StyleProp<TextStyle> }) {
+export function Muted({
+  children,
+  style,
+  numberOfLines,
+}: {
+  children: ReactNode;
+  style?: StyleProp<TextStyle>;
+  numberOfLines?: number;
+}) {
   const { colors } = useTheme();
   return (
     <Text
+      numberOfLines={numberOfLines}
       style={[
         { color: colors.textMuted, fontSize: fontSize.meta, lineHeight: 19, fontFamily: fonts.uiMedium },
         style,

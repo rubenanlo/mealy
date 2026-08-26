@@ -7,7 +7,7 @@ itself. All routes except ``/health`` require a Supabase access token.
 
 from __future__ import annotations
 
-from fastapi import Depends, File, HTTPException, UploadFile
+from fastapi import BackgroundTasks, Depends, File, HTTPException, UploadFile
 from fastapi import FastAPI
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -18,6 +18,7 @@ from .images import fetch_validated_image
 from .ingest.media import ingest_images, ingest_pdf
 from .ingest.social import ingest_social
 from .ingest.url import ingest_url
+from .jobs import run_capture_job
 from .matching import IngredientMatch, match_ingredients
 from .models import CanonicalRecipe, IngestResult, Verbatim
 from .structure import structure_text
@@ -50,6 +51,10 @@ class StructureBody(BaseModel):
 
 class ImageUrlBody(BaseModel):
     url: str
+
+
+class JobBody(BaseModel):
+    job_id: str
 
 
 @app.get("/health")
@@ -87,6 +92,19 @@ async def match_ingredients_route(
 ) -> MatchResponse:
     """LLM fallback matcher: raw lines → candidate slug or null (Phase 2 §4)."""
     return MatchResponse(matches=await match_ingredients(body.lines, body.candidates))
+
+
+@app.post("/jobs/run", status_code=202)
+async def run_job_route(
+    body: JobBody, background: BackgroundTasks, claims: dict = Depends(verify_token)
+) -> dict:
+    """Queue a background capture job (jobs.py) and return immediately.
+
+    The runner itself re-checks that the caller belongs to the job's
+    household before doing anything, since the service role bypasses RLS.
+    """
+    background.add_task(run_capture_job, body.job_id, claims.get("sub", ""))
+    return {"queued": True}
 
 
 @app.post("/ingest/social", response_model=IngestResult)
