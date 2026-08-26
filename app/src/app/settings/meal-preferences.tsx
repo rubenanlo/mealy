@@ -4,10 +4,20 @@ import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Body, Button, Eyebrow, Field, Muted, SettingsGroup, Title } from '@/components/ui';
+import { Stepper } from '@/components/preference-controls';
+import {
+  Body,
+  Button,
+  Eyebrow,
+  Field,
+  Muted,
+  SettingsGroup,
+  SettingsRow,
+  Title,
+} from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
-import { normalizeDietProfile, QUOTA_CATEGORIES, type DietProfile } from '@/lib/diet';
-import { fmt, useI18n } from '@/lib/i18n';
+import { normalizeDietProfile, type FodmapMode } from '@/lib/diet';
+import { useI18n } from '@/lib/i18n';
 import { normalizeMealTimes, parseHHMM, type MealTimes } from '@/lib/meal-times';
 import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
@@ -19,75 +29,11 @@ interface PersonRow {
   diet_profile: unknown;
 }
 
-function Stepper({
-  value,
-  onChange,
-  allowNull,
-  label,
-}: {
-  value: number | null;
-  onChange: (next: number | null) => void;
-  /** For max bounds: stepping past 7 yields null (no limit, shown ∞). */
-  allowNull?: boolean;
-  label: string;
-}) {
-  const { colors } = useTheme();
-  const { d } = useI18n();
-  const dec = () => {
-    if (value === null) onChange(7);
-    else if (value > 0) onChange(value - 1);
-  };
-  const inc = () => {
-    if (value === null) return;
-    if (value >= 7) onChange(allowNull ? null : 7);
-    else onChange(value + 1);
-  };
-  const buttonStyle = (pressed: boolean) => ({
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: pressed ? colors.cardPressed : 'transparent',
-  });
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={fmt(d.mealPrefs.decrease, { label })}
-        onPress={dec}
-        hitSlop={8}
-        style={({ pressed }) => buttonStyle(pressed)}
-      >
-        <Ionicons name="remove" size={18} color={colors.text} />
-      </Pressable>
-      <Text
-        style={{
-          color: colors.text,
-          fontSize: fontSize.base,
-          fontFamily: fonts.uiSemi,
-          fontVariant: ['tabular-nums'],
-          minWidth: 24,
-          textAlign: 'center',
-        }}
-      >
-        {value === null ? '∞' : value}
-      </Text>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={fmt(d.mealPrefs.increase, { label })}
-        onPress={inc}
-        hitSlop={8}
-        style={({ pressed }) => buttonStyle(pressed)}
-      >
-        <Ionicons name="add" size={18} color={colors.text} />
-      </Pressable>
-    </View>
-  );
-}
-
+/**
+ * Meal preferences, split in two: family-wide settings (suggestions, meal
+ * times, shared requirements) and per-person preferences (quotas, FODMAP,
+ * allergens, dislikes) reached through the person rows.
+ */
 export default function MealPreferencesScreen() {
   const { colors } = useTheme();
   const { d } = useI18n();
@@ -138,23 +84,6 @@ export default function MealPreferencesScreen() {
     }, [load])
   );
 
-  const updateQuota = async (
-    person: PersonRow,
-    category: string,
-    field: 'min' | 'max',
-    next: number | null
-  ) => {
-    const profile: DietProfile = normalizeDietProfile(person.diet_profile);
-    const targets = profile.proteinQuotas.targets.map((t) =>
-      t.category === category ? { ...t, [field]: next } : t
-    );
-    const updated = { ...profile, proteinQuotas: { period: 'week', targets } };
-    setPersons((prev) =>
-      prev.map((p) => (p.id === person.id ? { ...p, diet_profile: updated } : p))
-    );
-    await supabase.from('persons').update({ diet_profile: updated }).eq('id', person.id);
-  };
-
   const saveMealTimes = async () => {
     const values = [
       mealTimes.lunch.start,
@@ -185,14 +114,26 @@ export default function MealPreferencesScreen() {
     setTimeout(() => setNotesSaved(false), 2000);
   };
 
-  const diners = persons.filter((p) => !p.is_employee);
-
-  // Display labels only — the stored category values never change.
-  const categoryLabels: Record<string, string> = {
-    fish: d.mealPrefs.categoryFish,
-    meat: d.mealPrefs.categoryMeat,
-    vegetarian: d.mealPrefs.categoryVegetarian,
+  // Display labels only — the stored mode values never change.
+  const fodmapLabels: Record<FodmapMode, string> = {
+    off: d.person.fodmapOff,
+    elimination: d.person.fodmapElimination,
+    reintroduction: d.person.fodmapReintroduction,
+    personalized: d.person.fodmapPersonalized,
   };
+
+  const sectionHeader = (label: string) => (
+    <Text
+      style={{
+        color: colors.text,
+        fontSize: fontSize.cardTitle,
+        fontFamily: fonts.displaySemi,
+        marginTop: 12,
+      }}
+    >
+      {label}
+    </Text>
+  );
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bgGrouped }} edges={['top']}>
@@ -217,63 +158,11 @@ export default function MealPreferencesScreen() {
           <Body style={{ fontFamily: fonts.uiSemi }}>{d.mealPrefs.settings}</Body>
         </Pressable>
         <Title>{d.mealPrefs.title}</Title>
-        <Muted>{d.mealPrefs.quotasHint}</Muted>
 
-        {diners.map((person) => {
-          const profile = normalizeDietProfile(person.diet_profile);
-          return (
-            <View key={person.id} style={{ gap: 8, marginTop: 8 }}>
-              <Text
-                style={{
-                  color: colors.text,
-                  fontSize: fontSize.cardTitle,
-                  fontFamily: fonts.displaySemi,
-                }}
-              >
-                {person.name}
-              </Text>
-              <SettingsGroup>
-                {QUOTA_CATEGORIES.map(({ category, label }) => {
-                  const target = profile.proteinQuotas.targets.find(
-                    (t) => t.category === category
-                  )!;
-                  const displayLabel = categoryLabels[category] ?? label;
-                  return (
-                    <View
-                      key={category}
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 8,
-                        minHeight: 56,
-                        paddingHorizontal: 16,
-                      }}
-                    >
-                      <Body style={{ flex: 1 }}>{displayLabel}</Body>
-                      <Stepper
-                        value={target.min}
-                        label={fmt(d.mealPrefs.minimumOf, { label: displayLabel })}
-                        onChange={(v) => void updateQuota(person, category, 'min', v)}
-                      />
-                      <Muted>–</Muted>
-                      <Stepper
-                        value={target.max}
-                        allowNull
-                        label={fmt(d.mealPrefs.maximumOf, { label: displayLabel })}
-                        onChange={(v) => void updateQuota(person, category, 'max', v)}
-                      />
-                    </View>
-                  );
-                })}
-              </SettingsGroup>
-            </View>
-          );
-        })}
-        {diners.length === 0 ? (
-          <Muted>{d.mealPrefs.noPeople}</Muted>
-        ) : null}
+        {/* ---- Family-wide settings ---- */}
+        {sectionHeader(d.mealPrefs.familySection)}
 
-        <Eyebrow style={{ marginTop: 16 }}>{d.mealPrefs.suggestions}</Eyebrow>
+        <Eyebrow style={{ marginTop: 4 }}>{d.mealPrefs.suggestions}</Eyebrow>
         <Muted>{d.mealPrefs.suggestionsHint}</Muted>
         <SettingsGroup>
           <View
@@ -353,6 +242,28 @@ export default function MealPreferencesScreen() {
           kind="secondary"
           onPress={() => void saveHouseholdNotes()}
         />
+
+        {/* ---- Per-person preferences: quotas, FODMAP, allergens, dislikes.
+             Employees cook rather than eat, so they are not listed here. ---- */}
+        {sectionHeader(d.mealPrefs.personSection)}
+        <SettingsGroup>
+          {persons.filter((p) => !p.is_employee).map((person) => {
+            const profile = normalizeDietProfile(person.diet_profile);
+            return (
+              <SettingsRow
+                key={person.id}
+                label={person.name}
+                value={fodmapLabels[profile.fodmap.mode]}
+                onPress={() => router.push(`/settings/preferences/${person.id}`)}
+              />
+            );
+          })}
+          {persons.filter((p) => !p.is_employee).length === 0 ? (
+            <View style={{ paddingHorizontal: 16, paddingVertical: 14 }}>
+              <Muted>{d.mealPrefs.noPeople}</Muted>
+            </View>
+          ) : null}
+        </SettingsGroup>
       </ScrollView>
     </SafeAreaView>
   );

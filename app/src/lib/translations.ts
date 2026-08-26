@@ -1,6 +1,7 @@
 import type { Locale } from '@/lib/i18n';
 import { supabase } from '@/lib/supabase';
 import type { IngredientRow } from '@/lib/worker';
+import { workerUrl } from '@/lib/worker-url';
 
 /**
  * Derived translation layer (spec 2026-08-25-recipe-translations-design.md).
@@ -57,14 +58,14 @@ interface WorkerTranslateReply {
  * the app keeps showing the original until a later attempt succeeds.
  */
 export async function translateAndStore(recipeId: string, content: RecipeContent): Promise<boolean> {
-  const workerUrl = process.env.EXPO_PUBLIC_WORKER_URL;
-  if (!workerUrl) return false;
+  const base = workerUrl();
+  if (!base) return false;
   let reply: WorkerTranslateReply;
   try {
     const { data } = await supabase.auth.getSession();
     const token = data.session?.access_token;
     if (!token) return false;
-    const response = await fetch(`${workerUrl}/translate`, {
+    const response = await fetch(`${base}/translate`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({

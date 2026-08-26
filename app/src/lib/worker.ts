@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { queueRecipeTranslation } from '@/lib/translations';
+import { workerUrl } from '@/lib/worker-url';
 
 // ---------------------------------------------------------------------------
 // Types mirrored from the worker's IngestResult (worker Task 3 models).
@@ -162,7 +163,9 @@ export function buildRecipeRows(result: IngestResult, ctx: RecipeRowsContext): R
 // Worker HTTP client.
 // ---------------------------------------------------------------------------
 
-const WORKER_URL = process.env.EXPO_PUBLIC_WORKER_URL;
+// Resolved once per session: bundler host in Expo Go (survives DHCP changes),
+// EXPO_PUBLIC_WORKER_URL otherwise. See lib/worker-url.ts.
+const WORKER_URL = workerUrl();
 
 async function accessToken(): Promise<string> {
   const { data } = await supabase.auth.getSession();

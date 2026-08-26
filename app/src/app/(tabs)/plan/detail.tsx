@@ -63,6 +63,7 @@ interface Person {
   name: string;
   is_employee: boolean;
   diet_profile: unknown;
+  avatar_color?: string | null;
 }
 
 interface RecipeLite {
@@ -221,7 +222,7 @@ export default function PlanScreen() {
         const [{ data: personRows }, { data: recipeRows }] = await Promise.all([
           supabase
             .from('persons')
-            .select('id, name, is_employee, diet_profile')
+            .select('id, name, is_employee, diet_profile, avatar_color')
             .eq('household_id', householdId)
             .order('created_at'),
           supabase

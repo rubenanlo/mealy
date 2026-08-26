@@ -22,6 +22,7 @@ interface PersonLite {
   id: string;
   name: string;
   is_employee: boolean;
+  avatar_color?: string | null;
 }
 
 /** Delete every current-week entry of a recipe (bookmark un-save, v3). */
@@ -104,7 +105,7 @@ export function AddToWeekSheet({
     let cancelled = false;
     supabase
       .from('persons')
-      .select('id, name, is_employee')
+      .select('id, name, is_employee, avatar_color')
       .eq('household_id', householdId)
       .order('created_at')
       .then(({ data }) => {

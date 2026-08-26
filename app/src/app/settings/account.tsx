@@ -16,7 +16,7 @@ import {
   Title,
 } from '@/components/ui';
 import { useAuth, useHousehold } from '@/lib/auth';
-import { fmt, LOCALES, useI18n } from '@/lib/i18n';
+import { fmt, useI18n } from '@/lib/i18n';
 import { type SignupCodeRow, signupCodeStatus } from '@/lib/signup-codes';
 import { supabase } from '@/lib/supabase';
 import { controlHeight, fonts, fontSize, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
@@ -31,10 +31,12 @@ interface MemberRow {
   user_id: string;
   email: string | null;
   role: 'owner' | 'member';
+  person_id: string | null;
 }
 
 interface InviteRow {
   email: string;
+  person_id: string | null;
 }
 
 export default function AccountScreen() {
@@ -42,15 +44,11 @@ export default function AccountScreen() {
   const router = useRouter();
   const { householdId } = useHousehold();
   const { session, signOut } = useAuth();
-  const { d, locale, setLocale } = useI18n();
+  const { d, locale } = useI18n();
 
   const [persons, setPersons] = useState<PersonRow[]>([]);
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [invites, setInvites] = useState<InviteRow[]>([]);
-  const [newPersonName, setNewPersonName] = useState('');
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteBusy, setInviteBusy] = useState(false);
-  const [inviteError, setInviteError] = useState<string | null>(null);
   const [newEmail, setNewEmail] = useState('');
   const [emailBusy, setEmailBusy] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -69,9 +67,9 @@ export default function AccountScreen() {
           .order('created_at'),
         supabase
           .from('household_members')
-          .select('user_id, email, role')
+          .select('user_id, email, role, person_id')
           .eq('household_id', householdId),
-        supabase.from('invites').select('email').eq('household_id', householdId).order('created_at'),
+        supabase.from('invites').select('email, person_id').eq('household_id', householdId).order('created_at'),
         supabase.rpc('is_app_admin'),
       ]);
     setPersons((personRows as PersonRow[]) ?? []);
@@ -94,29 +92,6 @@ export default function AccountScreen() {
       void load();
     }, [load])
   );
-
-  const addPerson = async () => {
-    const name = newPersonName.trim();
-    if (!name) return;
-    await supabase.from('persons').insert({ household_id: householdId, name });
-    setNewPersonName('');
-    await load();
-  };
-
-  const invite = async () => {
-    const email = inviteEmail.trim().toLowerCase();
-    if (!email.includes('@')) return;
-    setInviteBusy(true);
-    setInviteError(null);
-    const { error } = await supabase.from('invites').insert({ email, household_id: householdId });
-    setInviteBusy(false);
-    if (error) {
-      setInviteError(error.code === '23505' ? d.settings.inviteDuplicate : d.settings.inviteFailed);
-      return;
-    }
-    setInviteEmail('');
-    await load();
-  };
 
   const revoke = async (email: string) => {
     await supabase.from('invites').delete().eq('email', email);
@@ -212,21 +187,9 @@ export default function AccountScreen() {
         <Title>{d.settings.account}</Title>
         {session?.user.email ? <Body>{session.user.email}</Body> : null}
 
-        {/* Personal UI language: applies immediately, follows the account. */}
-        <Eyebrow style={{ marginTop: 16 }}>{d.settings.language}</Eyebrow>
-        <SettingsGroup>
-          {LOCALES.map((option) => (
-            <SettingsRow
-              key={option.code}
-              label={option.label}
-              value={locale === option.code ? '✓' : undefined}
-              chevron={false}
-              onPress={() => void setLocale(option.code)}
-            />
-          ))}
-        </SettingsGroup>
-
-        {/* People planned for: family members and employees. */}
+        {/* People: persons plus any account/invite not tied to a person.
+            Person-linked accounts live on each person's page (Account access).
+            Adding happens on the person page in create mode. */}
         <Eyebrow style={{ marginTop: 16 }}>{d.settings.people}</Eyebrow>
         <SettingsGroup>
           {persons.map((person) => (
@@ -238,27 +201,7 @@ export default function AccountScreen() {
               accessibilityLabel={fmt(d.settings.editPerson, { name: person.name })}
             />
           ))}
-          {persons.length === 0 ? (
-            <View style={{ paddingHorizontal: 16, paddingVertical: 14 }}>
-              <Muted>{d.settings.noPeopleYet}</Muted>
-            </View>
-          ) : null}
-        </SettingsGroup>
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Field
-            value={newPersonName}
-            onChangeText={setNewPersonName}
-            placeholder={d.settings.personName}
-            style={{ flex: 1 }}
-            onSubmitEditing={() => void addPerson()}
-          />
-          <Button label={d.common.add} kind="secondary" onPress={() => void addPerson()} />
-        </View>
-
-        {/* App accounts with access to this household. */}
-        <Eyebrow style={{ marginTop: 16 }}>{d.settings.membersInvites}</Eyebrow>
-        <SettingsGroup>
-          {members.map((member) => (
+          {members.filter((m) => !m.person_id).map((member) => (
             <SettingsRow
               key={member.user_id}
               label={member.email ?? d.settings.unknownMember}
@@ -271,7 +214,7 @@ export default function AccountScreen() {
               }
             />
           ))}
-          {invites.map((inv) => (
+          {invites.filter((i) => !i.person_id).map((inv) => (
             <View
               key={inv.email}
               style={{
@@ -294,28 +237,17 @@ export default function AccountScreen() {
               </Pressable>
             </View>
           ))}
+          {persons.length === 0 ? (
+            <View style={{ paddingHorizontal: 16, paddingVertical: 14 }}>
+              <Muted>{d.settings.noPeopleYet}</Muted>
+            </View>
+          ) : null}
         </SettingsGroup>
-        <Muted>{d.settings.inviteHint}</Muted>
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Field
-            value={inviteEmail}
-            onChangeText={setInviteEmail}
-            placeholder={d.settings.emailAddress}
-            autoCapitalize="none"
-            autoComplete="email"
-            keyboardType="email-address"
-            style={{ flex: 1 }}
-            onSubmitEditing={() => void invite()}
-          />
-          <Button
-            label={d.settings.invite}
-            kind="secondary"
-            onPress={() => void invite()}
-            loading={inviteBusy}
-            disabled={!inviteEmail.includes('@')}
-          />
-        </View>
-        {inviteError ? <Body style={{ color: colors.danger }}>{inviteError}</Body> : null}
+        <Button
+          label={d.settings.addPerson}
+          kind="secondary"
+          onPress={() => router.push('/settings/person/new')}
+        />
 
         {/* Admin only: codes that let a new person create their own family. */}
         {isAdmin ? (
