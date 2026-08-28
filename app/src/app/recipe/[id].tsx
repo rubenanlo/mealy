@@ -46,6 +46,7 @@ import {
 } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
 import type { CanonicalIngredient, FodmapTier } from '@/lib/canonical';
+import { confirmDestructive, notify } from '@/lib/confirm';
 import {
   CATEGORY_LABELS,
   deriveCategory,
@@ -704,13 +705,13 @@ export default function RecipeSheetScreen() {
 
   /** Trash button in the source-image viewer: delete one gallery image. */
   const deleteSourceImage = (path: string) => {
-    Alert.alert(d.recipe.deleteImageTitle, d.recipe.deleteImageBody, [
-      { text: d.common.cancel, style: 'cancel' },
-      {
-        text: d.common.delete,
-        style: 'destructive',
-        onPress: () => {
-          void (async () => {
+    confirmDestructive({
+      title: d.recipe.deleteImageTitle,
+      message: d.recipe.deleteImageBody,
+      confirmLabel: d.common.delete,
+      cancelLabel: d.common.cancel,
+      onConfirm: () => {
+        void (async () => {
             if (!recipe) return;
             const row = images.find((img) => img.storage_path === path);
             if (row) await supabase.from('recipe_images').delete().eq('id', row.id);
@@ -733,9 +734,8 @@ export default function RecipeSheetScreen() {
             });
             void load();
           })();
-        },
       },
-    ]);
+    });
   };
 
   /** Tap the byline type: pick the recipe category in place (stored as a tag). */
@@ -1079,34 +1079,29 @@ export default function RecipeSheetScreen() {
   const hasSource = galleryPaths.length > 0 || sourceUrl !== null;
 
   const deleteRecipe = () => {
-    Alert.alert(
-      d.recipe.deleteRecipeTitle,
-      fmt(d.recipe.deleteRecipeBody, { title: recipe.title }),
-      [
-        { text: d.common.cancel, style: 'cancel' },
-        {
-          text: d.common.delete,
-          style: 'destructive',
-          onPress: () => {
-            void (async () => {
-              // Best-effort storage cleanup; the row delete is what matters.
-              const paths = Array.from(
-                new Set([heroPath, ...galleryPaths].filter((p): p is string => p !== null))
-              );
-              if (paths.length > 0) {
-                await supabase.storage.from('recipe-media').remove(paths);
-              }
-              const { error } = await supabase.from('recipes').delete().eq('id', recipe.id);
-              if (error) {
-                Alert.alert(d.recipe.deleteRecipeFailTitle, d.recipe.tryAgain);
-                return;
-              }
-              dismiss();
-            })();
-          },
-        },
-      ]
-    );
+    confirmDestructive({
+      title: d.recipe.deleteRecipeTitle,
+      message: fmt(d.recipe.deleteRecipeBody, { title: recipe.title }),
+      confirmLabel: d.common.delete,
+      cancelLabel: d.common.cancel,
+      onConfirm: () => {
+        void (async () => {
+          // Best-effort storage cleanup; the row delete is what matters.
+          const paths = Array.from(
+            new Set([heroPath, ...galleryPaths].filter((p): p is string => p !== null))
+          );
+          if (paths.length > 0) {
+            await supabase.storage.from('recipe-media').remove(paths);
+          }
+          const { error } = await supabase.from('recipes').delete().eq('id', recipe.id);
+          if (error) {
+            notify(d.recipe.deleteRecipeFailTitle, d.recipe.tryAgain);
+            return;
+          }
+          dismiss();
+        })();
+      },
+    });
   };
   const showPinnedBar = pinnedVisible;
   const actionBottom = (Platform.OS === 'ios' ? insets.bottom : insets.bottom) + 16;
