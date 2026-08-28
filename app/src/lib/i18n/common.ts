@@ -3,6 +3,7 @@
 
 const en = {
   cancel: 'Cancel',
+  linkCopied: 'Link copied',
   save: 'Save',
   close: 'Close',
   add: 'Add',
@@ -23,6 +24,7 @@ const en = {
 
 const es: typeof en = {
   cancel: 'Cancelar',
+  linkCopied: 'Enlace copiado',
   save: 'Guardar',
   close: 'Cerrar',
   add: 'Añadir',
@@ -43,6 +45,7 @@ const es: typeof en = {
 
 const fr: typeof en = {
   cancel: 'Annuler',
+  linkCopied: 'Lien copié',
   save: 'Enregistrer',
   close: 'Fermer',
   add: 'Ajouter',
@@ -63,6 +66,7 @@ const fr: typeof en = {
 
 const it: typeof en = {
   cancel: 'Annulla',
+  linkCopied: 'Link copiato',
   save: 'Salva',
   close: 'Chiudi',
   add: 'Aggiungi',

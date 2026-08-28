@@ -20,6 +20,7 @@ import {
 import { useHousehold } from '@/lib/auth';
 import { consumeInvalidation } from '@/lib/list-refresh';
 import { fmt, useI18n } from '@/lib/i18n';
+import { shareEmployeeLink } from '@/lib/employee-link';
 import { isMealUpcoming, normalizeMealTimes, type MealTimes } from '@/lib/meal-times';
 import { addWeeks, dayDate, weekStart, type MealSlot } from '@/lib/plan';
 import { entryServings } from '@/lib/servings';
@@ -120,6 +121,7 @@ export default function WeeksScreen() {
   const [recipesById, setRecipesById] = useState<Map<string, RecipeLite>>(new Map());
   const [mealTimes, setMealTimes] = useState<MealTimes>(normalizeMealTimes(null));
   const [employeeNames, setEmployeeNames] = useState<string[]>([]);
+  const [employeeToken, setEmployeeToken] = useState<string | null>(null);
   const [eaterCount, setEaterCount] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
@@ -139,12 +141,18 @@ export default function WeeksScreen() {
       supabase.from('households').select('meal_times').eq('id', householdId).single(),
       supabase
         .from('persons')
-        .select('name, is_employee')
+        .select('name, is_employee, share_token')
         .eq('household_id', householdId)
         .order('created_at')
         .then((res) => {
-          const rows = ((res.data ?? []) as { name: string; is_employee: boolean }[]);
-          setEmployeeNames(rows.filter((p) => p.is_employee).map((p) => p.name));
+          const rows = ((res.data ?? []) as {
+            name: string;
+            is_employee: boolean;
+            share_token: string | null;
+          }[]);
+          const employees = rows.filter((p) => p.is_employee);
+          setEmployeeNames(employees.map((p) => p.name));
+          setEmployeeToken(employees.find((p) => p.share_token)?.share_token ?? null);
           setEaterCount(rows.filter((p) => !p.is_employee).length);
           return res;
         }),
@@ -420,7 +428,28 @@ export default function WeeksScreen() {
         {/* The employee's cooking list for this week (mirrors her web link). */}
         {employeeNames.length > 0 && employeeCells.length > 0 ? (
           <View style={{ gap: 12, paddingTop: 8 }}>
-            <SectionHeader title={fmt(d.plan.assignedTo, { names: employeeNames.join(' & ') })} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <SectionHeader
+                title={fmt(d.plan.assignedTo, { names: employeeNames.join(' & ') })}
+                style={{ flex: 1 }}
+              />
+              {employeeToken ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={d.person.shareCookingLink}
+                  onPress={() => void shareEmployeeLink(employeeToken, d.common.linkCopied)}
+                  style={({ pressed }) => ({
+                    minWidth: 40,
+                    minHeight: 40,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    opacity: pressed ? 0.6 : 1,
+                  })}
+                >
+                  <Ionicons name="share-outline" size={20} color={colors.accent} />
+                </Pressable>
+              ) : null}
+            </View>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}

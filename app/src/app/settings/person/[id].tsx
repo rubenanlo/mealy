@@ -1,12 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, Share, Switch, Text, View } from 'react-native';
+import { Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { initials } from '@/components/person-chip';
 import { Body, Button, Eyebrow, Field, Hairline, Muted, Title } from '@/components/ui';
 import { confirmDestructive, notify } from '@/lib/confirm';
+import { shareEmployeeLink } from '@/lib/employee-link';
 import { backOr } from '@/lib/nav';
 import { useAuth, useHousehold } from '@/lib/auth';
 import { AVATAR_COLORS } from '@/lib/avatar';
@@ -421,12 +422,7 @@ export default function PersonScreen() {
             <Button
               label={d.person.shareCookingLink}
               kind="secondary"
-              onPress={() => {
-                // Served from workers.dev: supabase.co refuses to render HTML
-                // to unauthenticated browsers (anti-phishing rewrite).
-                const url = `https://mealy-menu.mealy-rubenanlo.workers.dev/?token=${shareToken}`;
-                void Share.share({ message: url, url });
-              }}
+              onPress={() => void shareEmployeeLink(shareToken!, d.common.linkCopied)}
             />
             <Eyebrow style={{ marginTop: 6 }}>{d.person.linkLanguage}</Eyebrow>
             <Muted>{d.person.linkLanguageHint}</Muted>
