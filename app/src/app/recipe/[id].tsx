@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
@@ -67,6 +68,7 @@ import { useReducedMotion } from '@/lib/motion';
 import { type MealSlot, weekStart } from '@/lib/plan';
 import { assignRecipeToSlot, isRecipeUntouched } from '@/lib/recipes';
 import { entryServings, rescaleIngredients, servingsFactor } from '@/lib/servings';
+import { convertIngredients, type UnitSystem } from '@/lib/unit-convert';
 import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, minTapTarget, radius, screenPadding, useTheme } from '@/lib/theme';
 import { localizeContent, queueRecipeTranslation, type TranslationRow } from '@/lib/translations';
@@ -403,6 +405,32 @@ export default function RecipeSheetScreen() {
   >(null);
   /** Live "who eats this" servings for this week's plan (null = not planned). */
   const [livePlanServings, setLivePlanServings] = useState<number | null>(null);
+  /** NYT-style unit conversion (display only), persisted across recipes. */
+  const [unitSystem, setUnitSystem] = useState<UnitSystem>('original');
+
+  useEffect(() => {
+    AsyncStorage.getItem('mealy.unit-system')
+      .then((v) => {
+        if (v === 'metric' || v === 'us') setUnitSystem(v);
+      })
+      .catch(() => {});
+  }, []);
+
+  const changeUnitSystem = (system: UnitSystem) => {
+    setUnitSystem(system);
+    AsyncStorage.setItem('mealy.unit-system', system).catch(() => {});
+  };
+
+  const pickUnitSystem = () => {
+    const mark = (system: UnitSystem, label: string) =>
+      unitSystem === system ? `✓ ${label}` : label;
+    Alert.alert(d.recipe.unitsTitle, undefined, [
+      { text: mark('original', d.recipe.unitsOriginal), onPress: () => changeUnitSystem('original') },
+      { text: mark('metric', d.recipe.unitsMetric), onPress: () => changeUnitSystem('metric') },
+      { text: mark('us', d.recipe.unitsUs), onPress: () => changeUnitSystem('us') },
+      { text: d.common.cancel, style: 'cancel' },
+    ]);
+  };
   const [sources, setSources] = useState<SourceRow[]>([]);
   const [images, setImages] = useState<ImageRow[]>([]);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -1017,10 +1045,17 @@ export default function RecipeSheetScreen() {
   const localized = localizeContent(recipe, contentTranslation);
   const displayTitle = localized.title;
   const displaySteps = localized.steps;
+  // Display pipeline: plan scaling first, then the unit-system conversion.
+  // Both are skipped while editing — drafts always operate on the original.
   const viewIngredients =
-    planFactor && ingredientsDraft === null
-      ? rescaleIngredients(localized.ingredients, planFactor)
-      : localized.ingredients;
+    ingredientsDraft !== null
+      ? localized.ingredients
+      : convertIngredients(
+          planFactor
+            ? rescaleIngredients(localized.ingredients, planFactor)
+            : localized.ingredients,
+          unitSystem
+        );
   const metaParts = [
     planFactor && planServings != null
       ? fmt(d.recipe.servingsThisWeek, { n: planServings })
@@ -1342,6 +1377,28 @@ export default function RecipeSheetScreen() {
                   setIngredientsDraft(
                     ingredientsDraft === null ? recipe.ingredients.map((i) => ({ ...i })) : null
                   )
+                }
+                extra={
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={d.recipe.convertUnitsA11y}
+                    onPress={pickUnitSystem}
+                    hitSlop={8}
+                    style={({ pressed }) => ({
+                      width: minTapTarget - 8,
+                      height: minTapTarget - 8,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: (minTapTarget - 8) / 2,
+                      backgroundColor: pressed ? colors.cardPressed : 'transparent',
+                    })}
+                  >
+                    <Ionicons
+                      name="swap-horizontal"
+                      size={20}
+                      color={unitSystem === 'original' ? colors.textMuted : colors.text}
+                    />
+                  </Pressable>
                 }
               />
 

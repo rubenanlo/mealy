@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import type { ReactNode } from "react";
 import { Pressable, View } from "react-native";
 
 import { Title } from "@/components/ui";
@@ -10,10 +11,13 @@ export function SectionTitle({
   title,
   editing,
   onToggle,
+  extra,
 }: {
   title: string;
   editing: boolean;
   onToggle: () => void;
+  /** Optional control rendered before the pencil (e.g. unit conversion). */
+  extra?: ReactNode;
 }) {
   const { colors } = useTheme();
   const { d } = useI18n();
@@ -26,6 +30,8 @@ export function SectionTitle({
       }}
     >
       <Title>{title}</Title>
+      <View style={{ flex: 1 }} />
+      {extra}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={fmt(

@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -40,6 +41,29 @@ export default function CaptureScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsPaste, setNeedsPaste] = useState(false);
+  // Clipboard hand-off: copy a link in Instagram/Safari/Photos, open Mealy,
+  // one tap pastes it. hasUrlAsync never triggers the iOS paste prompt —
+  // that only appears when the user actually taps the button.
+  const [clipboardHasUrl, setClipboardHasUrl] = useState(false);
+
+  useEffect(() => {
+    Clipboard.hasUrlAsync()
+      .then(setClipboardHasUrl)
+      .catch(() => {});
+  }, []);
+
+  const pasteFromClipboard = async () => {
+    try {
+      const url = await Clipboard.getUrlAsync();
+      if (url) setInput(url);
+      else {
+        const text = await Clipboard.getStringAsync();
+        if (text) setInput(text);
+      }
+    } catch {
+      // Paste denied or clipboard empty — nothing to do.
+    }
+  };
 
   type Ctx = { householdId: string; userId: string };
 
@@ -207,6 +231,13 @@ export default function CaptureScreen() {
             style={{ minHeight: 140, textAlignVertical: 'top' }}
             autoCapitalize="none"
           />
+          {clipboardHasUrl && input.trim().length === 0 ? (
+            <Button
+              label={d.capture.pasteFromClipboard}
+              kind="secondary"
+              onPress={() => void pasteFromClipboard()}
+            />
+          ) : null}
           {needsPaste ? (
             <Body style={{ color: colors.danger }}>{d.capture.fetchFailed}</Body>
           ) : null}
