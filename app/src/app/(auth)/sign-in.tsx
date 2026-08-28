@@ -1,9 +1,17 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Image, KeyboardAvoidingView, Platform, Text, View } from 'react-native';
+import { Alert, Image, KeyboardAvoidingView, Platform, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Body, Button, Eyebrow, Field, Muted } from '@/components/ui';
+import {
+  authenticateBiometric,
+  biometricsAvailable,
+  clearBiometricCredentials,
+  hasBiometricCredentials,
+  loadBiometricCredentials,
+  saveBiometricCredentials,
+} from '@/lib/biometrics';
 import { fmt, useI18n } from '@/lib/i18n';
 import {
   appleAvailable,
@@ -24,11 +32,49 @@ export default function SignInScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [appleReady, setAppleReady] = useState(false);
+  const [biometricReady, setBiometricReady] = useState(false);
   const googleReady = googleAvailable();
 
   useEffect(() => {
     appleAvailable().then(setAppleReady);
+    void Promise.all([biometricsAvailable(), hasBiometricCredentials()]).then(
+      ([available, stored]) => setBiometricReady(available && stored)
+    );
   }, []);
+
+  const signInWithBiometrics = async () => {
+    setError(null);
+    if (!(await authenticateBiometric(d.auth.faceIdPrompt))) return;
+    const credentials = await loadBiometricCredentials();
+    if (!credentials) {
+      setBiometricReady(false);
+      return;
+    }
+    setBusy(true);
+    const { error: err } = await supabase.auth.signInWithPassword(credentials);
+    setBusy(false);
+    if (err) {
+      // The password changed since it was stored — never keep a stale secret.
+      await clearBiometricCredentials();
+      setBiometricReady(false);
+      setEmail(credentials.email);
+      setStep('password');
+      setError(d.auth.faceIdStale);
+    }
+    // On success the auth listener re-routes.
+  };
+
+  /** After a password sign-in on biometric hardware: offer one-tap next time. */
+  const offerBiometrics = async (signedInEmail: string, signedInPassword: string) => {
+    if (!(await biometricsAvailable()) || (await hasBiometricCredentials())) return;
+    Alert.alert(d.auth.faceIdEnableTitle, d.auth.faceIdEnableBody, [
+      { text: d.common.cancel, style: 'cancel' },
+      {
+        text: d.auth.faceIdEnable,
+        onPress: () => void saveBiometricCredentials(signedInEmail, signedInPassword),
+      },
+    ]);
+  };
 
   const withProvider = async (run: () => Promise<{ error: string | null }>) => {
     setBusy(true);
@@ -76,6 +122,8 @@ export default function SignInScreen() {
     setBusy(false);
     if (err) {
       setError(d.auth.passwordWrong);
+    } else {
+      void offerBiometrics(email.trim(), password);
     }
   };
 
@@ -108,6 +156,13 @@ export default function SignInScreen() {
 
         {step === 'email' ? (
           <View style={{ gap: 12 }}>
+            {biometricReady ? (
+              <Button
+                label={Platform.OS === 'ios' ? d.auth.signInFaceId : d.auth.signInBiometrics}
+                onPress={() => void signInWithBiometrics()}
+                loading={busy}
+              />
+            ) : null}
             <Field
               value={email}
               onChangeText={setEmail}

@@ -33,10 +33,22 @@
         }
       ],
       "expo-secure-store",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Mealy uses Face ID to sign you in without typing your password."
+        }
+      ],
       "expo-font",
       "expo-web-browser",
       "expo-asset",
-      "expo-apple-authentication"
+      "expo-apple-authentication",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.40305826058-esv5g4meqsbpvqgnv7g3rue5hmiv02j3"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
