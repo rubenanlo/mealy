@@ -7,7 +7,7 @@ itself. All routes except ``/health`` require a Supabase access token.
 
 from __future__ import annotations
 
-from fastapi import Depends, File, HTTPException, UploadFile
+from fastapi import BackgroundTasks, Depends, File, HTTPException, UploadFile
 from fastapi import FastAPI
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -18,9 +18,12 @@ from .images import fetch_validated_image
 from .ingest.media import ingest_images, ingest_pdf
 from .ingest.social import ingest_social
 from .ingest.url import ingest_url
+from .jobs import run_capture_job
 from .matching import IngredientMatch, match_ingredients
 from .models import CanonicalRecipe, IngestResult, Verbatim
 from .structure import structure_text
+from .translate import TranslateRequest, TranslateResponse, translate_recipe
+from .units import UnitConversion, classify_units
 
 app = FastAPI(title="Mealy Worker", version="0.1.0")
 
@@ -49,6 +52,18 @@ class StructureBody(BaseModel):
 
 class ImageUrlBody(BaseModel):
     url: str
+
+
+class JobBody(BaseModel):
+    job_id: str
+
+
+class UnitsBody(BaseModel):
+    units: list[str]
+
+
+class UnitsResponse(BaseModel):
+    conversions: list[UnitConversion]
 
 
 @app.get("/health")
@@ -88,6 +103,27 @@ async def match_ingredients_route(
     return MatchResponse(matches=await match_ingredients(body.lines, body.candidates))
 
 
+@app.post("/units/classify", response_model=UnitsResponse)
+async def classify_units_route(
+    body: UnitsBody, _claims: dict = Depends(verify_token)
+) -> UnitsResponse:
+    """LLM fallback unit classifier for grocery aggregation (units.py)."""
+    return UnitsResponse(conversions=await classify_units(body.units))
+
+
+@app.post("/jobs/run", status_code=202)
+async def run_job_route(
+    body: JobBody, background: BackgroundTasks, claims: dict = Depends(verify_token)
+) -> dict:
+    """Queue a background capture job (jobs.py) and return immediately.
+
+    The runner itself re-checks that the caller belongs to the job's
+    household before doing anything, since the service role bypasses RLS.
+    """
+    background.add_task(run_capture_job, body.job_id, claims.get("sub", ""))
+    return {"queued": True}
+
+
 @app.post("/ingest/social", response_model=IngestResult)
 async def ingest_social_route(body: UrlBody, _claims: dict = Depends(verify_token)) -> IngestResult:
     return await ingest_social(body.url)
@@ -118,6 +154,17 @@ async def image_fetch_route(
     if data is None:
         raise HTTPException(status_code=422, detail="image failed validation")
     return Response(content=data, media_type="image/jpeg")
+
+
+@app.post("/translate", response_model=TranslateResponse)
+async def translate_route(
+    body: TranslateRequest, _claims: dict = Depends(verify_token)
+) -> TranslateResponse:
+    """Exact translation of canonical content into the supported languages."""
+    try:
+        return await translate_recipe(body)
+    except ValueError as err:
+        raise HTTPException(status_code=422, detail=str(err)) from err
 
 
 @app.post("/fodmap/swaps", response_model=SwapResponse)

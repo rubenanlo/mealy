@@ -1,6 +1,7 @@
 import {
   aggregate,
   classifyUnit,
+  classifyUnitFor,
   formatGrams,
   groupByAisle,
   lineGrams,
@@ -15,6 +16,7 @@ const canonical = (
   name_en: over.slug,
   name_fr: over.slug,
   name_es: over.slug,
+  name_it: null,
   aliases: [],
   category: null,
   aisle: null,
@@ -56,6 +58,40 @@ describe('classifyUnit / lineGrams', () => {
     expect(classifyUnit('gousses')).toEqual({ kind: 'other', label: 'gousses' });
   });
 
+  it('merges spoon/cup spellings across languages, typos included', () => {
+    // The screenshot case: 1.3 tbps + 1 tablespoon + 1.5 tablespoons + 6 tsp
+    for (const spoon of ['tbsp', 'tbps', 'tablespoon', 'tablespoons', 'cucharada', 'cucchiai']) {
+      expect(classifyUnit(spoon)).toEqual({ kind: 'volume', ml: 15 });
+    }
+    for (const tea of ['tsp', 'teaspoons', 'cucharadita', 'cucchiaino']) {
+      expect(classifyUnit(tea)).toEqual({ kind: 'volume', ml: 5 });
+    }
+    expect(classifyUnit('Cups')).toEqual({ kind: 'volume', ml: 240 });
+    expect(classifyUnit('oz')).toEqual({ kind: 'mass', grams: 28.35 });
+  });
+
+  it("reads size letters as count on countables, litres on liquids ('4 huevos L')", () => {
+    // carotte has avg_unit_weight_g (countable), creme has density (liquid)
+    expect(classifyUnitFor('L', carotte)).toEqual({ kind: 'count' });
+    expect(classifyUnitFor('large', carotte)).toEqual({ kind: 'count' });
+    expect(classifyUnitFor('l', creme)).toEqual({ kind: 'volume', ml: 1000 });
+    expect(lineGrams(4, 'L', carotte)).toBe(500); // 4 pieces × 125 g
+  });
+
+  it('applies AI overrides for unknown units, but never over the static table', () => {
+    const overrides = new Map([
+      ['knob', { kind: 'mass' as const, factor: 15 }],
+      ['vasetto', { kind: 'volume' as const, factor: 125 }],
+      ['sprig', { kind: 'count' as const, factor: null }],
+      ['tbsp', { kind: 'mass' as const, factor: 999 }], // must lose to the table
+    ]);
+    expect(classifyUnit('knob', overrides)).toEqual({ kind: 'mass', grams: 15 });
+    expect(classifyUnit('vasetto', overrides)).toEqual({ kind: 'volume', ml: 125 });
+    expect(classifyUnit('sprig', overrides)).toEqual({ kind: 'count' });
+    expect(classifyUnit('tbsp', overrides)).toEqual({ kind: 'volume', ml: 15 });
+    expect(classifyUnit('mystery', overrides)).toEqual({ kind: 'other', label: 'mystery' });
+  });
+
   it('converts count→g via avg_unit_weight_g and ml→g via density', () => {
     expect(lineGrams(2, null, carotte)).toBe(250);
     expect(lineGrams(200, 'ml', creme)).toBe(200);
@@ -89,6 +125,36 @@ describe('aggregate', () => {
       { recipeTitle: 'Salade', qty: '0.5 kg' },
       { recipeTitle: 'Soupe', qty: '2' },
     ]);
+  });
+
+  it('collapses mixed spoon spellings into one volume line (screenshot case)', () => {
+    const result = aggregate(
+      [
+        line({ raw: 'a', quantity: 1.3, unit: 'tbps', recipeTitle: 'R1' }),
+        line({ raw: 'a', quantity: 1, unit: 'tablespoon', recipeTitle: 'R2' }),
+        line({ raw: 'a', quantity: 1.5, unit: 'tablespoons', recipeTitle: 'R3' }),
+        line({ raw: 'a', quantity: 6, unit: 'tsp', recipeTitle: 'R4' }),
+      ],
+      matcher({ a: farine })
+    );
+    // 3.8 tbsp × 15 ml + 6 tsp × 5 ml = 87 ml, one part per recipe kept
+    expect(result.items[0].displayQty).toBe('87 ml');
+    expect(result.items[0].mixed).toBe(false);
+    expect(result.items[0].parts).toHaveLength(4);
+  });
+
+  it('uses AI overrides to merge units the table does not know', () => {
+    const overrides = new Map([['knob', { kind: 'mass' as const, factor: 15 }]]);
+    const result = aggregate(
+      [
+        line({ raw: 'a', quantity: 2, unit: 'knob' }),
+        line({ raw: 'a', quantity: 100, unit: 'g' }),
+      ],
+      matcher({ a: farine }),
+      overrides
+    );
+    expect(result.items[0].displayQty).toBe('130 g');
+    expect(result.items[0].grams).toBe(130);
   });
 
   it('flags un-summable unit mixes instead of forcing them', () => {

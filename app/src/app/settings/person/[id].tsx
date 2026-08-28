@@ -4,130 +4,220 @@ import { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, Share, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { initials } from '@/components/person-chip';
 import { Body, Button, Eyebrow, Field, Hairline, Muted, Title } from '@/components/ui';
-import { FODMAP_MODES, normalizeDietProfile, type DietProfile } from '@/lib/diet';
+import { useAuth, useHousehold } from '@/lib/auth';
+import { AVATAR_COLORS } from '@/lib/avatar';
+import { fmt, LOCALES, useI18n, type Locale } from '@/lib/i18n';
 import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, minTapTarget, radius, screenPadding, useTheme } from '@/lib/theme';
 
-function TagEditor({
-  label,
-  placeholder,
-  values,
-  onChange,
-}: {
-  label: string;
-  placeholder: string;
-  values: string[];
-  onChange: (next: string[]) => void;
-}) {
-  const { colors } = useTheme();
-  const [draft, setDraft] = useState('');
-  const add = () => {
-    const value = draft.trim();
-    if (!value || values.includes(value)) return;
-    onChange([...values, value]);
-    setDraft('');
-  };
-  return (
-    <View style={{ gap: 10 }}>
-      <Eyebrow>{label}</Eyebrow>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        {values.map((value) => (
-          <Pressable
-            key={value}
-            accessibilityRole="button"
-            accessibilityLabel={`Remove ${value}`}
-            onPress={() => onChange(values.filter((v) => v !== value))}
-            style={({ pressed }) => ({
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 6,
-              backgroundColor: pressed ? colors.cardPressed : 'transparent',
-              borderWidth: 1,
-              borderColor: colors.border,
-              borderRadius: 999,
-              paddingHorizontal: 12,
-              minHeight: 40,
-            })}
-          >
-            <Text style={{ color: colors.text, fontSize: fontSize.small, fontFamily: fonts.ui }}>
-              {value}
-            </Text>
-            <Ionicons name="close" size={16} color={colors.textMuted} />
-          </Pressable>
-        ))}
-        {values.length === 0 ? <Muted>None</Muted> : null}
-      </View>
-      <View style={{ flexDirection: 'row', gap: 10 }}>
-        <Field
-          value={draft}
-          onChangeText={setDraft}
-          placeholder={placeholder}
-          style={{ flex: 1 }}
-          onSubmitEditing={add}
-        />
-        <Button label="Add" kind="secondary" onPress={add} />
-      </View>
-    </View>
-  );
-}
-
+/**
+ * Person account page: identity and access only (name, employee flag, web
+ * access + link language, removal). Diet preferences live under Meal
+ * preferences → Person preferences (settings/preferences/[id]).
+ */
 export default function PersonScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { colors } = useTheme();
+  const { d } = useI18n();
   const router = useRouter();
+  const { householdId } = useHousehold();
+  const { session } = useAuth();
+  // Create mode: the Account screen's Add button pushes /settings/person/new.
+  // Everything stays local until Save, which inserts the person (+ invite).
+  const isNew = id === 'new';
 
   const [name, setName] = useState('');
   const [isEmployee, setIsEmployee] = useState(false);
   const [shareToken, setShareToken] = useState<string | null>(null);
-  const [profile, setProfile] = useState<DietProfile | null>(null);
-  const [notes, setNotes] = useState('');
+  const [linkLanguage, setLinkLanguage] = useState<Locale>('es');
+  const [avatarColor, setAvatarColor] = useState<string | null>(null);
+  const [linkedMember, setLinkedMember] = useState<{
+    email: string | null;
+    role: string;
+    user_id: string;
+  } | null>(null);
+  const [pendingInvite, setPendingInvite] = useState<string | null>(null);
+  const [inviteDraft, setInviteDraft] = useState('');
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteNotice, setInviteNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     if (!id) return;
-    supabase
-      .from('persons')
-      .select('name, is_employee, diet_profile, other_requirements, share_token')
-      .eq('id', id)
-      .single()
-      .then(({ data }) => {
-        if (!data) return;
-        setName(data.name);
-        setIsEmployee(data.is_employee);
-        setShareToken(data.share_token ?? null);
-        setProfile(normalizeDietProfile(data.diet_profile));
-        setNotes(data.other_requirements ?? '');
-        setLoaded(true);
-      });
-  }, [id]);
+    if (isNew) {
+      // Default to the first palette color nobody in the family uses yet.
+      void supabase
+        .from('persons')
+        .select('avatar_color')
+        .eq('household_id', householdId)
+        .then(({ data }) => {
+          const used = new Set((data ?? []).map((p) => p.avatar_color).filter(Boolean));
+          setAvatarColor(AVATAR_COLORS.find((c) => !used.has(c)) ?? AVATAR_COLORS[0]);
+          setLoaded(true);
+        });
+      return;
+    }
+    void (async () => {
+      const [{ data }, { data: member }, { data: invite }] = await Promise.all([
+        supabase
+          .from('persons')
+          .select('name, is_employee, share_token, link_language, avatar_color')
+          .eq('id', id)
+          .single(),
+        supabase
+          .from('household_members')
+          .select('email, role, user_id')
+          .eq('person_id', id)
+          .maybeSingle(),
+        supabase.from('invites').select('email').eq('person_id', id).maybeSingle(),
+      ]);
+      if (!data) return;
+      setName(data.name);
+      setIsEmployee(data.is_employee);
+      setShareToken(data.share_token ?? null);
+      setLinkLanguage((data.link_language as Locale) ?? 'es');
+      setAvatarColor(data.avatar_color ?? null);
+      setLinkedMember(member ?? null);
+      setPendingInvite(invite?.email ?? null);
+      setLoaded(true);
+    })();
+  }, [id, isNew, householdId]);
+
+  /** Re-read the linked account / pending invite (they change when the email invite lands). */
+  const refreshAccess = async () => {
+    const [{ data: member }, { data: invite }] = await Promise.all([
+      supabase
+        .from('household_members')
+        .select('email, role, user_id')
+        .eq('person_id', id)
+        .maybeSingle(),
+      supabase.from('invites').select('email').eq('person_id', id).maybeSingle(),
+    ]);
+    setLinkedMember(member ?? null);
+    setPendingInvite(invite?.email ?? null);
+  };
+
+  /** Trigger the invitation email; the invite row must already exist. */
+  const sendInviteEmail = async (email: string): Promise<boolean> => {
+    const { data, error } = await supabase.functions.invoke('invite-member', {
+      body: { email },
+    });
+    return !error && (data as { sent?: boolean } | null)?.sent !== false;
+  };
+
+  const sendInvite = async () => {
+    const email = inviteDraft.trim().toLowerCase();
+    if (!email.includes('@')) return;
+    setInviteBusy(true);
+    setInviteError(null);
+    setInviteNotice(null);
+    const { error } = await supabase
+      .from('invites')
+      .insert({ email, household_id: householdId, person_id: id });
+    if (error) {
+      setInviteBusy(false);
+      setInviteError(error.code === '23505' ? d.settings.inviteDuplicate : d.settings.inviteFailed);
+      return;
+    }
+    const sent = await sendInviteEmail(email);
+    setInviteBusy(false);
+    setInviteDraft('');
+    setInviteNotice(sent ? d.person.inviteSent : d.person.inviteEmailFailed);
+    // A sent email means the account already exists: the trigger consumed the
+    // invite and linked the member, so re-read instead of assuming "pending".
+    await refreshAccess();
+  };
+
+  const revokeInvite = async () => {
+    if (!pendingInvite) return;
+    await supabase.from('invites').delete().eq('email', pendingInvite);
+    setPendingInvite(null);
+  };
 
   const save = async () => {
-    if (!id || !profile) return;
+    if (!id) return;
+    const trimmed = name.trim();
+    if (isNew) {
+      if (!trimmed) return;
+      setSaving(true);
+      setInviteError(null);
+      const { data: created, error } = await supabase
+        .from('persons')
+        .insert({
+          household_id: householdId,
+          name: trimmed,
+          is_employee: isEmployee,
+          avatar_color: avatarColor,
+        })
+        .select('id')
+        .single();
+      if (error || !created) {
+        setSaving(false);
+        setInviteError(d.common.genericError);
+        return;
+      }
+      // Invite on save (family members only): pre-linked to this person so the
+      // signup trigger attaches their account on first sign-in.
+      const email = inviteDraft.trim().toLowerCase();
+      if (!isEmployee && email.includes('@')) {
+        const { error: inviteErr } = await supabase
+          .from('invites')
+          .insert({ email, household_id: householdId, person_id: created.id });
+        if (inviteErr) {
+          setSaving(false);
+          setInviteError(
+            inviteErr.code === '23505' ? d.settings.inviteDuplicate : d.settings.inviteFailed
+          );
+          return;
+        }
+        const sent = await sendInviteEmail(email);
+        if (!sent) Alert.alert(d.person.accountAccess, d.person.inviteEmailFailed);
+      }
+      setSaving(false);
+      router.back();
+      return;
+    }
     setSaving(true);
     await supabase
       .from('persons')
-      .update({
-        name: name.trim() || name,
-        is_employee: isEmployee,
-        diet_profile: profile,
-        // Stored verbatim (spec §2); structured proposals are Phase 3.
-        other_requirements: notes,
-      })
+      .update({ name: trimmed || name })
       .eq('id', id);
     setSaving(false);
     router.back();
   };
 
   const remove = () => {
-    Alert.alert('Remove this person?', `${name} will be removed from the household.`, [
-      { text: 'Cancel', style: 'cancel' },
+    // A linked login must go with the person — otherwise it lingers as an
+    // unlinked member with full access (household_members.person_id is
+    // on delete set null). Owners can't be revoked this way.
+    const revokable =
+      linkedMember && linkedMember.user_id !== session?.user.id && linkedMember.role === 'member'
+        ? linkedMember
+        : null;
+    const body = revokable
+      ? fmt(d.person.removeBodyWithAccess, {
+          name,
+          email: revokable.email ?? d.settings.unknownMember,
+        })
+      : fmt(d.person.removeBody, { name });
+    Alert.alert(d.person.removeTitle, body, [
+      { text: d.common.cancel, style: 'cancel' },
       {
-        text: 'Remove',
+        text: d.person.remove,
         style: 'destructive',
         onPress: () => {
           void (async () => {
+            if (revokable) {
+              // Deletes the auth account entirely; membership cascades.
+              await supabase.functions.invoke('remove-member', {
+                body: { user_id: revokable.user_id },
+              });
+            }
+            await supabase.from('invites').delete().eq('person_id', id);
             await supabase.from('persons').delete().eq('id', id);
             router.back();
           })();
@@ -136,11 +226,11 @@ export default function PersonScreen() {
     ]);
   };
 
-  if (!loaded || !profile) {
+  if (!loaded) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bgGrouped }}>
         <View style={{ padding: screenPadding }}>
-          <Muted>Loading…</Muted>
+          <Muted>{d.common.loading}</Muted>
         </View>
       </SafeAreaView>
     );
@@ -151,7 +241,7 @@ export default function PersonScreen() {
       <ScrollView contentContainerStyle={{ padding: screenPadding, gap: 20, paddingBottom: 48 }}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Back to account"
+          accessibilityLabel={d.person.backToAccount}
           onPress={() => router.back()}
           style={({ pressed }) => ({
             flexDirection: 'row',
@@ -162,13 +252,54 @@ export default function PersonScreen() {
           })}
         >
           <Ionicons name="chevron-back" size={20} color={colors.text} />
-          <Body style={{ fontFamily: fonts.uiSemi }}>Account</Body>
+          <Body style={{ fontFamily: fonts.uiSemi }}>{d.person.account}</Body>
         </Pressable>
-        <Title>{name || 'Person'}</Title>
+        <Title>{name || d.person.personFallback}</Title>
 
         <View style={{ gap: 10 }}>
-          <Eyebrow>Name</Eyebrow>
-          <Field value={name} onChangeText={setName} placeholder="Name" />
+          <Eyebrow>{d.person.name}</Eyebrow>
+          <Field value={name} onChangeText={setName} placeholder={d.person.name} />
+        </View>
+
+        <View style={{ gap: 10 }}>
+          <Eyebrow>{d.person.avatarColor}</Eyebrow>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+            {AVATAR_COLORS.map((color) => {
+              const selected = avatarColor === color;
+              return (
+                <Pressable
+                  key={color}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  onPress={() => {
+                    // Tapping the active swatch clears back to the mono chip.
+                    const next = selected ? null : color;
+                    setAvatarColor(next);
+                    if (!isNew) {
+                      void supabase.from('persons').update({ avatar_color: next }).eq('id', id);
+                    }
+                  }}
+                  style={({ pressed }) => ({
+                    width: 40,
+                    height: 40,
+                    borderRadius: 20,
+                    backgroundColor: color,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderWidth: selected ? 3 : 0,
+                    borderColor: colors.text,
+                    opacity: pressed ? 0.75 : 1,
+                  })}
+                >
+                  {selected ? (
+                    <Text style={{ color: '#FFFFFF', fontSize: 13, fontFamily: fonts.uiSemi }}>
+                      {initials(name)}
+                    </Text>
+                  ) : null}
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
 
         <View>
@@ -181,14 +312,16 @@ export default function PersonScreen() {
               minHeight: 52,
             }}
           >
-            <Body>Household employee</Body>
+            <Body>{d.person.householdEmployee}</Body>
             <Switch
               value={isEmployee}
               onValueChange={(value) => {
                 // Persist immediately: the web-access link below only works
                 // once the flag is saved, so don't wait for the Save button.
                 setIsEmployee(value);
-                void supabase.from('persons').update({ is_employee: value }).eq('id', id);
+                if (!isNew) {
+                  void supabase.from('persons').update({ is_employee: value }).eq('id', id);
+                }
               }}
               trackColor={{ true: colors.accent }}
             />
@@ -196,15 +329,90 @@ export default function PersonScreen() {
           <Hairline />
         </View>
 
+        {/* Employees get the Web access link below instead of an app account. */}
+        {isEmployee ? null : (
+          <View style={{ gap: 10 }}>
+            <Eyebrow>{d.person.accountAccess}</Eyebrow>
+            {linkedMember ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Body style={{ flex: 1 }}>{linkedMember.email ?? d.settings.unknownMember}</Body>
+                <Muted>
+                  {linkedMember.user_id === session?.user.id
+                    ? d.settings.you
+                    : linkedMember.role === 'owner'
+                      ? d.settings.roleOwner
+                      : d.settings.roleMember}
+                </Muted>
+              </View>
+            ) : pendingInvite ? (
+              <View style={{ gap: 10 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Body style={{ flex: 1 }}>{pendingInvite}</Body>
+                  <Muted>{d.settings.pending}</Muted>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={fmt(d.settings.revokeInvite, { email: pendingInvite })}
+                    onPress={() => void revokeInvite()}
+                    hitSlop={8}
+                  >
+                    <Ionicons name="close-circle-outline" size={20} color={colors.textMuted} />
+                  </Pressable>
+                </View>
+                {/* Pending = the email may never have gone out (or got lost). */}
+                <Button
+                  label={d.person.sendInviteEmail}
+                  kind="secondary"
+                  loading={inviteBusy}
+                  onPress={() => {
+                    void (async () => {
+                      setInviteBusy(true);
+                      setInviteNotice(null);
+                      const sent = await sendInviteEmail(pendingInvite);
+                      setInviteBusy(false);
+                      setInviteNotice(sent ? d.person.inviteSent : d.person.inviteEmailFailed);
+                      await refreshAccess();
+                    })();
+                  }}
+                />
+              </View>
+            ) : (
+              <View style={{ gap: 10 }}>
+                <Muted>{d.person.noAccountHint}</Muted>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <Field
+                    value={inviteDraft}
+                    onChangeText={setInviteDraft}
+                    placeholder={d.settings.emailAddress}
+                    autoCapitalize="none"
+                    autoComplete="email"
+                    keyboardType="email-address"
+                    style={{ flex: 1 }}
+                    onSubmitEditing={() => (isNew ? undefined : void sendInvite())}
+                  />
+                  {/* Create mode: the invite goes out on Save instead. */}
+                  {isNew ? null : (
+                    <Button
+                      label={d.settings.invite}
+                      kind="secondary"
+                      onPress={() => void sendInvite()}
+                      loading={inviteBusy}
+                      disabled={!inviteDraft.includes('@')}
+                    />
+                  )}
+                </View>
+                {inviteError ? <Body style={{ color: colors.danger }}>{inviteError}</Body> : null}
+              </View>
+            )}
+            {inviteNotice ? <Muted>{inviteNotice}</Muted> : null}
+          </View>
+        )}
+
         {isEmployee && shareToken ? (
           <View style={{ gap: 10 }}>
-            <Eyebrow>Web access</Eyebrow>
-            <Muted>
-              A private link with every meal assigned to the employee cook, this week onward —
-              ingredients and steps included, no account needed. Anyone with the link can read it.
-            </Muted>
+            <Eyebrow>{d.person.webAccess}</Eyebrow>
+            <Muted>{d.person.webAccessHint}</Muted>
             <Button
-              label="Share cooking link"
+              label={d.person.shareCookingLink}
               kind="secondary"
               onPress={() => {
                 // Served from workers.dev: supabase.co refuses to render HTML
@@ -213,79 +421,62 @@ export default function PersonScreen() {
                 void Share.share({ message: url, url });
               }}
             />
+            <Eyebrow style={{ marginTop: 6 }}>{d.person.linkLanguage}</Eyebrow>
+            <Muted>{d.person.linkLanguageHint}</Muted>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {LOCALES.map((option) => {
+                const selected = linkLanguage === option.code;
+                return (
+                  <Pressable
+                    key={option.code}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    onPress={() => {
+                      // Persist immediately: the shared page reads it live.
+                      setLinkLanguage(option.code);
+                      void supabase
+                        .from('persons')
+                        .update({ link_language: option.code })
+                        .eq('id', id);
+                    }}
+                    style={({ pressed }) => ({
+                      minHeight: minTapTarget,
+                      borderRadius: radius.control,
+                      paddingHorizontal: 16,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderWidth: selected ? 0 : 1,
+                      borderColor: colors.border,
+                      backgroundColor: selected
+                        ? colors.text
+                        : pressed
+                          ? colors.cardPressed
+                          : 'transparent',
+                    })}
+                  >
+                    <Text
+                      style={{
+                        color: selected ? colors.bg : colors.text,
+                        fontSize: fontSize.base,
+                        fontFamily: fonts.uiMedium,
+                      }}
+                    >
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
         ) : null}
 
-        <View style={{ gap: 10 }}>
-          <Eyebrow>FODMAP</Eyebrow>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {FODMAP_MODES.map(({ mode, label }) => {
-              const selected = profile.fodmap.mode === mode;
-              return (
-                <Pressable
-                  key={mode}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  onPress={() =>
-                    setProfile({ ...profile, fodmap: { ...profile.fodmap, mode } })
-                  }
-                  style={({ pressed }) => ({
-                    minHeight: minTapTarget,
-                    borderRadius: radius.control,
-                    paddingHorizontal: 16,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderWidth: selected ? 0 : 1,
-                    borderColor: colors.border,
-                    backgroundColor: selected
-                      ? colors.text
-                      : pressed
-                        ? colors.cardPressed
-                        : 'transparent',
-                  })}
-                >
-                  <Text
-                    style={{
-                      color: selected ? colors.bg : colors.text,
-                      fontSize: fontSize.base,
-                      fontFamily: fonts.uiMedium,
-                    }}
-                  >
-                    {label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-
-        <TagEditor
-          label="Allergens (strict exclusion)"
-          placeholder="e.g. peanuts"
-          values={profile.allergens}
-          onChange={(allergens) => setProfile({ ...profile, allergens })}
+        <Button
+          label={d.common.save}
+          onPress={() => void save()}
+          loading={saving}
+          disabled={isNew && !name.trim()}
         />
-
-        <TagEditor
-          label="Dislikes"
-          placeholder="e.g. cauliflower"
-          values={profile.dislikes}
-          onChange={(dislikes) => setProfile({ ...profile, dislikes })}
-        />
-
-        <View style={{ gap: 10 }}>
-          <Eyebrow>Other requirements</Eyebrow>
-          <Field
-            value={notes}
-            onChangeText={setNotes}
-            placeholder="Free text, used as-is when planning"
-            multiline
-            style={{ minHeight: 100, textAlignVertical: 'top' }}
-          />
-        </View>
-
-        <Button label="Save" onPress={() => void save()} loading={saving} />
-        <Button label="Remove this person" kind="danger" onPress={remove} />
+        {isNew ? null : <Button label={d.person.removePerson} kind="danger" onPress={remove} />}
       </ScrollView>
     </SafeAreaView>
   );

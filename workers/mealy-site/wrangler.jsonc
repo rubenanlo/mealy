@@ -1,0 +1,10 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mealy-site",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-01",
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  // Public pages for the Google OAuth consent screen; zone rawdev.link.
+  "routes": [{ "pattern": "mealy.rawdev.link", "custom_domain": true }]
+}

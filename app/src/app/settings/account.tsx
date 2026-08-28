@@ -16,6 +16,7 @@ import {
   Title,
 } from '@/components/ui';
 import { useAuth, useHousehold } from '@/lib/auth';
+import { fmt, useI18n } from '@/lib/i18n';
 import { type SignupCodeRow, signupCodeStatus } from '@/lib/signup-codes';
 import { supabase } from '@/lib/supabase';
 import { controlHeight, fonts, fontSize, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
@@ -30,10 +31,12 @@ interface MemberRow {
   user_id: string;
   email: string | null;
   role: 'owner' | 'member';
+  person_id: string | null;
 }
 
 interface InviteRow {
   email: string;
+  person_id: string | null;
 }
 
 export default function AccountScreen() {
@@ -41,14 +44,11 @@ export default function AccountScreen() {
   const router = useRouter();
   const { householdId } = useHousehold();
   const { session, signOut } = useAuth();
+  const { d, locale } = useI18n();
 
   const [persons, setPersons] = useState<PersonRow[]>([]);
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [invites, setInvites] = useState<InviteRow[]>([]);
-  const [newPersonName, setNewPersonName] = useState('');
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteBusy, setInviteBusy] = useState(false);
-  const [inviteError, setInviteError] = useState<string | null>(null);
   const [newEmail, setNewEmail] = useState('');
   const [emailBusy, setEmailBusy] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -67,9 +67,9 @@ export default function AccountScreen() {
           .order('created_at'),
         supabase
           .from('household_members')
-          .select('user_id, email, role')
+          .select('user_id, email, role, person_id')
           .eq('household_id', householdId),
-        supabase.from('invites').select('email').eq('household_id', householdId).order('created_at'),
+        supabase.from('invites').select('email, person_id').eq('household_id', householdId).order('created_at'),
         supabase.rpc('is_app_admin'),
       ]);
     setPersons((personRows as PersonRow[]) ?? []);
@@ -93,36 +93,35 @@ export default function AccountScreen() {
     }, [load])
   );
 
-  const addPerson = async () => {
-    const name = newPersonName.trim();
-    if (!name) return;
-    await supabase.from('persons').insert({ household_id: householdId, name });
-    setNewPersonName('');
-    await load();
-  };
-
-  const invite = async () => {
-    const email = inviteEmail.trim().toLowerCase();
-    if (!email.includes('@')) return;
-    setInviteBusy(true);
-    setInviteError(null);
-    const { error } = await supabase.from('invites').insert({ email, household_id: householdId });
-    setInviteBusy(false);
-    if (error) {
-      setInviteError(
-        error.code === '23505'
-          ? 'That email already has a pending invite.'
-          : 'Could not create the invite. Try again.'
-      );
-      return;
-    }
-    setInviteEmail('');
-    await load();
-  };
-
   const revoke = async (email: string) => {
     await supabase.from('invites').delete().eq('email', email);
     await load();
+  };
+
+  const myRole = members.find((m) => m.user_id === session?.user.id)?.role;
+
+  /** Owner-only: delete a member's account entirely (remove-member function). */
+  const revokeMember = (member: MemberRow) => {
+    const email = member.email ?? d.settings.unknownMember;
+    Alert.alert(d.settings.revokeMemberTitle, fmt(d.settings.revokeMemberBody, { email }), [
+      { text: d.common.cancel, style: 'cancel' },
+      {
+        text: d.common.delete,
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            const { error } = await supabase.functions.invoke('remove-member', {
+              body: { user_id: member.user_id },
+            });
+            if (error) {
+              Alert.alert(d.settings.revokeMemberFailedTitle, d.common.genericError);
+              return;
+            }
+            await load();
+          })();
+        },
+      },
+    ]);
   };
 
   const copyCode = async (code: string) => {
@@ -136,14 +135,11 @@ export default function AccountScreen() {
     const { data, error } = await supabase.rpc('create_signup_code');
     setCodeBusy(false);
     if (error || !data) {
-      Alert.alert('Could not create a code', 'Something went wrong. Try again.');
+      Alert.alert(d.settings.codeCreateFailedTitle, d.common.genericError);
       return;
     }
     await Clipboard.setStringAsync(data as string);
-    Alert.alert(
-      'New signup code',
-      `${data}\n\nCopied to your clipboard. Share it with the person you are inviting. It works once and expires in 7 days.`
-    );
+    Alert.alert(d.settings.newCodeTitle, fmt(d.settings.newCodeBody, { code: data as string }));
     await load();
   };
 
@@ -159,24 +155,21 @@ export default function AccountScreen() {
     const { error } = await supabase.auth.updateUser({ email });
     setEmailBusy(false);
     if (error) {
-      Alert.alert('Could not change email', error.message);
+      Alert.alert(d.settings.emailChangeFailedTitle, error.message);
       return;
     }
     setNewEmail('');
-    Alert.alert(
-      'Confirm your new email',
-      'We sent confirmation links to your old and new addresses. The change applies once both are confirmed.'
-    );
+    Alert.alert(d.settings.confirmEmailTitle, d.settings.confirmEmailBody);
   };
 
   const deleteAccount = () => {
     Alert.alert(
-      'Delete your account?',
-      'This permanently deletes your account. If you are the last member, all household data (recipes, plans, groceries) is deleted too. This cannot be undone.',
+      d.settings.deleteAccountTitle,
+      d.settings.deleteAccountBody,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: d.common.cancel, style: 'cancel' },
         {
-          text: 'Delete',
+          text: d.common.delete,
           style: 'destructive',
           onPress: () => {
             void (async () => {
@@ -184,7 +177,7 @@ export default function AccountScreen() {
               const { error } = await supabase.functions.invoke('delete-account');
               setDeleteBusy(false);
               if (error) {
-                Alert.alert('Could not delete account', 'Something went wrong. Try again.');
+                Alert.alert(d.settings.deleteAccountFailedTitle, d.common.genericError);
                 return;
               }
               await signOut();
@@ -203,7 +196,7 @@ export default function AccountScreen() {
       >
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Back to settings"
+          accessibilityLabel={d.settings.backToSettings}
           onPress={() => router.back()}
           style={({ pressed }) => ({
             flexDirection: 'row',
@@ -215,51 +208,64 @@ export default function AccountScreen() {
           })}
         >
           <Ionicons name="chevron-back" size={20} color={colors.text} />
-          <Body style={{ fontFamily: fonts.uiSemi }}>Settings</Body>
+          <Body style={{ fontFamily: fonts.uiSemi }}>{d.settings.title}</Body>
         </Pressable>
-        <Title>Account</Title>
+        <Title>{d.settings.account}</Title>
         {session?.user.email ? <Body>{session.user.email}</Body> : null}
 
-        {/* People planned for: family members and employees. */}
-        <Eyebrow style={{ marginTop: 16 }}>People</Eyebrow>
+        {/* People: persons plus any account/invite not tied to a person.
+            Person-linked accounts live on each person's page (Account access).
+            Adding happens on the person page in create mode. */}
+        <Eyebrow style={{ marginTop: 16 }}>{d.settings.people}</Eyebrow>
         <SettingsGroup>
           {persons.map((person) => (
             <SettingsRow
               key={person.id}
               label={person.name}
-              value={person.is_employee ? 'employee' : undefined}
+              value={person.is_employee ? d.settings.employee : undefined}
               onPress={() => router.push(`/settings/person/${person.id}`)}
-              accessibilityLabel={`Edit ${person.name}`}
+              accessibilityLabel={fmt(d.settings.editPerson, { name: person.name })}
             />
           ))}
-          {persons.length === 0 ? (
-            <View style={{ paddingHorizontal: 16, paddingVertical: 14 }}>
-              <Muted>No people yet. Add your household below.</Muted>
-            </View>
-          ) : null}
-        </SettingsGroup>
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Field
-            value={newPersonName}
-            onChangeText={setNewPersonName}
-            placeholder="Person's name"
-            style={{ flex: 1 }}
-            onSubmitEditing={() => void addPerson()}
-          />
-          <Button label="Add" kind="secondary" onPress={() => void addPerson()} />
-        </View>
-
-        {/* App accounts with access to this household. */}
-        <Eyebrow style={{ marginTop: 16 }}>Members &amp; invites</Eyebrow>
-        <SettingsGroup>
-          {members.map((member) => (
-            <SettingsRow
-              key={member.user_id}
-              label={member.email ?? 'Unknown member'}
-              value={member.user_id === session?.user.id ? 'you' : member.role}
-            />
-          ))}
-          {invites.map((inv) => (
+          {members.filter((m) => !m.person_id).map((member) => {
+            const label = member.email ?? d.settings.unknownMember;
+            const removable =
+              myRole === 'owner' &&
+              member.user_id !== session?.user.id &&
+              member.role === 'member';
+            return (
+              <View
+                key={member.user_id}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 10,
+                  minHeight: controlHeight + 4,
+                  paddingHorizontal: 16,
+                }}
+              >
+                <Body style={{ flex: 1 }}>{label}</Body>
+                <Muted>
+                  {member.user_id === session?.user.id
+                    ? d.settings.you
+                    : member.role === 'owner'
+                      ? d.settings.roleOwner
+                      : d.settings.roleMember}
+                </Muted>
+                {removable ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={fmt(d.settings.revokeMemberA11y, { email: label })}
+                    onPress={() => revokeMember(member)}
+                    hitSlop={8}
+                  >
+                    <Ionicons name="close-circle-outline" size={20} color={colors.textMuted} />
+                  </Pressable>
+                ) : null}
+              </View>
+            );
+          })}
+          {invites.filter((i) => !i.person_id).map((inv) => (
             <View
               key={inv.email}
               style={{
@@ -271,10 +277,10 @@ export default function AccountScreen() {
               }}
             >
               <Body style={{ flex: 1 }}>{inv.email}</Body>
-              <Muted>pending</Muted>
+              <Muted>{d.settings.pending}</Muted>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`Revoke invite for ${inv.email}`}
+                accessibilityLabel={fmt(d.settings.revokeInvite, { email: inv.email })}
                 onPress={() => void revoke(inv.email)}
                 hitSlop={8}
               >
@@ -282,33 +288,22 @@ export default function AccountScreen() {
               </Pressable>
             </View>
           ))}
+          {persons.length === 0 ? (
+            <View style={{ paddingHorizontal: 16, paddingVertical: 14 }}>
+              <Muted>{d.settings.noPeopleYet}</Muted>
+            </View>
+          ) : null}
         </SettingsGroup>
-        <Muted>Invited members get full access to every recipe and plan in this family.</Muted>
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Field
-            value={inviteEmail}
-            onChangeText={setInviteEmail}
-            placeholder="Email address"
-            autoCapitalize="none"
-            autoComplete="email"
-            keyboardType="email-address"
-            style={{ flex: 1 }}
-            onSubmitEditing={() => void invite()}
-          />
-          <Button
-            label="Invite"
-            kind="secondary"
-            onPress={() => void invite()}
-            loading={inviteBusy}
-            disabled={!inviteEmail.includes('@')}
-          />
-        </View>
-        {inviteError ? <Body style={{ color: colors.danger }}>{inviteError}</Body> : null}
+        <Button
+          label={d.settings.addPerson}
+          kind="secondary"
+          onPress={() => router.push('/settings/person/new')}
+        />
 
         {/* Admin only: codes that let a new person create their own family. */}
         {isAdmin ? (
           <>
-            <Eyebrow style={{ marginTop: 16 }}>Signup codes</Eyebrow>
+            <Eyebrow style={{ marginTop: 16 }}>{d.settings.signupCodes}</Eyebrow>
             <SettingsGroup>
               {codes.map((c) => {
                 const status = signupCodeStatus(c);
@@ -325,7 +320,7 @@ export default function AccountScreen() {
                   >
                     <Pressable
                       accessibilityRole="button"
-                      accessibilityLabel={`Copy code ${c.code}`}
+                      accessibilityLabel={fmt(d.settings.copyCode, { code: c.code })}
                       onPress={() => void copyCode(c.code)}
                       hitSlop={8}
                       style={{ flex: 1 }}
@@ -342,15 +337,19 @@ export default function AccountScreen() {
                     </Pressable>
                     <Muted>
                       {copiedCode === c.code
-                        ? 'Copied'
+                        ? d.settings.copied
                         : status === 'active'
-                          ? `expires ${new Date(c.expires_at).toLocaleDateString()}`
-                          : status}
+                          ? fmt(d.settings.expires, {
+                              date: new Date(c.expires_at).toLocaleDateString(locale),
+                            })
+                          : status === 'expired'
+                            ? d.settings.statusExpired
+                            : d.settings.statusRedeemed}
                     </Muted>
                     {status === 'redeemed' ? null : (
                       <Pressable
                         accessibilityRole="button"
-                        accessibilityLabel={`Revoke code ${c.code}`}
+                        accessibilityLabel={fmt(d.settings.revokeCode, { code: c.code })}
                         onPress={() => void revokeCode(c.code)}
                         hitSlop={8}
                       >
@@ -362,16 +361,13 @@ export default function AccountScreen() {
               })}
               {codes.length === 0 ? (
                 <View style={{ paddingHorizontal: 16, paddingVertical: 14 }}>
-                  <Muted>No codes yet. Generate one to let a new family join.</Muted>
+                  <Muted>{d.settings.noCodesYet}</Muted>
                 </View>
               ) : null}
             </SettingsGroup>
-            <Muted>
-              Only you can create these. A code lets one person sign up and start their own family.
-              Tap a code to copy it.
-            </Muted>
+            <Muted>{d.settings.codesHint}</Muted>
             <Button
-              label="Generate code"
+              label={d.settings.generateCode}
               kind="secondary"
               onPress={() => void generateCode()}
               loading={codeBusy}
@@ -379,12 +375,12 @@ export default function AccountScreen() {
           </>
         ) : null}
 
-        <Eyebrow style={{ marginTop: 16 }}>Change email</Eyebrow>
+        <Eyebrow style={{ marginTop: 16 }}>{d.settings.changeEmail}</Eyebrow>
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <Field
             value={newEmail}
             onChangeText={setNewEmail}
-            placeholder="New email address"
+            placeholder={d.settings.newEmailAddress}
             autoCapitalize="none"
             autoComplete="email"
             keyboardType="email-address"
@@ -392,7 +388,7 @@ export default function AccountScreen() {
             onSubmitEditing={() => void changeEmail()}
           />
           <Button
-            label="Save"
+            label={d.common.save}
             kind="secondary"
             onPress={() => void changeEmail()}
             loading={emailBusy}
@@ -400,10 +396,10 @@ export default function AccountScreen() {
           />
         </View>
 
-        <Eyebrow style={{ marginTop: 16 }}>Danger zone</Eyebrow>
+        <Eyebrow style={{ marginTop: 16 }}>{d.settings.dangerZone}</Eyebrow>
         <SettingsGroup>
           <SettingsRow
-            label={deleteBusy ? 'Deleting…' : 'Delete account'}
+            label={deleteBusy ? d.settings.deleting : d.settings.deleteAccount}
             destructive
             chevron={false}
             onPress={deleteBusy ? undefined : deleteAccount}

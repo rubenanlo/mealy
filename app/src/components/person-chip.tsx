@@ -5,6 +5,8 @@ import { fonts, minTapTarget, useTheme } from '@/lib/theme';
 export interface PersonLike {
   id: string;
   name: string;
+  /** Preset palette color (persons.avatar_color); null keeps the mono chip. */
+  avatar_color?: string | null;
 }
 
 export function initials(name: string): string {
@@ -41,14 +43,24 @@ export function PersonChip({
         paddingHorizontal: 6,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: hollow ? 'transparent' : selected === false ? colors.cardPressed : colors.text,
+        backgroundColor: hollow
+          ? 'transparent'
+          : selected === false
+            ? colors.cardPressed
+            : (person.avatar_color ?? colors.text),
         borderWidth: hollow ? 1 : 0,
         borderColor: colors.textMuted,
       }}
     >
       <Text
         style={{
-          color: hollow ? colors.textMuted : selected === false ? colors.text : colors.bg,
+          color: hollow
+            ? colors.textMuted
+            : selected === false
+              ? colors.text
+              : person.avatar_color
+                ? '#FFFFFF'
+                : colors.bg,
           fontSize: 13,
           fontFamily: fonts.uiSemi,
         }}

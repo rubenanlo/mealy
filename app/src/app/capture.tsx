@@ -1,13 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Body, Button, Eyebrow, Field, Muted, Title } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
+import { createCaptureJob, createMediaCaptureJob } from '@/lib/capture-jobs';
+import { fmt, useI18n } from '@/lib/i18n';
 import { createBlankRecipe } from '@/lib/recipes';
 import { supabase } from '@/lib/supabase';
 import { controlHeight, fonts, fontSize, radius, screenPadding, useTheme } from '@/lib/theme';
@@ -23,6 +26,7 @@ import {
 
 export default function CaptureScreen() {
   const { colors } = useTheme();
+  const { d } = useI18n();
   const router = useRouter();
   const membership = useHousehold();
   // When opened from the planner: seed the manual title and remember the slot
@@ -37,6 +41,29 @@ export default function CaptureScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsPaste, setNeedsPaste] = useState(false);
+  // Clipboard hand-off: copy a link in Instagram/Safari/Photos, open Mealy,
+  // one tap pastes it. hasUrlAsync never triggers the iOS paste prompt —
+  // that only appears when the user actually taps the button.
+  const [clipboardHasUrl, setClipboardHasUrl] = useState(false);
+
+  useEffect(() => {
+    Clipboard.hasUrlAsync()
+      .then(setClipboardHasUrl)
+      .catch(() => {});
+  }, []);
+
+  const pasteFromClipboard = async () => {
+    try {
+      const url = await Clipboard.getUrlAsync();
+      if (url) setInput(url);
+      else {
+        const text = await Clipboard.getStringAsync();
+        if (text) setInput(text);
+      }
+    } catch {
+      // Paste denied or clipboard empty — nothing to do.
+    }
+  };
 
   type Ctx = { householdId: string; userId: string };
 
@@ -75,7 +102,7 @@ export default function CaptureScreen() {
         params: { id, isNew: '1', ...assignParams() },
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not create the recipe. Try again.');
+      setError(e instanceof Error ? e.message : d.capture.createError);
       setBusy(false);
     }
   };
@@ -87,21 +114,53 @@ export default function CaptureScreen() {
     try {
       const { data } = await supabase.auth.getSession();
       const userId = data.session?.user.id;
-      if (!userId) throw new Error('Session expired — sign in again.');
+      if (!userId) throw new Error(d.capture.sessionExpired);
       finish(await fn({ householdId: membership.householdId, userId }));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong during the import. Try again.');
+      setError(e instanceof Error ? e.message : d.capture.importError);
     } finally {
       setBusy(false);
     }
   };
 
+  /**
+   * All automatic captures import in the background (capture_jobs): the
+   * sheet closes immediately and the library shows the progress. The planner
+   * flow keeps the synchronous path throughout — it needs the finished
+   * recipe to fill its slot.
+   */
   const capturePasted = () => {
-    const kind = detectCaptureKind(input);
-    void run((ctx) =>
-      kind === 'text' ? captureFromText(input, ctx) : captureFromUrl(input, ctx)
-    );
+    if (assigning) {
+      const kind = detectCaptureKind(input);
+      void run((ctx) =>
+        kind === 'text' ? captureFromText(input, ctx) : captureFromUrl(input, ctx)
+      );
+      return;
+    }
+    void queueCapture();
   };
+
+  /** Shared background-queue wrapper: close the sheet once the job exists. */
+  const queue = async (create: (ctx: Ctx) => Promise<string>) => {
+    setBusy(true);
+    setError(null);
+    setNeedsPaste(false);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const userId = data.session?.user.id;
+      if (!userId) throw new Error(d.capture.sessionExpired);
+      await create({ householdId: membership.householdId, userId });
+      router.back();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : d.capture.importError);
+      setBusy(false);
+    }
+  };
+
+  const queueCapture = () => queue((ctx) => createCaptureJob(input, ctx));
+
+  /** Planner flow (fill a specific slot) needs the finished recipe now. */
+  const assigning = Boolean(assignWeek || assignDay != null || assignSlot);
 
   const pickPhotos = async () => {
     const picked = await ImagePicker.launchImageLibraryAsync({
@@ -115,7 +174,13 @@ export default function CaptureScreen() {
       mimeType: a.mimeType ?? 'image/jpeg',
       fileName: a.fileName ?? null,
     }));
-    void run((ctx) => captureFromImages(assets, ctx));
+    if (assigning) {
+      void run((ctx) => captureFromImages(assets, ctx));
+      return;
+    }
+    void queue((ctx) =>
+      createMediaCaptureJob('images', assets, `${d.capture.photos} (${assets.length})`, ctx)
+    );
   };
 
   const pickPdf = async () => {
@@ -125,12 +190,16 @@ export default function CaptureScreen() {
     });
     if (picked.canceled || picked.assets.length === 0) return;
     const asset = picked.assets[0];
-    void run((ctx) =>
-      captureFromPdf(
-        { uri: asset.uri, mimeType: asset.mimeType ?? 'application/pdf', fileName: asset.name },
-        ctx
-      )
-    );
+    const media: MediaAsset = {
+      uri: asset.uri,
+      mimeType: asset.mimeType ?? 'application/pdf',
+      fileName: asset.name,
+    };
+    if (assigning) {
+      void run((ctx) => captureFromPdf(media, ctx));
+      return;
+    }
+    void queue((ctx) => createMediaCaptureJob('pdf', [media], asset.name ?? d.capture.pdf, ctx));
   };
 
   return (
@@ -143,33 +212,38 @@ export default function CaptureScreen() {
           contentContainerStyle={{ padding: screenPadding, gap: 16 }}
           keyboardShouldPersistTaps="handled"
         >
-          <Title>Add a recipe</Title>
-          {seedTitle ? <Muted>Creating “{seedTitle}”.</Muted> : null}
+          <Title>{d.capture.title}</Title>
+          {seedTitle ? <Muted>{fmt(d.capture.creating, { title: seedTitle })}</Muted> : null}
 
           {/* Section 1 — type everything in yourself on a blank recipe page. */}
-          <Eyebrow style={{ marginTop: 4 }}>Manual input</Eyebrow>
-          <Muted>Start from a blank recipe and fill in the details yourself.</Muted>
-          <Button label="Create it yourself" onPress={() => void createManual()} loading={busy} />
+          <Eyebrow style={{ marginTop: 4 }}>{d.capture.manualSection}</Eyebrow>
+          <Muted>{d.capture.manualHint}</Muted>
+          <Button label={d.capture.createManual} onPress={() => void createManual()} loading={busy} />
 
           {/* Section 2 — let the worker extract from a link, text, photos or a PDF. */}
-          <Eyebrow style={{ marginTop: 16 }}>Automatic</Eyebrow>
-          <Muted>Paste a link (website, Instagram, TikTok) or the full recipe text.</Muted>
+          <Eyebrow style={{ marginTop: 16 }}>{d.capture.autoSection}</Eyebrow>
+          <Muted>{d.capture.autoHint}</Muted>
           <Field
             value={input}
             onChangeText={setInput}
-            placeholder="Paste a link or text"
+            placeholder={d.capture.pastePlaceholder}
             multiline
             style={{ minHeight: 140, textAlignVertical: 'top' }}
             autoCapitalize="none"
           />
+          {clipboardHasUrl && input.trim().length === 0 ? (
+            <Button
+              label={d.capture.pasteFromClipboard}
+              kind="secondary"
+              onPress={() => void pasteFromClipboard()}
+            />
+          ) : null}
           {needsPaste ? (
-            <Body style={{ color: colors.danger }}>
-              Could not fetch the recipe. Paste the text below.
-            </Body>
+            <Body style={{ color: colors.danger }}>{d.capture.fetchFailed}</Body>
           ) : null}
           {error ? <Body style={{ color: colors.danger }}>{error}</Body> : null}
           <Button
-            label="Capture"
+            label={d.capture.captureButton}
             onPress={capturePasted}
             loading={busy}
             disabled={input.trim().length === 0}
@@ -177,8 +251,8 @@ export default function CaptureScreen() {
           <View style={{ flexDirection: 'row', gap: 12 }}>
             {(
               [
-                ['Photos', 'images-outline', () => void pickPhotos(), 'Import from photos'],
-                ['PDF', 'document-outline', () => void pickPdf(), 'Import a PDF'],
+                [d.capture.photos, 'images-outline', () => void pickPhotos(), d.capture.importPhotos],
+                [d.capture.pdf, 'document-outline', () => void pickPdf(), d.capture.importPdf],
               ] as const
             ).map(([label, icon, onPress, a11y]) => (
               <Pressable
@@ -208,8 +282,8 @@ export default function CaptureScreen() {
               </Pressable>
             ))}
           </View>
-          {busy ? <Muted>Analyzing…</Muted> : null}
-          <Button label="Cancel" kind="secondary" onPress={() => router.back()} disabled={busy} />
+          {busy ? <Muted>{d.capture.analyzing}</Muted> : null}
+          <Button label={d.common.cancel} kind="secondary" onPress={() => router.back()} disabled={busy} />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

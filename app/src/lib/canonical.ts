@@ -12,6 +12,8 @@ export interface CanonicalIngredient {
   name_en: string;
   name_fr: string;
   name_es: string;
+  /** Nullable: added in migration 0027; fall back to name_en when absent. */
+  name_it: string | null;
   aliases: string[];
   category: string | null;
   aisle: string | null;
@@ -193,6 +195,23 @@ function slugAsPhrase(slug: string): string {
   return normalizeRaw(slug.replace(/-/g, ' '));
 }
 
+/** Ingredient name in the user's interface language (grocery list display). */
+export function canonicalDisplayName(
+  ingredient: Pick<CanonicalIngredient, 'name_en' | 'name_fr' | 'name_es' | 'name_it'>,
+  locale: string
+): string {
+  switch (locale) {
+    case 'fr':
+      return ingredient.name_fr;
+    case 'es':
+      return ingredient.name_es;
+    case 'it':
+      return ingredient.name_it ?? ingredient.name_en;
+    default:
+      return ingredient.name_en;
+  }
+}
+
 export interface CanonicalIndex {
   /** normalized phrase → ingredient, from slug/names ("exact"). */
   exact: Map<string, CanonicalIngredient>;
@@ -209,7 +228,13 @@ export function buildCanonicalIndex(table: CanonicalIngredient[]): CanonicalInde
   const bySlug = new Map<string, CanonicalIngredient>();
   for (const ing of table) {
     bySlug.set(ing.slug, ing);
-    for (const phrase of [slugAsPhrase(ing.slug), normalizeRaw(ing.name_fr), normalizeRaw(ing.name_en), normalizeRaw(ing.name_es)]) {
+    for (const phrase of [
+      slugAsPhrase(ing.slug),
+      normalizeRaw(ing.name_fr),
+      normalizeRaw(ing.name_en),
+      normalizeRaw(ing.name_es),
+      ing.name_it ? normalizeRaw(ing.name_it) : '',
+    ]) {
       if (phrase && !exact.has(phrase)) exact.set(phrase, ing);
     }
     for (const a of ing.aliases) {

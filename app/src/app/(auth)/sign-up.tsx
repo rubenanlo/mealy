@@ -4,13 +4,13 @@ import { Image, KeyboardAvoidingView, Platform, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Body, Button, Eyebrow, Field, Muted } from '@/components/ui';
+import { fmt, useI18n } from '@/lib/i18n';
 import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, screenPadding, useTheme } from '@/lib/theme';
 
-const CODE_ERROR = 'That code is invalid or expired.';
-
 export default function SignUpScreen() {
   const { colors } = useTheme();
+  const { d } = useI18n();
   const [code, setCode] = useState('');
   const [email, setEmail] = useState('');
   const [token, setToken] = useState('');
@@ -26,15 +26,15 @@ export default function SignUpScreen() {
     });
     setBusy(false);
     if (err) {
-      setError('Could not check the code. Try again.');
+      setError(d.auth.codeCheckFailed);
       return;
     }
     if (data === 'valid') {
       setStep('email');
     } else if (data === 'used') {
-      setError('That code has already been used.');
+      setError(d.auth.codeUsed);
     } else {
-      setError(CODE_ERROR);
+      setError(d.auth.codeInvalid);
     }
   };
 
@@ -49,7 +49,7 @@ export default function SignUpScreen() {
     });
     setBusy(false);
     if (err) {
-      setError(CODE_ERROR);
+      setError(d.auth.codeInvalid);
     } else {
       setStep('verify');
     }
@@ -65,7 +65,7 @@ export default function SignUpScreen() {
     });
     setBusy(false);
     if (err) {
-      setError(CODE_ERROR);
+      setError(d.auth.codeInvalid);
     }
     // On success the auth listener re-routes to onboarding to create the family.
   };
@@ -93,8 +93,8 @@ export default function SignUpScreen() {
           >
             Mealy
           </Text>
-          <Eyebrow>The family cooking notebook</Eyebrow>
-          <Muted>Enter the code your admin sent you to create your family.</Muted>
+          <Eyebrow>{d.auth.tagline}</Eyebrow>
+          <Muted>{d.auth.signUpIntro}</Muted>
         </View>
 
         {step === 'code' ? (
@@ -102,27 +102,27 @@ export default function SignUpScreen() {
             <Field
               value={code}
               onChangeText={setCode}
-              placeholder="Signup code"
+              placeholder={d.auth.signupCode}
               autoCapitalize="characters"
               autoCorrect={false}
               autoFocus
               onSubmitEditing={checkCode}
             />
             <Button
-              label="Continue"
+              label={d.auth.continue}
               onPress={checkCode}
               loading={busy}
               disabled={code.trim().length < 4}
             />
-            <Button label="Sign in instead" kind="secondary" onPress={() => router.back()} />
+            <Button label={d.auth.signInInstead} kind="secondary" onPress={() => router.back()} />
           </View>
         ) : step === 'email' ? (
           <View style={{ gap: 12 }}>
-            <Muted>Code accepted. Where should we send your sign-in code?</Muted>
+            <Muted>{d.auth.codeAccepted}</Muted>
             <Field
               value={email}
               onChangeText={setEmail}
-              placeholder="Email address"
+              placeholder={d.auth.emailAddress}
               autoCapitalize="none"
               autoComplete="email"
               keyboardType="email-address"
@@ -130,32 +130,32 @@ export default function SignUpScreen() {
               onSubmitEditing={sendCode}
             />
             <Button
-              label="Send a code"
+              label={d.auth.sendCode}
               onPress={sendCode}
               loading={busy}
               disabled={!email.includes('@')}
             />
-            <Button label="Back" kind="secondary" onPress={() => setStep('code')} />
+            <Button label={d.common.back} kind="secondary" onPress={() => setStep('code')} />
           </View>
         ) : (
           <View style={{ gap: 12 }}>
-            <Muted>A 6-digit code was sent to {email.trim()}.</Muted>
+            <Muted>{fmt(d.auth.codeSentTo, { email: email.trim() })}</Muted>
             <Field
               value={token}
               onChangeText={setToken}
-              placeholder="6-digit code"
+              placeholder={d.auth.sixDigitCode}
               keyboardType="number-pad"
               maxLength={6}
               autoFocus
               onSubmitEditing={verify}
             />
             <Button
-              label="Create my family"
+              label={d.auth.createFamily}
               onPress={verify}
               loading={busy}
               disabled={token.trim().length < 6}
             />
-            <Button label="Use a different email" kind="secondary" onPress={() => setStep('email')} />
+            <Button label={d.auth.useDifferentEmail} kind="secondary" onPress={() => setStep('email')} />
           </View>
         )}
         {error ? <Body style={{ color: colors.danger }}>{error}</Body> : null}

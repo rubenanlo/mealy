@@ -4,6 +4,7 @@ import { Modal, PanResponder, useWindowDimensions, View } from 'react-native';
 
 import { Button } from '@/components/ui';
 import { clampFocal, focalToContentPosition, type CoverFocal } from '@/lib/cover-focal';
+import { useI18n } from '@/lib/i18n';
 import { useImageUrl } from '@/lib/media';
 import { screenPadding, useTheme } from '@/lib/theme';
 
@@ -23,6 +24,7 @@ export function CoverRepositionModal({
   onClose: () => void;
 }) {
   const { colors } = useTheme();
+  const { d } = useI18n();
   const { width } = useWindowDimensions();
   const frameW = width - screenPadding * 2;
   const frameH = (frameW * 3) / 4;
@@ -73,8 +75,8 @@ export function CoverRepositionModal({
             />
           ) : null}
         </View>
-        <Button label="Save position" onPress={() => onSave(current)} />
-        <Button label="Cancel" kind="secondary" onPress={onClose} />
+        <Button label={d.components.savePosition} onPress={() => onSave(current)} />
+        <Button label={d.common.cancel} kind="secondary" onPress={onClose} />
       </View>
     </Modal>
   );

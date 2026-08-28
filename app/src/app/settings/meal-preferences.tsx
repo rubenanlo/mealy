@@ -4,9 +4,20 @@ import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Body, Button, Eyebrow, Field, Muted, SettingsGroup, Title } from '@/components/ui';
+import { Stepper } from '@/components/preference-controls';
+import {
+  Body,
+  Button,
+  Eyebrow,
+  Field,
+  Muted,
+  SettingsGroup,
+  SettingsRow,
+  Title,
+} from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
-import { normalizeDietProfile, QUOTA_CATEGORIES, type DietProfile } from '@/lib/diet';
+import { normalizeDietProfile, type FodmapMode } from '@/lib/diet';
+import { useI18n } from '@/lib/i18n';
 import { normalizeMealTimes, parseHHMM, type MealTimes } from '@/lib/meal-times';
 import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
@@ -18,76 +29,14 @@ interface PersonRow {
   diet_profile: unknown;
 }
 
-function Stepper({
-  value,
-  onChange,
-  allowNull,
-  label,
-}: {
-  value: number | null;
-  onChange: (next: number | null) => void;
-  /** For max bounds: stepping past 7 yields null (no limit, shown ∞). */
-  allowNull?: boolean;
-  label: string;
-}) {
-  const { colors } = useTheme();
-  const dec = () => {
-    if (value === null) onChange(7);
-    else if (value > 0) onChange(value - 1);
-  };
-  const inc = () => {
-    if (value === null) return;
-    if (value >= 7) onChange(allowNull ? null : 7);
-    else onChange(value + 1);
-  };
-  const buttonStyle = (pressed: boolean) => ({
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: pressed ? colors.cardPressed : 'transparent',
-  });
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`Decrease ${label}`}
-        onPress={dec}
-        hitSlop={8}
-        style={({ pressed }) => buttonStyle(pressed)}
-      >
-        <Ionicons name="remove" size={18} color={colors.text} />
-      </Pressable>
-      <Text
-        style={{
-          color: colors.text,
-          fontSize: fontSize.base,
-          fontFamily: fonts.uiSemi,
-          fontVariant: ['tabular-nums'],
-          minWidth: 24,
-          textAlign: 'center',
-        }}
-      >
-        {value === null ? '∞' : value}
-      </Text>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`Increase ${label}`}
-        onPress={inc}
-        hitSlop={8}
-        style={({ pressed }) => buttonStyle(pressed)}
-      >
-        <Ionicons name="add" size={18} color={colors.text} />
-      </Pressable>
-    </View>
-  );
-}
-
+/**
+ * Meal preferences, split in two: family-wide settings (suggestions, meal
+ * times, shared requirements) and per-person preferences (quotas, FODMAP,
+ * allergens, dislikes) reached through the person rows.
+ */
 export default function MealPreferencesScreen() {
   const { colors } = useTheme();
+  const { d } = useI18n();
   const router = useRouter();
   const { householdId } = useHousehold();
 
@@ -135,23 +84,6 @@ export default function MealPreferencesScreen() {
     }, [load])
   );
 
-  const updateQuota = async (
-    person: PersonRow,
-    category: string,
-    field: 'min' | 'max',
-    next: number | null
-  ) => {
-    const profile: DietProfile = normalizeDietProfile(person.diet_profile);
-    const targets = profile.proteinQuotas.targets.map((t) =>
-      t.category === category ? { ...t, [field]: next } : t
-    );
-    const updated = { ...profile, proteinQuotas: { period: 'week', targets } };
-    setPersons((prev) =>
-      prev.map((p) => (p.id === person.id ? { ...p, diet_profile: updated } : p))
-    );
-    await supabase.from('persons').update({ diet_profile: updated }).eq('id', person.id);
-  };
-
   const saveMealTimes = async () => {
     const values = [
       mealTimes.lunch.start,
@@ -160,7 +92,7 @@ export default function MealPreferencesScreen() {
       mealTimes.dinner.end,
     ];
     if (values.some((v) => parseHHMM(v) === null)) {
-      setTimesError('Times must be HH:MM, e.g. 13:30.');
+      setTimesError(d.mealPrefs.timesError);
       return;
     }
     setTimesError(null);
@@ -182,7 +114,26 @@ export default function MealPreferencesScreen() {
     setTimeout(() => setNotesSaved(false), 2000);
   };
 
-  const diners = persons.filter((p) => !p.is_employee);
+  // Display labels only — the stored mode values never change.
+  const fodmapLabels: Record<FodmapMode, string> = {
+    off: d.person.fodmapOff,
+    elimination: d.person.fodmapElimination,
+    reintroduction: d.person.fodmapReintroduction,
+    personalized: d.person.fodmapPersonalized,
+  };
+
+  const sectionHeader = (label: string) => (
+    <Text
+      style={{
+        color: colors.text,
+        fontSize: fontSize.cardTitle,
+        fontFamily: fonts.displaySemi,
+        marginTop: 12,
+      }}
+    >
+      {label}
+    </Text>
+  );
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bgGrouped }} edges={['top']}>
@@ -192,7 +143,7 @@ export default function MealPreferencesScreen() {
       >
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Back to settings"
+          accessibilityLabel={d.mealPrefs.backToSettings}
           onPress={() => router.back()}
           style={({ pressed }) => ({
             flexDirection: 'row',
@@ -204,69 +155,15 @@ export default function MealPreferencesScreen() {
           })}
         >
           <Ionicons name="chevron-back" size={20} color={colors.text} />
-          <Body style={{ fontFamily: fonts.uiSemi }}>Settings</Body>
+          <Body style={{ fontFamily: fonts.uiSemi }}>{d.mealPrefs.settings}</Body>
         </Pressable>
-        <Title>Meal preferences</Title>
-        <Muted>Protein quotas per person, per week (min – max).</Muted>
+        <Title>{d.mealPrefs.title}</Title>
 
-        {diners.map((person) => {
-          const profile = normalizeDietProfile(person.diet_profile);
-          return (
-            <View key={person.id} style={{ gap: 8, marginTop: 8 }}>
-              <Text
-                style={{
-                  color: colors.text,
-                  fontSize: fontSize.cardTitle,
-                  fontFamily: fonts.displaySemi,
-                }}
-              >
-                {person.name}
-              </Text>
-              <SettingsGroup>
-                {QUOTA_CATEGORIES.map(({ category, label }) => {
-                  const target = profile.proteinQuotas.targets.find(
-                    (t) => t.category === category
-                  )!;
-                  return (
-                    <View
-                      key={category}
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 8,
-                        minHeight: 56,
-                        paddingHorizontal: 16,
-                      }}
-                    >
-                      <Body style={{ flex: 1 }}>{label}</Body>
-                      <Stepper
-                        value={target.min}
-                        label={`minimum ${label}`}
-                        onChange={(v) => void updateQuota(person, category, 'min', v)}
-                      />
-                      <Muted>–</Muted>
-                      <Stepper
-                        value={target.max}
-                        allowNull
-                        label={`maximum ${label}`}
-                        onChange={(v) => void updateQuota(person, category, 'max', v)}
-                      />
-                    </View>
-                  );
-                })}
-              </SettingsGroup>
-            </View>
-          );
-        })}
-        {diners.length === 0 ? (
-          <Muted>No people yet — add your household under Manage your account.</Muted>
-        ) : null}
+        {/* ---- Family-wide settings ---- */}
+        {sectionHeader(d.mealPrefs.familySection)}
 
-        <Eyebrow style={{ marginTop: 16 }}>Suggestions</Eyebrow>
-        <Muted>
-          Weeks a recipe rests after being planned before it reappears in Suggested for you. 0
-          hides only this week's picks.
-        </Muted>
+        <Eyebrow style={{ marginTop: 4 }}>{d.mealPrefs.suggestions}</Eyebrow>
+        <Muted>{d.mealPrefs.suggestionsHint}</Muted>
         <SettingsGroup>
           <View
             style={{
@@ -277,19 +174,17 @@ export default function MealPreferencesScreen() {
               paddingHorizontal: 16,
             }}
           >
-            <Body style={{ flex: 1 }}>Rest weeks</Body>
+            <Body style={{ flex: 1 }}>{d.mealPrefs.restWeeks}</Body>
             <Stepper
               value={restWeeks}
-              label="rest weeks"
+              label={d.mealPrefs.restWeeks}
               onChange={(v) => void updateRestWeeks(v)}
             />
           </View>
         </SettingsGroup>
 
-        <Eyebrow style={{ marginTop: 16 }}>Meal times</Eyebrow>
-        <Muted>
-          When lunch and dinner happen. The week page uses the end time to know a meal is done.
-        </Muted>
+        <Eyebrow style={{ marginTop: 16 }}>{d.mealPrefs.mealTimes}</Eyebrow>
+        <Muted>{d.mealPrefs.mealTimesHint}</Muted>
         <SettingsGroup>
           {(['lunch', 'dinner'] as const).map((slot) => (
             <View
@@ -303,7 +198,9 @@ export default function MealPreferencesScreen() {
                 paddingVertical: 8,
               }}
             >
-              <Body style={{ flex: 1, textTransform: 'capitalize' }}>{slot}</Body>
+              <Body style={{ flex: 1, textTransform: 'capitalize' }}>
+                {slot === 'lunch' ? d.common.lunch : d.common.dinner}
+              </Body>
               <Field
                 value={mealTimes[slot].start}
                 onChangeText={(v) => setTime(slot, 'start', v)}
@@ -326,25 +223,47 @@ export default function MealPreferencesScreen() {
         </SettingsGroup>
         {timesError ? <Body style={{ color: colors.danger }}>{timesError}</Body> : null}
         <Button
-          label={timesSaved ? 'Saved' : 'Save meal times'}
+          label={timesSaved ? d.mealPrefs.saved : d.mealPrefs.saveMealTimes}
           kind="secondary"
           onPress={() => void saveMealTimes()}
         />
 
-        <Eyebrow style={{ marginTop: 16 }}>Other requirements</Eyebrow>
-        <Muted>Free text for the whole household, used as-is when planning.</Muted>
+        <Eyebrow style={{ marginTop: 16 }}>{d.mealPrefs.otherRequirements}</Eyebrow>
+        <Muted>{d.mealPrefs.otherRequirementsHint}</Muted>
         <Field
           value={householdNotes}
           onChangeText={setHouseholdNotes}
-          placeholder="e.g. no pork, light dinner on Sundays…"
+          placeholder={d.mealPrefs.otherRequirementsPlaceholder}
           multiline
           style={{ minHeight: 100, textAlignVertical: 'top', backgroundColor: colors.card }}
         />
         <Button
-          label={notesSaved ? 'Saved' : 'Save'}
+          label={notesSaved ? d.mealPrefs.saved : d.common.save}
           kind="secondary"
           onPress={() => void saveHouseholdNotes()}
         />
+
+        {/* ---- Per-person preferences: quotas, FODMAP, allergens, dislikes.
+             Employees cook rather than eat, so they are not listed here. ---- */}
+        {sectionHeader(d.mealPrefs.personSection)}
+        <SettingsGroup>
+          {persons.filter((p) => !p.is_employee).map((person) => {
+            const profile = normalizeDietProfile(person.diet_profile);
+            return (
+              <SettingsRow
+                key={person.id}
+                label={person.name}
+                value={fodmapLabels[profile.fodmap.mode]}
+                onPress={() => router.push(`/settings/preferences/${person.id}`)}
+              />
+            );
+          })}
+          {persons.filter((p) => !p.is_employee).length === 0 ? (
+            <View style={{ paddingHorizontal: 16, paddingVertical: 14 }}>
+              <Muted>{d.mealPrefs.noPeople}</Muted>
+            </View>
+          ) : null}
+        </SettingsGroup>
       </ScrollView>
     </SafeAreaView>
   );

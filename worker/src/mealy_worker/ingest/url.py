@@ -16,11 +16,11 @@ import re
 from typing import Any
 
 import extruct
-import httpx
 import lxml.html
 from recipe_scrapers import scrape_html
 
 from ..images import pick_cover
+from ..netguard import guarded_async_client
 from ..models import CanonicalRecipe, Ingredient, IngestResult, Verbatim
 from ..structure import recipe_from_json_ld, structure_text
 
@@ -144,7 +144,7 @@ def _recipe_from_scraper(html: str, url: str) -> tuple[CanonicalRecipe | None, l
 async def ingest_url(url: str) -> IngestResult:
     """Capture a recipe page → {verbatim, canonical}."""
     try:
-        async with httpx.AsyncClient(
+        async with guarded_async_client(
             follow_redirects=True,
             timeout=20.0,
             headers={"User-Agent": _UA, "Accept-Language": "fr,en;q=0.8"},

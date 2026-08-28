@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button, Eyebrow, Field, Hairline, Muted, Title } from '@/components/ui';
 import { normalizeRaw, type CanonicalIngredient } from '@/lib/canonical';
+import { fmt, useI18n } from '@/lib/i18n';
 import { correctMatch, loadCanonicalIngredients } from '@/lib/matching';
 import { fonts, fontSize, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
 
@@ -26,6 +27,7 @@ export function FixMatchSheet({
   onCorrected: () => void;
 }) {
   const { colors } = useTheme();
+  const { d } = useI18n();
   const [table, setTable] = useState<CanonicalIngredient[]>([]);
   const [search, setSearch] = useState('');
   const [busy, setBusy] = useState(false);
@@ -37,8 +39,8 @@ export function FixMatchSheet({
     setError(null);
     loadCanonicalIngredients()
       .then(setTable)
-      .catch(() => setError('Could not load the ingredient table. Try again.'));
-  }, [visible]);
+      .catch(() => setError(d.components.loadIngredientsError));
+  }, [visible, d]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -60,7 +62,7 @@ export function FixMatchSheet({
       onCorrected();
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Saving the correction failed. Try again.');
+      setError(e instanceof Error ? e.message : d.components.saveCorrectionError);
     } finally {
       setBusy(false);
     }
@@ -71,19 +73,19 @@ export function FixMatchSheet({
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top', 'bottom']}>
         <View style={{ flex: 1, padding: screenPadding, gap: 12 }}>
           <View style={{ gap: 4 }}>
-            <Eyebrow>Correct the match</Eyebrow>
+            <Eyebrow>{d.components.correctMatch}</Eyebrow>
             <Title style={{ fontSize: fontSize.dayName }}>{raw}</Title>
             <Muted>
               {current
-                ? `Currently matched to ${current.name_fr} (“${normalizeRaw(raw)}”).`
-                : `Currently unmatched (“${normalizeRaw(raw)}”).`}
+                ? fmt(d.components.matchedTo, { name: current.name_fr, raw: normalizeRaw(raw) })
+                : fmt(d.components.unmatched, { raw: normalizeRaw(raw) })}
             </Muted>
           </View>
           <Field
             icon="search-outline"
             value={search}
             onChangeText={setSearch}
-            placeholder="Search ingredients"
+            placeholder={d.components.searchIngredients}
             autoCapitalize="none"
           />
           {error ? (
@@ -98,7 +100,7 @@ export function FixMatchSheet({
             renderItem={({ item }) => (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`Match to ${item.name_fr}`}
+                accessibilityLabel={fmt(d.components.matchTo, { name: item.name_fr })}
                 onPress={() => void pick(item.id)}
                 disabled={busy}
                 style={({ pressed }) => ({
@@ -121,15 +123,15 @@ export function FixMatchSheet({
                 </View>
               </Pressable>
             )}
-            ListEmptyComponent={<Muted>No ingredient matches this search.</Muted>}
+            ListEmptyComponent={<Muted>{d.components.noIngredientMatch}</Muted>}
           />
           <Button
-            label="No match for this line"
+            label={d.components.noMatchForLine}
             kind="secondary"
             onPress={() => void pick(null)}
             loading={busy}
           />
-          <Button label="Cancel" kind="danger" onPress={onClose} disabled={busy} />
+          <Button label={d.common.cancel} kind="danger" onPress={onClose} disabled={busy} />
         </View>
       </SafeAreaView>
     </Modal>

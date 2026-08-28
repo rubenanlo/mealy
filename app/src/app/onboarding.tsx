@@ -4,18 +4,20 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Body, Button, Eyebrow, Field, Hairline, Muted, Title } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
+import { fmt, useI18n } from '@/lib/i18n';
 import { createFamily } from '@/lib/membership';
 import { screenPadding, useTheme } from '@/lib/theme';
 
 export default function OnboardingScreen() {
   const { colors } = useTheme();
+  const { d } = useI18n();
   const { session, signOut, refreshMembership } = useAuth();
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [noInvite, setNoInvite] = useState(false);
-  const email = session?.user.email ?? 'your email address';
+  const email = session?.user.email ?? d.onboarding.emailFallback;
 
   const create = async () => {
     setBusy(true);
@@ -23,7 +25,7 @@ export default function OnboardingScreen() {
     try {
       await createFamily(name.trim());
     } catch {
-      setError('Could not create the family. Try again.');
+      setError(d.onboarding.createError);
     } finally {
       // Also covers the invited-meanwhile / double-tap races: whatever
       // membership now exists, routing follows it.
@@ -47,20 +49,20 @@ export default function OnboardingScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1, justifyContent: 'center', padding: screenPadding, gap: 16 }}
       >
-        <Title>Welcome to Mealy</Title>
+        <Title>{d.onboarding.welcome}</Title>
 
         <View style={{ gap: 12 }}>
-          <Eyebrow>Start your family</Eyebrow>
-          <Body>Create your family&apos;s cooking notebook. You can invite everyone else next.</Body>
+          <Eyebrow>{d.onboarding.startFamily}</Eyebrow>
+          <Body>{d.onboarding.startBody}</Body>
           <Field
             value={name}
             onChangeText={setName}
-            placeholder="Family name (e.g. The Andinos)"
+            placeholder={d.onboarding.namePlaceholder}
             autoCapitalize="words"
             onSubmitEditing={() => void create()}
           />
           <Button
-            label="Create family"
+            label={d.onboarding.createFamily}
             onPress={() => void create()}
             loading={busy}
             disabled={!name.trim()}
@@ -71,20 +73,18 @@ export default function OnboardingScreen() {
         <Hairline />
 
         <View style={{ gap: 12 }}>
-          <Eyebrow>Joining a family?</Eyebrow>
-          <Body>
-            Ask a family member to invite {email} from Settings → Family, then check again.
-          </Body>
+          <Eyebrow>{d.onboarding.joining}</Eyebrow>
+          <Body>{fmt(d.onboarding.joiningBody, { email })}</Body>
           <Button
-            label="Check for an invite"
+            label={d.onboarding.checkInvite}
             kind="secondary"
             onPress={() => void checkInvite()}
             loading={checking}
           />
-          {noInvite ? <Muted>No invite for {email} yet.</Muted> : null}
+          {noInvite ? <Muted>{fmt(d.onboarding.noInvite, { email })}</Muted> : null}
         </View>
 
-        <Button label="Sign out" kind="secondary" onPress={() => void signOut()} />
+        <Button label={d.onboarding.signOut} kind="secondary" onPress={() => void signOut()} />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

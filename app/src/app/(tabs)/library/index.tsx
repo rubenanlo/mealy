@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Image,
   Platform,
@@ -42,9 +43,18 @@ import {
 } from "@/components/ui";
 import { useAuth, useHousehold } from "@/lib/auth";
 import { matchCanonical, normalizeRaw } from "@/lib/canonical";
+import {
+  dismissCaptureJob,
+  JOB_ERROR_NO_RECIPE,
+  loadActiveCaptureJobs,
+  retriggerStaleJobs,
+  retryCaptureJob,
+  type CaptureJobRow,
+} from "@/lib/capture-jobs";
 import type { ProteinCategory } from "@/lib/category";
 import { resolveProteinCategory } from "@/lib/category";
 import { computeRecipeFodmap } from "@/lib/fodmap";
+import { fmt, useI18n } from "@/lib/i18n";
 import {
   collageCovers,
   groupByOwner,
@@ -57,6 +67,7 @@ import {
 import { addWeeks, weekStart } from "@/lib/plan";
 import { matchesQuickFilters, type QuickFilter } from "@/lib/quick-filters";
 import { supabase } from "@/lib/supabase";
+import { localizedTitle } from "@/lib/translations";
 import {
   fonts,
   fontSize,
@@ -74,6 +85,7 @@ const FOLDER_VIEW_KEY = "mealy.folder-view";
 
 export default function HomeScreen() {
   const { colors } = useTheme();
+  const { d, locale } = useI18n();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { householdId } = useHousehold();
@@ -88,10 +100,11 @@ export default function HomeScreen() {
   const [sheetRecipe, setSheetRecipe] = useState<RecipeListItem | null>(null);
   const [saveRecipe, setSaveRecipe] = useState<RecipeListItem | null>(null);
   const [folders, setFolders] = useState<FolderSummary[]>([]);
-  const [memberEmails, setMemberEmails] = useState<Map<string, string>>(
+  const [memberEmails, setMemberEmails] = useState<Map<string, string | null>>(
     new Map(),
   );
   const [folderView, setFolderView] = useState<FolderView>("grid");
+  const [captureJobs, setCaptureJobs] = useState<CaptureJobRow[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -135,11 +148,12 @@ export default function HomeScreen() {
       { data: folderRows },
       { data: linkRows },
       { data: memberRows },
+      jobRows,
     ] = await Promise.all([
       supabase
         .from("recipes")
         .select(
-          "id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes, created_at, ingredients, fodmap_override",
+          "id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes, created_at, ingredients, fodmap_override, recipe_translations(locale, title)",
         )
         .eq("household_id", householdId)
         .order("created_at", { ascending: false }),
@@ -167,8 +181,26 @@ export default function HomeScreen() {
         .from("household_members")
         .select("user_id, email")
         .eq("household_id", householdId),
+      loadActiveCaptureJobs(householdId),
     ]);
-    if (recipeRows) setRecipes(recipeRows as RecipeListItem[]);
+    setCaptureJobs(jobRows);
+    // Heal lost pings (app closed too fast / worker was down); the worker
+    // claims jobs atomically so duplicates are harmless.
+    retriggerStaleJobs(jobRows);
+    if (recipeRows) {
+      // Localize titles once at the fetch boundary, then drop the embed so
+      // downstream state keeps the plain RecipeListItem shape.
+      setRecipes(
+        (
+          recipeRows as (RecipeListItem & {
+            recipe_translations?: { locale: string; title: string }[] | null;
+          })[]
+        ).map(({ recipe_translations, ...r }) => ({
+          ...r,
+          title: localizedTitle({ title: r.title, recipe_translations }, locale),
+        })),
+      );
+    }
     setFolders(
       summarizeFolders(
         (folderRows as FolderRow[]) ?? [],
@@ -178,7 +210,7 @@ export default function HomeScreen() {
     setMemberEmails(
       new Map(
         ((memberRows ?? []) as { user_id: string; email: string | null }[]).map(
-          (m) => [m.user_id, m.email ?? "Family member"],
+          (m) => [m.user_id, m.email],
         ),
       ),
     );
@@ -218,13 +250,24 @@ export default function HomeScreen() {
       setWeekEntries([]);
     }
     setLoaded(true);
-  }, [householdId]);
+  }, [householdId, locale]);
 
   useFocusEffect(
     useCallback(() => {
       void load();
     }, [load]),
   );
+
+  // While a background import runs, poll so its card resolves into the
+  // finished recipe without a manual refresh.
+  useEffect(() => {
+    const active = captureJobs.some(
+      (j) => j.status === "pending" || j.status === "processing",
+    );
+    if (!active) return;
+    const timer = setInterval(() => void load(), 4000);
+    return () => clearInterval(timer);
+  }, [captureJobs, load]);
 
   // Recipes not planned within the rest window, newest first, max 6; hero = first.
   const suggestions = useMemo(
@@ -347,7 +390,7 @@ export default function HomeScreen() {
   const renameFolderPrompt = (folder: FolderSummary) => {
     // Alert.prompt is iOS-only; elsewhere rename lives on the folder page.
     Alert.prompt(
-      "Rename folder",
+      d.library.renameFolder,
       undefined,
       (name) => {
         const trimmed = name?.trim();
@@ -365,12 +408,12 @@ export default function HomeScreen() {
 
   const deleteFolderConfirm = (folder: FolderSummary) => {
     Alert.alert(
-      "Delete this folder?",
-      `“${folder.name}” will be deleted. Recipes stay in your library.`,
+      d.library.deleteFolderTitle,
+      fmt(d.library.deleteFolderBody, { name: folder.name }),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: d.common.cancel, style: "cancel" },
         {
-          text: "Delete",
+          text: d.common.delete,
           style: "destructive",
           onPress: () => {
             void supabase
@@ -387,23 +430,23 @@ export default function HomeScreen() {
   /** ⋯ on a folder I own: quick actions without opening the folder. */
   const folderMenu = (folder: FolderSummary) => {
     Alert.alert(folder.name, undefined, [
-      { text: "Open", onPress: () => router.push(`/folder/${folder.id}`) },
+      { text: d.library.open, onPress: () => router.push(`/folder/${folder.id}`) },
       ...(Platform.OS === "ios"
-        ? [{ text: "Rename", onPress: () => renameFolderPrompt(folder) }]
+        ? [{ text: d.library.rename, onPress: () => renameFolderPrompt(folder) }]
         : []),
       {
-        text: "Delete",
+        text: d.common.delete,
         style: "destructive" as const,
         onPress: () => deleteFolderConfirm(folder),
       },
-      { text: "Cancel", style: "cancel" as const },
+      { text: d.common.cancel, style: "cancel" as const },
     ]);
   };
 
   const createFolderPrompt = () => {
     // Alert.prompt is iOS-only; elsewhere folders are created from the save sheet.
     if (Platform.OS === "ios") {
-      Alert.prompt("New folder", undefined, (name) => {
+      Alert.prompt(d.library.newFolder, undefined, (name) => {
         const trimmed = name?.trim();
         if (!trimmed) return;
         void supabase
@@ -416,7 +459,7 @@ export default function HomeScreen() {
           .then(() => void load());
       });
     } else {
-      Alert.alert("New folder", "Create folders from any recipe's bookmark.");
+      Alert.alert(d.library.newFolder, d.library.newFolderHint);
     }
   };
 
@@ -480,7 +523,7 @@ export default function HomeScreen() {
           </Text>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Add a recipe"
+            accessibilityLabel={d.library.addRecipeA11y}
             onPress={() => router.push("/capture")}
             style={({ pressed }) => ({
               width: minTapTarget,
@@ -496,7 +539,7 @@ export default function HomeScreen() {
           {/* v3.1b: Settings left the tab bar — NYT top-right gear, icon only */}
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Settings"
+            accessibilityLabel={d.library.settingsA11y}
             onPress={() => router.push("/settings")}
             style={({ pressed }) => ({
               width: minTapTarget,
@@ -515,12 +558,21 @@ export default function HomeScreen() {
 
         <View style={{ marginBottom: 20 }} />
 
+        {/* Background imports (capture_jobs): running + failed, newest first. */}
+        {captureJobs.length > 0 ? (
+          <View style={{ gap: 10, marginBottom: 20 }}>
+            {captureJobs.map((job) => (
+              <CaptureJobCard key={job.id} job={job} onChanged={() => void load()} />
+            ))}
+          </View>
+        ) : null}
+
         {!loaded ? (
           <Loading />
         ) : recipes.length === 0 ? (
           <EmptyState
-            message="Your cooking notebook starts here."
-            actionLabel="Add your first recipe"
+            message={d.library.emptyLibrary}
+            actionLabel={d.library.addFirstRecipe}
             onAction={() => router.push("/capture")}
           />
         ) : activeFilters.size > 0 ? (
@@ -536,8 +588,8 @@ export default function HomeScreen() {
             ))}
             {filteredRecipes.length === 0 ? (
               <EmptyState
-                message="No recipes match these filters."
-                actionLabel="Clear filters"
+                message={d.library.noFilterMatches}
+                actionLabel={d.library.clearFilters}
                 onAction={() => setActiveFilters(new Set())}
               />
             ) : null}
@@ -557,7 +609,7 @@ export default function HomeScreen() {
 
             {carousel.length > 0 ? (
               <View style={{ paddingTop: 16, gap: 12 }}>
-                <SectionHeader title="Suggested for you" />
+                <SectionHeader title={d.library.suggestedForYou} />
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -583,8 +635,8 @@ export default function HomeScreen() {
             {thisWeek.length > 0 ? (
               <View style={{ paddingTop: 16, gap: 12 }}>
                 <SectionHeader
-                  title="This week"
-                  linkLabel="See all"
+                  title={d.library.thisWeek}
+                  linkLabel={d.library.seeAll}
                   onLinkPress={() => router.navigate("/plan")}
                 />
                 <ScrollView
@@ -621,7 +673,7 @@ export default function HomeScreen() {
 
             {recentlyAdded.length > 0 ? (
               <View style={{ paddingTop: 16, gap: 12 }}>
-                <SectionHeader title="Recently added" />
+                <SectionHeader title={d.library.recentlyAdded} />
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -648,8 +700,8 @@ export default function HomeScreen() {
             {allRecipes.length > 0 ? (
               <View style={{ paddingTop: 16, gap: 12 }}>
                 <SectionHeader
-                  title="All recipes"
-                  linkLabel="See all"
+                  title={d.library.allRecipes}
+                  linkLabel={d.library.seeAll}
                   onLinkPress={() => router.navigate("/search")}
                 />
                 <ScrollView
@@ -684,8 +736,8 @@ export default function HomeScreen() {
               >
                 <View style={{ flex: 1 }}>
                   <SectionHeader
-                    title="Your folders"
-                    linkLabel="+ New"
+                    title={d.library.yourFolders}
+                    linkLabel={d.library.newFolderLink}
                     onLinkPress={createFolderPrompt}
                     style={{ marginRight: 5 }}
                   />
@@ -701,7 +753,11 @@ export default function HomeScreen() {
                     <Pressable
                       key={view}
                       accessibilityRole="button"
-                      accessibilityLabel={`${view === "grid" ? "Grid" : "List"} view`}
+                      accessibilityLabel={
+                        view === "grid"
+                          ? d.library.gridViewA11y
+                          : d.library.listViewA11y
+                      }
                       accessibilityState={{ selected }}
                       onPress={() => changeFolderView(view)}
                       hitSlop={4}
@@ -734,14 +790,12 @@ export default function HomeScreen() {
                 onMenu={folderMenu}
               />
               {myFolders.length === 0 ? (
-                <Muted>
-                  Save any recipe with the bookmark to start a folder.
-                </Muted>
+                <Muted>{d.library.foldersEmptyHint}</Muted>
               ) : null}
               {otherFolders.map((group) => (
                 <View key={group.ownerId} style={{ gap: 12, paddingTop: 8 }}>
                   <Eyebrow>
-                    {memberEmails.get(group.ownerId) ?? "Family member"}
+                    {memberEmails.get(group.ownerId) ?? d.library.familyMember}
                   </Eyebrow>
                   <FolderCollection
                     folders={group.folders}
@@ -783,6 +837,90 @@ export default function HomeScreen() {
         />
       ) : null}
     </SafeAreaView>
+  );
+}
+
+/** Background import status card: spinner while running, retry/dismiss on failure. */
+function CaptureJobCard({
+  job,
+  onChanged,
+}: {
+  job: CaptureJobRow;
+  onChanged: () => void;
+}) {
+  const { colors } = useTheme();
+  const { d } = useI18n();
+  const failed = job.status === "failed";
+  const detail =
+    job.error === JOB_ERROR_NO_RECIPE || !job.error
+      ? d.library.importNoRecipe
+      : job.error;
+  return (
+    <View
+      style={{
+        backgroundColor: colors.card,
+        borderRadius: radius.card,
+        padding: 14,
+        gap: 8,
+      }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+        {failed ? (
+          <Ionicons name="alert-circle-outline" size={20} color={colors.danger} />
+        ) : (
+          <ActivityIndicator size="small" color={colors.textMuted} />
+        )}
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text
+            style={{
+              color: failed ? colors.danger : colors.text,
+              fontSize: fontSize.base,
+              fontFamily: fonts.uiSemi,
+            }}
+          >
+            {failed ? d.library.importFailed : d.library.importingRecipe}
+          </Text>
+          <Muted numberOfLines={1}>{job.input}</Muted>
+        </View>
+      </View>
+      {failed ? (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 18 }}>
+          <Muted style={{ flex: 1 }} numberOfLines={2}>
+            {detail}
+          </Muted>
+          {(
+            [
+              [
+                d.library.importRetry,
+                () => void retryCaptureJob(job.id).then(onChanged),
+              ],
+              [
+                d.library.importDismiss,
+                () => void dismissCaptureJob(job.id).then(onChanged),
+              ],
+            ] as const
+          ).map(([label, onPress]) => (
+            <Pressable
+              key={label}
+              accessibilityRole="button"
+              onPress={onPress}
+              hitSlop={8}
+              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+            >
+              <Text
+                style={{
+                  color: colors.text,
+                  fontSize: fontSize.base,
+                  fontFamily: fonts.uiSemi,
+                }}
+              >
+                {label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -847,10 +985,11 @@ function FolderMenuButton({
   onPress: () => void;
 }) {
   const { colors } = useTheme();
+  const { d } = useI18n();
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Folder options for ${name}`}
+      accessibilityLabel={fmt(d.library.folderOptionsA11y, { name })}
       onPress={onPress}
       hitSlop={8}
       style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1, padding: 4 })}
@@ -873,10 +1012,11 @@ function FolderGridItem({
   onMenu?: () => void;
 }) {
   const { colors } = useTheme();
+  const { d } = useI18n();
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Open folder ${folder.name}`}
+      accessibilityLabel={fmt(d.library.openFolderA11y, { name: folder.name })}
       onPress={onPress}
       style={({ pressed }) => ({
         width: "47.5%",
@@ -921,8 +1061,12 @@ function FolderGridItem({
           ) : null}
         </View>
         <Muted>
-          {folder.recipeIds.length}{" "}
-          {folder.recipeIds.length === 1 ? "recipe" : "recipes"}
+          {fmt(
+            folder.recipeIds.length === 1
+              ? d.library.recipeCountOne
+              : d.library.recipeCountMany,
+            { count: folder.recipeIds.length },
+          )}
         </Muted>
       </View>
     </Pressable>
@@ -942,10 +1086,11 @@ function FolderRowItem({
   onMenu?: () => void;
 }) {
   const { colors } = useTheme();
+  const { d } = useI18n();
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Open folder ${folder.name}`}
+      accessibilityLabel={fmt(d.library.openFolderA11y, { name: folder.name })}
       onPress={onPress}
       style={({ pressed }) => ({
         flexDirection: "row",
@@ -972,8 +1117,12 @@ function FolderRowItem({
           {folder.name}
         </Text>
         <Muted>
-          {folder.recipeIds.length}{" "}
-          {folder.recipeIds.length === 1 ? "recipe" : "recipes"}
+          {fmt(
+            folder.recipeIds.length === 1
+              ? d.library.recipeCountOne
+              : d.library.recipeCountMany,
+            { count: folder.recipeIds.length },
+          )}
         </Muted>
       </View>
       {onMenu ? <FolderMenuButton name={folder.name} onPress={onMenu} /> : null}

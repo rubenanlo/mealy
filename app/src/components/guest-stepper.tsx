@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, Text, View } from 'react-native';
 
+import { fmt, useI18n } from '@/lib/i18n';
 import { fonts, fontSize, minTapTarget, radius, useTheme } from '@/lib/theme';
 
 /**
@@ -18,6 +19,7 @@ export function GuestStepper({
   max?: number;
 }) {
   const { colors } = useTheme();
+  const { d } = useI18n();
   const clamp = (n: number) => Math.max(0, Math.min(max, n));
 
   const StepButton = ({ delta, icon, label }: { delta: number; icon: 'remove' | 'add'; label: string }) => {
@@ -47,9 +49,9 @@ export function GuestStepper({
 
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-      <StepButton delta={-1} icon="remove" label="One fewer guest" />
+      <StepButton delta={-1} icon="remove" label={d.components.oneFewerGuest} />
       <Text
-        accessibilityLabel={`${value} guests`}
+        accessibilityLabel={fmt(d.components.guestsCount, { count: value })}
         style={{
           minWidth: 24,
           textAlign: 'center',
@@ -61,7 +63,7 @@ export function GuestStepper({
       >
         {value}
       </Text>
-      <StepButton delta={1} icon="add" label="One more guest" />
+      <StepButton delta={1} icon="add" label={d.components.oneMoreGuest} />
     </View>
   );
 }

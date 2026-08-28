@@ -1,0 +1,84 @@
+// Shared chrome strings used across screens. `en` is the source of truth;
+// the other languages are typed against it so a missing entry is a compile error.
+
+const en = {
+  cancel: 'Cancel',
+  save: 'Save',
+  close: 'Close',
+  add: 'Add',
+  done: 'Done',
+  delete: 'Delete',
+  back: 'Back',
+  or: 'or',
+  loading: 'Loading…',
+  genericError: 'Something went wrong. Try again.',
+  days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+  lunch: 'Lunch',
+  dinner: 'Dinner',
+  tabHome: 'Home',
+  tabSearch: 'Search',
+  tabWeek: 'Week',
+  tabGroceries: 'Groceries',
+};
+
+const es: typeof en = {
+  cancel: 'Cancelar',
+  save: 'Guardar',
+  close: 'Cerrar',
+  add: 'Añadir',
+  done: 'Hecho',
+  delete: 'Eliminar',
+  back: 'Atrás',
+  or: 'o',
+  loading: 'Cargando…',
+  genericError: 'Algo salió mal. Inténtalo de nuevo.',
+  days: ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'],
+  lunch: 'Comida',
+  dinner: 'Cena',
+  tabHome: 'Inicio',
+  tabSearch: 'Buscar',
+  tabWeek: 'Semana',
+  tabGroceries: 'Compra',
+};
+
+const fr: typeof en = {
+  cancel: 'Annuler',
+  save: 'Enregistrer',
+  close: 'Fermer',
+  add: 'Ajouter',
+  done: 'Terminé',
+  delete: 'Supprimer',
+  back: 'Retour',
+  or: 'ou',
+  loading: 'Chargement…',
+  genericError: 'Une erreur est survenue. Réessayez.',
+  days: ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'],
+  lunch: 'Déjeuner',
+  dinner: 'Dîner',
+  tabHome: 'Accueil',
+  tabSearch: 'Recherche',
+  tabWeek: 'Semaine',
+  tabGroceries: 'Courses',
+};
+
+const it: typeof en = {
+  cancel: 'Annulla',
+  save: 'Salva',
+  close: 'Chiudi',
+  add: 'Aggiungi',
+  done: 'Fatto',
+  delete: 'Elimina',
+  back: 'Indietro',
+  or: 'o',
+  loading: 'Caricamento…',
+  genericError: 'Qualcosa è andato storto. Riprova.',
+  days: ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'],
+  lunch: 'Pranzo',
+  dinner: 'Cena',
+  tabHome: 'Home',
+  tabSearch: 'Cerca',
+  tabWeek: 'Settimana',
+  tabGroceries: 'Spesa',
+};
+
+export const common = { en, es, fr, it };

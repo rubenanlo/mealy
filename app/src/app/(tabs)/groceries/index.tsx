@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, Share, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Share, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { EmptyState, Eyebrow, Hairline, Muted, Title } from '@/components/ui';
+import { PersonChip, type PersonLike } from '@/components/person-chip';
+import { RecipeImage } from '@/components/recipe-cards';
+import { EmptyState, Eyebrow, Field, Hairline, Muted, Title } from '@/components/ui';
 import {
   aggregate,
   groupByAisle,
@@ -13,11 +15,13 @@ import {
   type UnmatchedItem,
 } from '@/lib/aggregate';
 import { useAuth, useHousehold } from '@/lib/auth';
-import type { CanonicalIngredient } from '@/lib/canonical';
+import { canonicalDisplayName, type CanonicalIngredient } from '@/lib/canonical';
 import { normalizeDietProfile } from '@/lib/diet';
 import { buildShoppingText, type ExportGroup } from '@/lib/export';
+import { fmt, useI18n } from '@/lib/i18n';
 import { resolveMatches } from '@/lib/matching';
 import { dayDate, weekStart } from '@/lib/plan';
+import { resolveUnitOverrides } from '@/lib/units';
 import { collectWeekIngredients } from '@/lib/shopping';
 import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, minTapTarget, screenPadding, tabBarClearance, useTheme } from '@/lib/theme';
@@ -41,9 +45,22 @@ interface AisleGroup {
   items: AggregatedItem[];
 }
 
+interface CustomItem {
+  id: string;
+  label: string;
+  /** Person responsible for getting it (migration 0029); null = anyone. */
+  person_id: string | null;
+}
+
+/** grocery_checks key for a user-added item (migration 0026). */
+const customKey = (id: string) => `custom:${id}`;
+
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
+
+/** BCP 47 tags for date formatting per app locale. */
+const dateLocales = { en: 'en-US', es: 'es-ES', fr: 'fr-FR', it: 'it-IT' } as const;
 
 /** Small round checkbox row shared by matched + unmatched items. */
 function CheckRow({
@@ -56,7 +73,9 @@ function CheckRow({
   expandable,
   expanded,
   onExpand,
-  sub,
+  recipes,
+  assign,
+  onRemove,
 }: {
   label: string;
   qty?: string;
@@ -67,9 +86,15 @@ function CheckRow({
   expandable?: boolean;
   expanded?: boolean;
   onExpand?: () => void;
-  sub?: { text: string; onPress?: () => void }[];
+  /** Source recipes shown as horizontal cards when the row is expanded. */
+  recipes?: { title: string; qty?: string; cover: string | null; onPress?: () => void }[];
+  /** User-added items only: person responsible (chip) + picker. */
+  assign?: { person: PersonLike | null; onPress: () => void };
+  /** User-added items only: trailing remove button. */
+  onRemove?: () => void;
 }) {
   const { colors } = useTheme();
+  const { d } = useI18n();
   const textColor = checked ? colors.textMuted : colors.text;
   const dotColor =
     fodmapTier === 'high' ? colors.danger : fodmapTier === 'check' ? colors.saffron : null;
@@ -117,7 +142,7 @@ function CheckRow({
             </Text>
             {dotColor ? (
               <View
-                accessibilityLabel={`FODMAP ${fodmapTier}`}
+                accessibilityLabel={fmt(d.groceries.fodmap, { tier: fodmapTier ?? '' })}
                 style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: dotColor }}
               />
             ) : null}
@@ -132,67 +157,139 @@ function CheckRow({
                 }}
               >
                 <Text style={{ color: colors.textMuted, fontSize: 11, fontFamily: fonts.uiMedium }}>
-                  mixed units
+                  {d.groceries.mixedUnits}
                 </Text>
               </View>
             ) : null}
           </View>
-          {qty ? (
-            <Text
-              style={{
-                color: textColor,
-                fontSize: fontSize.base,
-                fontFamily: fonts.ui,
-                fontVariant: ['tabular-nums'],
-                textAlign: 'right',
-                textDecorationLine: checked ? 'line-through' : 'none',
-              }}
-            >
-              {qty}
-            </Text>
-          ) : null}
         </Pressable>
-        {expandable ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={expanded ? `Hide details for ${label}` : `Show details for ${label}`}
-            accessibilityState={{ expanded }}
-            onPress={onExpand}
-            hitSlop={8}
-            style={({ pressed }) => ({
-              width: 32,
-              height: 32,
-              alignItems: 'center',
-              justifyContent: 'center',
-              opacity: pressed ? 0.5 : 1,
-            })}
+        {/* Quantity sits right after the label block; the trailing icon slot
+            has a fixed width on every row (an empty view when a row lacks a
+            button), so the quantities column aligns list-wide. */}
+        {qty ? (
+          <Text
+            style={{
+              // Never let a pathological quantity overlap the label: cap the
+              // column and wrap within it.
+              maxWidth: '45%',
+              color: textColor,
+              fontSize: fontSize.base,
+              fontFamily: fonts.ui,
+              fontVariant: ['tabular-nums'],
+              textAlign: 'right',
+              textDecorationLine: checked ? 'line-through' : 'none',
+            }}
           >
-            <Ionicons
-              name={expanded ? 'chevron-up' : 'chevron-down'}
-              size={16}
-              color={colors.textMuted}
-            />
-          </Pressable>
+            {qty}
+          </Text>
         ) : null}
-      </View>
-      {expanded && sub && sub.length > 0 ? (
-        <View style={{ paddingLeft: 38, paddingBottom: 8, gap: 2 }}>
-          {sub.map((part, i) =>
-            part.onPress ? (
-              <Pressable
-                key={i}
-                accessibilityRole="button"
-                accessibilityLabel={`Open recipe — ${part.text}`}
-                onPress={part.onPress}
-                style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, minHeight: 28, justifyContent: 'center' })}
-              >
-                <Muted>{part.text}</Muted>
-              </Pressable>
-            ) : (
-              <Muted key={i}>{part.text}</Muted>
-            )
-          )}
+        {assign ? (
+          assign.person ? (
+            <PersonChip person={assign.person} onPress={assign.onPress} />
+          ) : (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={fmt(d.groceries.assignA11y, { name: label })}
+              onPress={assign.onPress}
+              hitSlop={8}
+              style={({ pressed }) => ({
+                width: 32,
+                height: 32,
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: pressed ? 0.5 : 1,
+              })}
+            >
+              <Ionicons name="person-add-outline" size={17} color={colors.textMuted} />
+            </Pressable>
+          )
+        ) : null}
+        <View style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}>
+          {onRemove ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={fmt(d.groceries.removeItemA11y, { name: label })}
+              onPress={onRemove}
+              hitSlop={8}
+              style={({ pressed }) => ({
+                width: 32,
+                height: 32,
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: pressed ? 0.5 : 1,
+              })}
+            >
+              <Ionicons name="close-circle-outline" size={18} color={colors.textMuted} />
+            </Pressable>
+          ) : expandable ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={fmt(
+                expanded ? d.groceries.hideDetails : d.groceries.showDetails,
+                { name: label }
+              )}
+              accessibilityState={{ expanded }}
+              onPress={onExpand}
+              hitSlop={8}
+              style={({ pressed }) => ({
+                width: 32,
+                height: 32,
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: pressed ? 0.5 : 1,
+              })}
+            >
+              <Ionicons
+                name={expanded ? 'chevron-up' : 'chevron-down'}
+                size={16}
+                color={colors.textMuted}
+              />
+            </Pressable>
+          ) : null}
         </View>
+      </View>
+      {/* Expanded: the source recipes as cards (cover, qty, title). */}
+      {expanded && recipes && recipes.length > 0 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{
+            gap: 12,
+            paddingLeft: 38,
+            paddingRight: 8,
+            paddingTop: 2,
+            paddingBottom: 12,
+          }}
+        >
+          {recipes.map((recipe, i) => (
+            <Pressable
+              key={i}
+              disabled={!recipe.onPress}
+              onPress={recipe.onPress}
+              accessibilityRole="button"
+              accessibilityLabel={fmt(d.groceries.openRecipe, { text: recipe.title })}
+              style={({ pressed }) => ({ width: 132, gap: 3, opacity: pressed ? 0.7 : 1 })}
+            >
+              <RecipeImage
+                path={recipe.cover}
+                style={{ width: 132, height: 88, borderRadius: 10 }}
+                iconSize={20}
+              />
+              {recipe.qty ? <Muted numberOfLines={1}>{recipe.qty}</Muted> : null}
+              <Text
+                numberOfLines={2}
+                style={{
+                  color: colors.text,
+                  fontSize: fontSize.meta + 1,
+                  lineHeight: 18,
+                  fontFamily: fonts.displaySemi,
+                }}
+              >
+                {recipe.title}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
       ) : null}
     </View>
   );
@@ -200,6 +297,7 @@ function CheckRow({
 
 export default function GroceriesScreen() {
   const { colors } = useTheme();
+  const { d, locale } = useI18n();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { householdId } = useHousehold();
@@ -212,7 +310,11 @@ export default function GroceriesScreen() {
   const [aisles, setAisles] = useState<AisleGroup[]>([]);
   const [unmatched, setUnmatched] = useState<UnmatchedItem[]>([]);
   const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [customItems, setCustomItems] = useState<CustomItem[]>([]);
+  const [persons, setPersons] = useState<PersonLike[]>([]);
+  const [newItem, setNewItem] = useState('');
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
+  const [covers, setCovers] = useState<Map<string, string | null>>(new Map());
   const [fodmapDots, setFodmapDots] = useState(false);
 
   const load = useCallback(async () => {
@@ -227,39 +329,51 @@ export default function GroceriesScreen() {
           .maybeSingle(),
         supabase
           .from('persons')
-          .select('is_employee, diet_profile')
+          .select('id, name, avatar_color, is_employee, diet_profile')
           .eq('household_id', householdId),
       ]);
-      const eaterCount = (
-        (personRows as { is_employee: boolean; diet_profile: unknown }[]) ?? []
-      ).filter((p) => !p.is_employee).length;
+      type PersonRow = PersonLike & { is_employee: boolean; diet_profile: unknown };
+      const allPersons = ((personRows as PersonRow[]) ?? []);
+      setPersons(allPersons);
+      const eaterCount = allPersons.filter((p) => !p.is_employee).length;
       setFodmapDots(
         ((personRows as { is_employee: boolean; diet_profile: unknown }[]) ?? []).some(
           (p) => !p.is_employee && normalizeDietProfile(p.diet_profile).fodmap.mode !== 'off'
         )
       );
-      if (!planRow) {
-        setHasEntries(false);
-        setAisles([]);
-        setUnmatched([]);
-        return;
-      }
-      const [{ data: entryRows }, { data: recipeRows }, { data: checkRows }] = await Promise.all([
+      // Custom items and checks exist even without a plan. The generated
+      // list resets each week by construction (checks are week-keyed), but
+      // user-added items carry over until removed — no week filter here.
+      const [{ data: itemRows }, { data: checkRows }] = await Promise.all([
         supabase
-          .from('plan_entries')
-          .select('id, recipe_id, day, slot, position, person_ids, guest_count')
-          .eq('meal_plan_id', planRow.id),
-        supabase
-          .from('recipes')
-          .select('id, title, ingredients, servings')
-          .eq('household_id', householdId),
+          .from('grocery_items')
+          .select('id, label, person_id')
+          .eq('household_id', householdId)
+          .order('created_at'),
         supabase
           .from('grocery_checks')
           .select('item_key')
           .eq('household_id', householdId)
           .eq('week_start', weekIso),
       ]);
+      setCustomItems((itemRows as CustomItem[]) ?? []);
       setChecked(new Set(((checkRows as { item_key: string }[]) ?? []).map((r) => r.item_key)));
+      if (!planRow) {
+        setHasEntries(false);
+        setAisles([]);
+        setUnmatched([]);
+        return;
+      }
+      const [{ data: entryRows }, { data: recipeRows }] = await Promise.all([
+        supabase
+          .from('plan_entries')
+          .select('id, recipe_id, day, slot, position, person_ids, guest_count')
+          .eq('meal_plan_id', planRow.id),
+        supabase
+          .from('recipes')
+          .select('id, title, ingredients, servings, cover_image_path')
+          .eq('household_id', householdId),
+      ]);
 
       const entries = ((entryRows as EntryRow[]) ?? []).sort(
         (a, b) => a.day - b.day || a.slot.localeCompare(b.slot) || a.position - b.position
@@ -270,7 +384,9 @@ export default function GroceriesScreen() {
           title: string;
           ingredients: IngredientRow[];
           servings: number | null;
+          cover_image_path: string | null;
         }[]) ?? [];
+      setCovers(new Map(recipes.map((r) => [r.id, r.cover_image_path ?? null])));
       const groups = collectWeekIngredients(entries, recipes, eaterCount);
       const lines: AggregateLine[] = groups.flatMap((group) =>
         group.items.map((item) => ({
@@ -288,8 +404,16 @@ export default function GroceriesScreen() {
         setUnmatched([]);
         return;
       }
-      const matches = await resolveMatches([...new Set(lines.map((l) => l.raw))]);
-      const result = aggregate(lines, (line) => matches.get(line.raw)?.ingredient ?? null);
+      const [matches, unitOverrides] = await Promise.all([
+        resolveMatches([...new Set(lines.map((l) => l.raw))]),
+        // AI-backed classification of units the static table doesn't know.
+        resolveUnitOverrides(lines.map((l) => l.unit)),
+      ]);
+      const result = aggregate(
+        lines,
+        (line) => matches.get(line.raw)?.ingredient ?? null,
+        unitOverrides
+      );
       setAisles(groupByAisle(result.items));
       // Dedupe unmatched by key, keep first recipe title.
       const seen = new Set<string>();
@@ -334,6 +458,35 @@ export default function GroceriesScreen() {
             if (payload.eventType === 'DELETE') next.delete(record.item_key!);
             else next.add(record.item_key!);
             return next;
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'grocery_items',
+          filter: `household_id=eq.${householdId}`,
+        },
+        (payload) => {
+          const record = (payload.eventType === 'DELETE' ? payload.old : payload.new) as {
+            id?: string;
+            label?: string;
+            person_id?: string | null;
+          };
+          if (!record?.id) return;
+          setCustomItems((prev) => {
+            if (payload.eventType === 'DELETE') return prev.filter((i) => i.id !== record.id);
+            const next = {
+              id: record.id!,
+              label: record.label ?? '',
+              person_id: record.person_id ?? null,
+            };
+            if (prev.some((i) => i.id === record.id)) {
+              return prev.map((i) => (i.id === record.id ? { ...i, ...next } : i));
+            }
+            return [...prev, next];
           });
         }
       )
@@ -382,6 +535,52 @@ export default function GroceriesScreen() {
     }
   };
 
+  /** Enter in the input adds the item and stays focused for the next one. */
+  const addItem = () => {
+    const label = newItem.trim();
+    if (!label) return;
+    setNewItem('');
+    supabase
+      .from('grocery_items')
+      .insert({ household_id: householdId, week_start: weekIso, label, created_by: userId })
+      .select('id')
+      .single()
+      .then(({ data, error }) => {
+        if (error || !data) return;
+        const id = data.id as string;
+        // The realtime echo dedupes by id, so this stays single.
+        setCustomItems((prev) =>
+          prev.some((i) => i.id === id) ? prev : [...prev, { id, label, person_id: null }]
+        );
+      });
+  };
+
+  /** Pick who's responsible for a custom item (or nobody). */
+  const assignItem = (item: CustomItem) => {
+    const set = (personId: string | null) => {
+      setCustomItems((prev) =>
+        prev.map((i) => (i.id === item.id ? { ...i, person_id: personId } : i))
+      );
+      void supabase.from('grocery_items').update({ person_id: personId }).eq('id', item.id);
+    };
+    Alert.alert(item.label, d.groceries.assignTitle, [
+      ...persons.map((person) => ({ text: person.name, onPress: () => set(person.id) })),
+      { text: d.groceries.nobody, onPress: () => set(null) },
+      { text: d.common.cancel, style: 'cancel' as const },
+    ]);
+  };
+
+  const removeItem = (item: CustomItem) => {
+    setCustomItems((prev) => prev.filter((i) => i.id !== item.id));
+    void supabase.from('grocery_items').delete().eq('id', item.id);
+    // Items outlive weeks now — clear their checks from every week.
+    void supabase
+      .from('grocery_checks')
+      .delete()
+      .eq('household_id', householdId)
+      .eq('item_key', customKey(item.id));
+  };
+
   const toggleExpanded = (key: string) =>
     setExpandedKeys((prev) => {
       const next = new Set(prev);
@@ -392,22 +591,30 @@ export default function GroceriesScreen() {
 
   const exportGroups = useMemo<ExportGroup[]>(() => {
     const groups: ExportGroup[] = aisles.map((group) => ({
-      aisle: group.aisle,
-      items: group.items.map((item) => ({
-        label: item.displayQty
-          ? `${capitalize(item.canonical.name_fr)} — ${item.displayQty}`
-          : capitalize(item.canonical.name_fr),
-        checked: checked.has(item.key),
-      })),
+      aisle: d.groceries.aisles[group.aisle] ?? group.aisle,
+      items: group.items.map((item) => {
+        const name = capitalize(canonicalDisplayName(item.canonical, locale));
+        return {
+          label: item.displayQty ? `${name} — ${item.displayQty}` : name,
+          checked: checked.has(item.key),
+        };
+      }),
     }));
-    if (unmatched.length > 0) {
-      groups.push({
-        aisle: 'Other',
-        items: unmatched.map((u) => ({ label: u.raw, checked: checked.has(u.key) })),
-      });
+    const other = [
+      ...unmatched.map((u) => ({ label: u.raw, checked: checked.has(u.key) })),
+      ...customItems.map((item) => {
+        const person = persons.find((p) => p.id === item.person_id);
+        return {
+          label: person ? `${item.label} — ${person.name}` : item.label,
+          checked: checked.has(customKey(item.id)),
+        };
+      }),
+    ];
+    if (other.length > 0) {
+      groups.push({ aisle: d.groceries.other, items: other });
     }
     return groups;
-  }, [aisles, unmatched, checked]);
+  }, [aisles, unmatched, customItems, persons, checked, d, locale]);
 
   const share = async () => {
     const message = buildShoppingText(exportGroups);
@@ -419,11 +626,14 @@ export default function GroceriesScreen() {
     }
   };
 
-  const weekLabel = `Week of ${dayDate(weekIso, 0).toLocaleDateString('en-US', {
-    month: 'long',
-    day: 'numeric',
-  })}`;
+  const weekLabel = fmt(d.groceries.weekOf, {
+    date: dayDate(weekIso, 0).toLocaleDateString(dateLocales[locale], {
+      month: 'long',
+      day: 'numeric',
+    }),
+  });
   const isEmpty = aisles.length === 0 && unmatched.length === 0;
+  const shareEmpty = exportGroups.length === 0;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
@@ -437,13 +647,13 @@ export default function GroceriesScreen() {
       >
         <View style={{ flex: 1, gap: 2 }}>
           <Eyebrow>{weekLabel}</Eyebrow>
-          <Title>Groceries</Title>
+          <Title>{d.groceries.title}</Title>
         </View>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Share the shopping list"
+          accessibilityLabel={d.groceries.shareList}
           onPress={() => void share()}
-          disabled={isEmpty}
+          disabled={shareEmpty}
           style={({ pressed }) => ({
             width: minTapTarget,
             height: minTapTarget,
@@ -451,30 +661,33 @@ export default function GroceriesScreen() {
             justifyContent: 'center',
             borderRadius: minTapTarget / 2,
             backgroundColor: pressed ? colors.cardPressed : 'transparent',
-            opacity: isEmpty ? 0.4 : 1,
+            opacity: shareEmpty ? 0.4 : 1,
           })}
         >
           <Ionicons name="share-outline" size={24} color={colors.text} />
         </Pressable>
       </View>
 
-      {loading && isEmpty ? (
+      {loading && isEmpty && customItems.length === 0 ? (
         <View style={{ padding: screenPadding }}>
-          <Muted>Building your list…</Muted>
+          <Muted>{d.groceries.building}</Muted>
         </View>
-      ) : isEmpty ? (
-        <EmptyState
-          message={hasEntries ? 'Nothing to buy this week.' : 'No meals planned this week.'}
-          actionLabel="Open the week"
-          onAction={() => router.navigate('/plan')}
-        />
       ) : (
         <ScrollView
           contentContainerStyle={{
             paddingHorizontal: screenPadding,
             paddingBottom: insets.bottom + tabBarClearance,
           }}
+          keyboardShouldPersistTaps="handled"
         >
+          {isEmpty ? (
+            <EmptyState
+              message={hasEntries ? d.groceries.nothingToBuy : d.groceries.noMeals}
+              actionLabel={d.groceries.openWeek}
+              onAction={() => router.navigate('/plan')}
+            />
+          ) : null}
+
           {aisles.map((group, groupIndex) => (
             <View key={group.aisle} style={{ paddingTop: groupIndex === 0 ? 4 : 20 }}>
               <Text
@@ -486,24 +699,26 @@ export default function GroceriesScreen() {
                   paddingBottom: 6,
                 }}
               >
-                {group.aisle}
+                {d.groceries.aisles[group.aisle] ?? group.aisle}
               </Text>
               {group.items.map((item, itemIndex) => (
                 <View key={item.key}>
                   {itemIndex > 0 ? <Hairline /> : null}
                   <CheckRow
-                    label={capitalize(item.canonical.name_fr)}
+                    label={capitalize(canonicalDisplayName(item.canonical, locale))}
                     qty={item.displayQty || undefined}
                     checked={checked.has(item.key)}
                     onToggle={() => toggle(item.key)}
                     fodmapTier={fodmapDots ? item.canonical.fodmap_tier : null}
                     mixed={item.mixed}
-                    expandable={item.parts.length > 1}
+                    expandable={item.parts.length > 0}
                     expanded={expandedKeys.has(item.key)}
                     onExpand={() => toggleExpanded(item.key)}
-                    sub={item.parts.map((part) => ({
-                      text: `${part.qty} — ${part.recipeTitle}`,
-                      // v3.2: part rows deep-link to the recipe sheet.
+                    recipes={item.parts.map((part) => ({
+                      title: part.recipeTitle,
+                      qty: part.qty,
+                      cover: part.recipeId ? (covers.get(part.recipeId) ?? null) : null,
+                      // Cards deep-link to the recipe sheet (v3.2).
                       onPress: part.recipeId
                         ? () => router.push(`/recipe/${part.recipeId}`)
                         : undefined,
@@ -516,7 +731,7 @@ export default function GroceriesScreen() {
 
           {unmatched.length > 0 ? (
             <View style={{ paddingTop: 24 }}>
-              <Eyebrow style={{ paddingBottom: 6 }}>Unmatched</Eyebrow>
+              <Eyebrow style={{ paddingBottom: 6 }}>{d.groceries.unmatched}</Eyebrow>
               {unmatched.map((item, itemIndex) => (
                 <View key={item.key}>
                   {itemIndex > 0 ? <Hairline /> : null}
@@ -524,13 +739,62 @@ export default function GroceriesScreen() {
                     label={item.raw}
                     checked={checked.has(item.key)}
                     onToggle={() => toggle(item.key)}
-                    expandable={false}
-                    sub={[]}
+                    expandable={!!item.recipeTitle}
+                    expanded={expandedKeys.has(item.key)}
+                    onExpand={() => toggleExpanded(item.key)}
+                    recipes={
+                      item.recipeTitle
+                        ? [
+                            {
+                              title: item.recipeTitle,
+                              cover: item.recipeId
+                                ? (covers.get(item.recipeId) ?? null)
+                                : null,
+                              onPress: item.recipeId
+                                ? () => router.push(`/recipe/${item.recipeId}`)
+                                : undefined,
+                            },
+                          ]
+                        : []
+                    }
                   />
                 </View>
               ))}
             </View>
           ) : null}
+
+          {/* User-added items — enter adds and keeps the keyboard for the next one. */}
+          <View style={{ paddingTop: 24 }}>
+            <Eyebrow style={{ paddingBottom: 6 }}>{d.groceries.other}</Eyebrow>
+            {customItems.map((item, itemIndex) => (
+              <View key={item.id}>
+                {itemIndex > 0 ? <Hairline /> : null}
+                <CheckRow
+                  label={item.label}
+                  checked={checked.has(customKey(item.id))}
+                  onToggle={() => toggle(customKey(item.id))}
+                  expandable={false}
+                  assign={{
+                    person: item.person_id
+                      ? (persons.find((p) => p.id === item.person_id) ?? null)
+                      : null,
+                    onPress: () => assignItem(item),
+                  }}
+                  onRemove={() => removeItem(item)}
+                />
+              </View>
+            ))}
+            <Field
+              value={newItem}
+              onChangeText={setNewItem}
+              placeholder={d.groceries.addItemPlaceholder}
+              accessibilityLabel={d.groceries.addItemA11y}
+              onSubmitEditing={addItem}
+              blurOnSubmit={false}
+              returnKeyType="done"
+              style={{ marginTop: 10 }}
+            />
+          </View>
         </ScrollView>
       )}
     </SafeAreaView>

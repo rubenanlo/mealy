@@ -9,6 +9,7 @@ const ing = (over: Partial<CanonicalIngredient> & { slug: string; name_fr: strin
   id: `id-${over.slug}`,
   name_en: over.slug,
   name_es: over.slug,
+  name_it: null,
   aliases: [],
   category: null,
   aisle: null,

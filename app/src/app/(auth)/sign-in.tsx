@@ -1,9 +1,18 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Image, KeyboardAvoidingView, Platform, Text, View } from 'react-native';
+import { Alert, Image, KeyboardAvoidingView, Platform, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Body, Button, Eyebrow, Field, Muted } from '@/components/ui';
+import {
+  authenticateBiometric,
+  biometricsAvailable,
+  clearBiometricCredentials,
+  hasBiometricCredentials,
+  loadBiometricCredentials,
+  saveBiometricCredentials,
+} from '@/lib/biometrics';
+import { fmt, useI18n } from '@/lib/i18n';
 import {
   appleAvailable,
   googleAvailable,
@@ -15,6 +24,7 @@ import { fonts, fontSize, screenPadding, useTheme } from '@/lib/theme';
 
 export default function SignInScreen() {
   const { colors } = useTheme();
+  const { d } = useI18n();
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [password, setPassword] = useState('');
@@ -22,11 +32,49 @@ export default function SignInScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [appleReady, setAppleReady] = useState(false);
+  const [biometricReady, setBiometricReady] = useState(false);
   const googleReady = googleAvailable();
 
   useEffect(() => {
     appleAvailable().then(setAppleReady);
+    void Promise.all([biometricsAvailable(), hasBiometricCredentials()]).then(
+      ([available, stored]) => setBiometricReady(available && stored)
+    );
   }, []);
+
+  const signInWithBiometrics = async () => {
+    setError(null);
+    if (!(await authenticateBiometric(d.auth.faceIdPrompt))) return;
+    const credentials = await loadBiometricCredentials();
+    if (!credentials) {
+      setBiometricReady(false);
+      return;
+    }
+    setBusy(true);
+    const { error: err } = await supabase.auth.signInWithPassword(credentials);
+    setBusy(false);
+    if (err) {
+      // The password changed since it was stored — never keep a stale secret.
+      await clearBiometricCredentials();
+      setBiometricReady(false);
+      setEmail(credentials.email);
+      setStep('password');
+      setError(d.auth.faceIdStale);
+    }
+    // On success the auth listener re-routes.
+  };
+
+  /** After a password sign-in on biometric hardware: offer one-tap next time. */
+  const offerBiometrics = async (signedInEmail: string, signedInPassword: string) => {
+    if (!(await biometricsAvailable()) || (await hasBiometricCredentials())) return;
+    Alert.alert(d.auth.faceIdEnableTitle, d.auth.faceIdEnableBody, [
+      { text: d.common.cancel, style: 'cancel' },
+      {
+        text: d.auth.faceIdEnable,
+        onPress: () => void saveBiometricCredentials(signedInEmail, signedInPassword),
+      },
+    ]);
+  };
 
   const withProvider = async (run: () => Promise<{ error: string | null }>) => {
     setBusy(true);
@@ -43,7 +91,7 @@ export default function SignInScreen() {
     const { error: err } = await supabase.auth.signInWithOtp({ email: email.trim() });
     setBusy(false);
     if (err) {
-      setError('Could not send the code. Check the email address.');
+      setError(d.auth.sendFailed);
     } else {
       setStep('code');
     }
@@ -59,7 +107,7 @@ export default function SignInScreen() {
     });
     setBusy(false);
     if (err) {
-      setError('Invalid or expired code. Request a new one and try again.');
+      setError(d.auth.otpInvalid);
     }
     // On success the auth listener re-routes to the tabs.
   };
@@ -73,7 +121,9 @@ export default function SignInScreen() {
     });
     setBusy(false);
     if (err) {
-      setError('Incorrect email or password. Try again.');
+      setError(d.auth.passwordWrong);
+    } else {
+      void offerBiometrics(email.trim(), password);
     }
   };
 
@@ -100,16 +150,23 @@ export default function SignInScreen() {
           >
             Mealy
           </Text>
-          <Eyebrow>The family cooking notebook</Eyebrow>
-          <Muted>Sign in or create your family&apos;s account.</Muted>
+          <Eyebrow>{d.auth.tagline}</Eyebrow>
+          <Muted>{d.auth.signInIntro}</Muted>
         </View>
 
         {step === 'email' ? (
           <View style={{ gap: 12 }}>
+            {biometricReady ? (
+              <Button
+                label={Platform.OS === 'ios' ? d.auth.signInFaceId : d.auth.signInBiometrics}
+                onPress={() => void signInWithBiometrics()}
+                loading={busy}
+              />
+            ) : null}
             <Field
               value={email}
               onChangeText={setEmail}
-              placeholder="Email address"
+              placeholder={d.auth.emailAddress}
               autoCapitalize="none"
               autoComplete="email"
               keyboardType="email-address"
@@ -117,23 +174,23 @@ export default function SignInScreen() {
               onSubmitEditing={sendCode}
             />
             <Button
-              label="Send a code"
+              label={d.auth.sendCode}
               onPress={sendCode}
               loading={busy}
               disabled={!email.includes('@')}
             />
             <Button
-              label="Use a password"
+              label={d.auth.usePassword}
               kind="secondary"
               onPress={() => setStep('password')}
               disabled={!email.includes('@')}
             />
             {googleReady || appleReady ? (
               <View style={{ gap: 12, marginTop: 8 }}>
-                <Muted style={{ textAlign: 'center' }}>or</Muted>
+                <Muted style={{ textAlign: 'center' }}>{d.common.or}</Muted>
                 {googleReady ? (
                   <Button
-                    label="Continue with Google"
+                    label={d.auth.continueGoogle}
                     kind="secondary"
                     onPress={() => void withProvider(signInWithGoogle)}
                     disabled={busy}
@@ -141,7 +198,7 @@ export default function SignInScreen() {
                 ) : null}
                 {appleReady ? (
                   <Button
-                    label="Continue with Apple"
+                    label={d.auth.continueApple}
                     kind="secondary"
                     onPress={() => void withProvider(signInWithApple)}
                     disabled={busy}
@@ -150,7 +207,7 @@ export default function SignInScreen() {
               </View>
             ) : null}
             <Button
-              label="Have a signup code? Create your family"
+              label={d.auth.haveCode}
               kind="secondary"
               onPress={() => router.push('/sign-up')}
               disabled={busy}
@@ -158,43 +215,43 @@ export default function SignInScreen() {
           </View>
         ) : step === 'password' ? (
           <View style={{ gap: 12 }}>
-            <Muted>Signing in with a password as {email.trim()}.</Muted>
+            <Muted>{fmt(d.auth.passwordAs, { email: email.trim() })}</Muted>
             <Field
               value={password}
               onChangeText={setPassword}
-              placeholder="Password"
+              placeholder={d.auth.password}
               secureTextEntry
               autoCapitalize="none"
               autoFocus
               onSubmitEditing={signInWithPassword}
             />
             <Button
-              label="Sign in"
+              label={d.auth.signIn}
               onPress={signInWithPassword}
               loading={busy}
               disabled={password.length < 8}
             />
-            <Button label="Use a different email" kind="secondary" onPress={() => setStep('email')} />
+            <Button label={d.auth.useDifferentEmail} kind="secondary" onPress={() => setStep('email')} />
           </View>
         ) : (
           <View style={{ gap: 12 }}>
-            <Muted>A 6-digit code was sent to {email.trim()}.</Muted>
+            <Muted>{fmt(d.auth.codeSentTo, { email: email.trim() })}</Muted>
             <Field
               value={code}
               onChangeText={setCode}
-              placeholder="6-digit code"
+              placeholder={d.auth.sixDigitCode}
               keyboardType="number-pad"
               maxLength={6}
               autoFocus
               onSubmitEditing={verifyCode}
             />
             <Button
-              label="Sign in"
+              label={d.auth.signIn}
               onPress={verifyCode}
               loading={busy}
               disabled={code.trim().length < 6}
             />
-            <Button label="Use a different email" kind="secondary" onPress={() => setStep('email')} />
+            <Button label={d.auth.useDifferentEmail} kind="secondary" onPress={() => setStep('email')} />
           </View>
         )}
         {error ? <Body style={{ color: colors.danger }}>{error}</Body> : null}

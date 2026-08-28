@@ -26,10 +26,10 @@ import { matchCanonical, normalizeRaw } from '@/lib/canonical';
 import { resolveProteinCategory, type ProteinCategory } from '@/lib/category';
 import { normalizeDietProfile } from '@/lib/diet';
 import { computeRecipeFodmap, recipeFodmapTier } from '@/lib/fodmap';
+import { fmt, useI18n } from '@/lib/i18n';
 import { useImageUrl } from '@/lib/media';
 import {
   DAY_LABELS,
-  SLOT_LABELS,
   addWeeks,
   dayDate,
   plannedEvents,
@@ -44,6 +44,7 @@ import {
 import { quotaProgress } from '@/lib/quotas';
 import { entryServings } from '@/lib/servings';
 import { supabase } from '@/lib/supabase';
+import { localizedTitle } from '@/lib/translations';
 import {
   floatingActionOffset,
   fonts,
@@ -62,6 +63,7 @@ interface Person {
   name: string;
   is_employee: boolean;
   diet_profile: unknown;
+  avatar_color?: string | null;
 }
 
 interface RecipeLite {
@@ -85,13 +87,6 @@ interface MealPlanRow {
   status: 'draft' | 'approved';
 }
 
-const CATEGORY_PILL_LABELS: Record<string, string> = {
-  fish: 'Fish',
-  meat: 'Meat',
-  vegetarian: 'Veg',
-  legume: 'Legume',
-};
-
 /** Outlined quota chip: 8px category dot + "Fish 1/2" Franklin 500 13. */
 function QuotaChip({
   category,
@@ -103,6 +98,13 @@ function QuotaChip({
   target: number;
 }) {
   const { colors } = useTheme();
+  const { d } = useI18n();
+  const pillLabels: Record<string, string> = {
+    fish: d.plan.categoryFish,
+    meat: d.plan.categoryMeat,
+    vegetarian: d.plan.categoryVeg,
+    legume: d.plan.categoryLegume,
+  };
   return (
     <View
       style={{
@@ -125,7 +127,7 @@ function QuotaChip({
           fontVariant: ['tabular-nums'],
         }}
       >
-        {CATEGORY_PILL_LABELS[category] ?? category} {planned}/{target}
+        {pillLabels[category] ?? category} {planned}/{target}
       </Text>
     </View>
   );
@@ -157,10 +159,13 @@ function EntryThumb({ path }: { path: string | null }) {
 
 export default function PlanScreen() {
   const { colors } = useTheme();
+  const { d, locale } = useI18n();
   const { householdId } = useHousehold();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const index = useCanonicalIndex();
+
+  const slotLabel = (slot: MealSlot) => (slot === 'lunch' ? d.common.lunch : d.common.dinner);
 
   const { week: weekParam } = useLocalSearchParams<{ week?: string }>();
   const [weekIso, setWeekIso] = useState(() =>
@@ -217,26 +222,36 @@ export default function PlanScreen() {
         const [{ data: personRows }, { data: recipeRows }] = await Promise.all([
           supabase
             .from('persons')
-            .select('id, name, is_employee, diet_profile')
+            .select('id, name, is_employee, diet_profile, avatar_color')
             .eq('household_id', householdId)
             .order('created_at'),
           supabase
             .from('recipes')
             .select(
-              'id, title, tags, needs_review, cover_image_path, ingredients, prep_minutes, cook_minutes, servings, fodmap_override, meal_type'
+              'id, title, tags, needs_review, cover_image_path, ingredients, prep_minutes, cook_minutes, servings, fodmap_override, meal_type, recipe_translations(locale, title)'
             )
             .eq('household_id', householdId)
             .order('title'),
         ]);
         if (cancelled) return;
         setPersons((personRows as Person[]) ?? []);
-        setRecipes((recipeRows as RecipeLite[]) ?? []);
+        // Localize titles up front so the grid, picker, and editor all show the
+        // active locale's title without any downstream changes.
+        const rows = (
+          (recipeRows as (RecipeLite & {
+            recipe_translations: { locale: string; title: string }[] | null;
+          })[]) ?? []
+        ).map(({ recipe_translations, ...r }) => ({
+          ...r,
+          title: localizedTitle({ title: r.title, recipe_translations }, locale),
+        }));
+        setRecipes(rows);
         await loadWeek(weekIso);
       })();
       return () => {
         cancelled = true;
       };
-    }, [householdId, weekIso, loadWeek])
+    }, [householdId, weekIso, loadWeek, locale])
   );
 
   const recipeById = useMemo(() => new Map(recipes.map((r) => [r.id, r])), [recipes]);
@@ -396,10 +411,8 @@ export default function PlanScreen() {
         setAutoOpen(false);
         await loadWeek(weekIso);
         Alert.alert(
-          'No recipes to pick from',
-          autoLowFodmap
-            ? 'No low-FODMAP recipes found in your library.'
-            : 'Add some recipes to your library first.'
+          d.plan.noRecipesTitle,
+          autoLowFodmap ? d.plan.noLowFodmapRecipes : d.plan.addRecipesFirst
         );
         return;
       }
@@ -421,10 +434,15 @@ export default function PlanScreen() {
       setAutoOpen(false);
       await loadWeek(weekIso);
       if (unfilled.length > 0) {
-        Alert.alert(
-          'Week partly filled',
-          `${unfilled.length} ${unfilled.length === 1 ? 'meal' : 'meals'} left empty — not enough ${autoLowFodmap ? 'low-FODMAP ' : ''}recipes.`
-        );
+        const body =
+          unfilled.length === 1
+            ? autoLowFodmap
+              ? d.plan.partlyFilledOneLow
+              : d.plan.partlyFilledOne
+            : fmt(autoLowFodmap ? d.plan.partlyFilledManyLow : d.plan.partlyFilledMany, {
+                count: unfilled.length,
+              });
+        Alert.alert(d.plan.weekPartlyFilled, body);
       }
     } finally {
       setAutoBusy(false);
@@ -486,9 +504,9 @@ export default function PlanScreen() {
   const onAddCustom = () => {
     const title = customDraft.trim();
     if (!title) return;
-    Alert.alert('Add as a recipe?', `Save “${title}” as a recipe you can reuse and plan again?`, [
-      { text: 'No, just add it', onPress: pickCustom },
-      { text: 'Yes, create a recipe', onPress: () => startRecipeFromMeal(title) },
+    Alert.alert(d.plan.addAsRecipeTitle, fmt(d.plan.addAsRecipeBody, { title }), [
+      { text: d.plan.noJustAdd, onPress: pickCustom },
+      { text: d.plan.yesCreateRecipe, onPress: () => startRecipeFromMeal(title) },
     ]);
   };
 
@@ -626,11 +644,13 @@ export default function PlanScreen() {
         .eq('meal_plan_id', targetPlanId);
       if ((count ?? 0) > 0) {
         Alert.alert(
-          "Replace this week's meals?",
-          `This week already has ${count} meal${count === 1 ? '' : 's'}. Copying will replace ${count === 1 ? 'it' : 'them'} with this plan.`,
+          d.plan.replaceWeekTitle,
+          count === 1
+            ? d.plan.replaceWeekBodyOne
+            : fmt(d.plan.replaceWeekBodyMany, { count: count ?? 0 }),
           [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Replace', style: 'destructive', onPress: () => void run() },
+            { text: d.common.cancel, style: 'cancel' },
+            { text: d.plan.replace, style: 'destructive', onPress: () => void run() },
           ]
         );
         return;
@@ -642,15 +662,14 @@ export default function PlanScreen() {
   const currentWeekIso = weekStart(new Date());
   const isPastWeek = weekIso < currentWeekIso;
 
-  const todayEyebrow = new Date().toLocaleDateString('en-US', {
+  const todayEyebrow = new Date().toLocaleDateString(locale, {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
   });
-  const weekLabel = `Week of ${dayDate(weekIso, 0).toLocaleDateString('en-US', {
-    month: 'long',
-    day: 'numeric',
-  })}`;
+  const weekLabel = fmt(d.plan.weekOf, {
+    date: dayDate(weekIso, 0).toLocaleDateString(locale, { month: 'long', day: 'numeric' }),
+  });
   const todayIndex = DAY_LABELS.findIndex(
     (_, day) => dayDate(weekIso, day).toDateString() === new Date().toDateString()
   );
@@ -692,7 +711,7 @@ export default function PlanScreen() {
       >
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Back to weeks"
+          accessibilityLabel={d.plan.backToWeeks}
           onPress={() => (router.canGoBack() ? router.back() : router.navigate('/plan'))}
           style={({ pressed }) => ({
             width: minTapTarget,
@@ -707,14 +726,14 @@ export default function PlanScreen() {
         </Pressable>
         <View style={{ flex: 1, gap: 2 }}>
           <Eyebrow>{todayEyebrow}</Eyebrow>
-          <Title>Week</Title>
+          <Title>{d.common.tabWeek}</Title>
           <Muted>
             {weekLabel}
-            {plan?.status === 'approved' ? ' · approved' : ''}
+            {plan?.status === 'approved' ? ` · ${d.plan.approved}` : ''}
           </Muted>
         </View>
-        {navButton('Previous week', 'chevron-back', -1)}
-        {navButton('Next week', 'chevron-forward', 1)}
+        {navButton(d.plan.previousWeek, 'chevron-back', -1)}
+        {navButton(d.plan.nextWeek, 'chevron-forward', 1)}
       </View>
 
       {/* Quota strip */}
@@ -737,7 +756,7 @@ export default function PlanScreen() {
       {emptyCells.length > 0 || canReroll ? (
         <View style={{ paddingHorizontal: screenPadding, paddingBottom: 12 }}>
           <Button
-            label={canReroll ? 'Choose again' : 'Choose for us'}
+            label={canReroll ? d.plan.chooseAgain : d.plan.chooseForUs}
             kind="secondary"
             onPress={() => setAutoOpen(true)}
           />
@@ -747,7 +766,7 @@ export default function PlanScreen() {
       {isPastWeek && loadedWeek === weekIso && entries.length > 0 ? (
         <View style={{ paddingHorizontal: screenPadding, paddingBottom: 12 }}>
           <Button
-            label="Copy to this week"
+            label={d.plan.copyToThisWeek}
             kind="secondary"
             onPress={() => void copyToCurrentWeek()}
             loading={busy}
@@ -763,13 +782,14 @@ export default function PlanScreen() {
         }}
       >
         {loadedWeek !== weekIso ? <Loading /> : null}
-        {loadedWeek === weekIso ? DAY_LABELS.map((dayLabel, day) => {
+        {loadedWeek === weekIso ? DAY_LABELS.map((_, day) => {
+          const dayLabel = d.common.days[day];
           const isToday = day === todayIndex;
           return (
             <View key={day}>
               <Hairline />
               <View style={{ paddingVertical: 14, gap: 10 }}>
-                {isToday ? <Eyebrow style={{ color: colors.saffron }}>Today</Eyebrow> : null}
+                {isToday ? <Eyebrow style={{ color: colors.saffron }}>{d.plan.today}</Eyebrow> : null}
                 <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
                   <Text
                     style={{
@@ -782,7 +802,7 @@ export default function PlanScreen() {
                     {dayLabel}
                   </Text>
                   <Muted>
-                    {dayDate(weekIso, day).toLocaleDateString('en-US', {
+                    {dayDate(weekIso, day).toLocaleDateString(locale, {
                       month: 'short',
                       day: 'numeric',
                     })}
@@ -800,10 +820,10 @@ export default function PlanScreen() {
                   return (
                     <View key={slot} style={{ gap: 6 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                        <Eyebrow style={{ flex: 1 }}>{SLOT_LABELS[slot]}</Eyebrow>
+                        <Eyebrow style={{ flex: 1 }}>{slotLabel(slot)}</Eyebrow>
                         <LinkButton
-                          label="+ Add"
-                          accessibilityLabel={`Add a dish — ${dayLabel} ${SLOT_LABELS[slot]}`}
+                          label={d.plan.addShort}
+                          accessibilityLabel={fmt(d.plan.addDishA11y, { day: dayLabel, slot: slotLabel(slot) })}
                           onPress={() => openPicker(day, slot)}
                           textStyle={{ fontSize: fontSize.small }}
                         />
@@ -833,7 +853,7 @@ export default function PlanScreen() {
                             {/* Tapping a planned meal opens the editor, pre-filled. */}
                             <Pressable
                               accessibilityRole="button"
-                              accessibilityLabel={`Edit ${entry.custom_title ?? recipe?.title ?? 'meal'}`}
+                              accessibilityLabel={fmt(d.plan.editMealA11y, { title: entry.custom_title ?? recipe?.title ?? d.plan.mealOne })}
                               onPress={() => openEditor(entry)}
                               style={({ pressed }) => ({
                                 flex: 1,
@@ -854,14 +874,14 @@ export default function PlanScreen() {
                                   fontFamily: fonts.uiMedium,
                                 }}
                               >
-                                {entry.custom_title ?? recipe?.title ?? 'Recipe'}
+                                {entry.custom_title ?? recipe?.title ?? d.plan.recipeFallback}
                               </Text>
                               <View
                                 style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}
                               >
                                 {category ? <CategoryDot category={category} size={7} /> : null}
                                 {entry.person_ids.length === 0 ? (
-                                  <Muted>Whole household</Muted>
+                                  <Muted>{d.plan.wholeHousehold}</Muted>
                                 ) : (
                                   entry.person_ids.map((pid) => {
                                     const person = personById.get(pid);
@@ -869,9 +889,13 @@ export default function PlanScreen() {
                                   })
                                 )}
                                 {entry.guest_count > 0 ? (
-                                  <Muted>{`+${entry.guest_count} guest${entry.guest_count === 1 ? '' : 's'}`}</Muted>
+                                  <Muted>
+                                    {entry.guest_count === 1
+                                      ? d.plan.guestsOne
+                                      : fmt(d.plan.guestsMany, { count: entry.guest_count })}
+                                  </Muted>
                                 ) : null}
-                                {recipe ? <Muted>{`· Serves ${planServings}`}</Muted> : null}
+                                {recipe ? <Muted>{`· ${fmt(d.plan.serves, { n: planServings })}`}</Muted> : null}
                                 {entry.assigned_cook === 'employee' ? (
                                   <View
                                     style={{
@@ -891,7 +915,7 @@ export default function PlanScreen() {
                                         color: colors.textMuted,
                                       }}
                                     >
-                                      👩‍🍳 Employee cooks
+                                      {d.plan.employeeCooks}
                                     </Text>
                                   </View>
                                 ) : null}
@@ -900,7 +924,7 @@ export default function PlanScreen() {
                             </Pressable>
                             <Pressable
                               accessibilityRole="button"
-                              accessibilityLabel="Remove this dish"
+                              accessibilityLabel={d.plan.removeDish}
                               onPress={() => void removeEntry(entry.id)}
                               hitSlop={8}
                               style={({ pressed }) => ({
@@ -956,7 +980,7 @@ export default function PlanScreen() {
             }),
           }}
         >
-          <Button label="Approve week" onPress={() => void approveWeek()} loading={busy} />
+          <Button label={d.plan.approveWeek} onPress={() => void approveWeek()} loading={busy} />
         </View>
       ) : null}
 
@@ -973,7 +997,7 @@ export default function PlanScreen() {
           <View style={{ flex: 1, padding: screenPadding, gap: 14 }}>
             {pickerCell ? (
               <Title>
-                {DAY_LABELS[pickerCell.day]} — {SLOT_LABELS[pickerCell.slot]}
+                {d.common.days[pickerCell.day]} — {slotLabel(pickerCell.slot)}
               </Title>
             ) : null}
             {!pickedRecipe && !pickedCustom ? (
@@ -983,14 +1007,14 @@ export default function PlanScreen() {
                   <Field
                     value={customDraft}
                     onChangeText={setCustomDraft}
-                    placeholder="Or type a meal…"
+                    placeholder={d.plan.typeMealPlaceholder}
                     style={{ flex: 1 }}
                     onSubmitEditing={onAddCustom}
                     returnKeyType="done"
                   />
                   <LinkButton
-                    label="Add"
-                    accessibilityLabel="Add this meal"
+                    label={d.common.add}
+                    accessibilityLabel={d.plan.addThisMeal}
                     onPress={onAddCustom}
                     style={{ opacity: customDraft.trim() ? 1 : 0.4 }}
                   />
@@ -999,7 +1023,7 @@ export default function PlanScreen() {
                   icon="search-outline"
                   value={pickerSearch}
                   onChangeText={setPickerSearch}
-                  placeholder="Search recipes"
+                  placeholder={d.plan.searchRecipes}
                   autoCapitalize="none"
                 />
                 <FlatList
@@ -1009,7 +1033,7 @@ export default function PlanScreen() {
                   renderItem={({ item }) => (
                     <RecipeRow recipe={item} onPress={() => setPickedRecipe(item)} />
                   )}
-                  ListEmptyComponent={<Muted>No recipes yet. Capture one first.</Muted>}
+                  ListEmptyComponent={<Muted>{d.plan.noRecipesYet}</Muted>}
                 />
               </>
             ) : (
@@ -1038,11 +1062,11 @@ export default function PlanScreen() {
                     {pickedRecipe ? (
                       <MetaLine recipe={pickedRecipe as RecipeListItem} />
                     ) : (
-                      <Muted>Custom meal</Muted>
+                      <Muted>{d.plan.customMeal}</Muted>
                     )}
                     {pickedRecipe ? (
                       <LinkButton
-                        label="View recipe"
+                        label={d.plan.viewRecipe}
                         onPress={() =>
                           router.push({
                             pathname: '/recipe/[id]',
@@ -1063,8 +1087,8 @@ export default function PlanScreen() {
                 <Hairline />
 
                 <View style={{ gap: 10 }}>
-                  <Eyebrow>Who eats</Eyebrow>
-                  <Muted>Nobody selected means the whole household.</Muted>
+                  <Eyebrow>{d.plan.whoEats}</Eyebrow>
+                  <Muted>{d.plan.nobodySelectedHint}</Muted>
                   <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
                   {eaters.map((person) => (
                     <PersonChip
@@ -1084,21 +1108,21 @@ export default function PlanScreen() {
                 </View>
 
                 <View style={{ gap: 10 }}>
-                  <Eyebrow>Guests</Eyebrow>
-                  <Muted>Extra people (not in the household) eating this meal.</Muted>
+                  <Eyebrow>{d.plan.guests}</Eyebrow>
+                  <Muted>{d.plan.guestsHint}</Muted>
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                     <GuestStepper value={pickedGuests} onChange={setPickedGuests} />
-                    <Muted>{`Serves ${entryServings(pickedPersonIds, pickedGuests, eaters.length)}`}</Muted>
+                    <Muted>{fmt(d.plan.serves, { n: entryServings(pickedPersonIds, pickedGuests, eaters.length) })}</Muted>
                   </View>
                 </View>
 
                 <View style={{ gap: 10 }}>
-                  <Eyebrow>Who cooks</Eyebrow>
+                  <Eyebrow>{d.plan.whoCooks}</Eyebrow>
                   <View style={{ flexDirection: 'row', gap: 10 }}>
                   {(
                     [
-                      ['family', 'Family'],
-                      ['employee', '👩‍🍳 Employee'],
+                      ['family', d.plan.familyCook],
+                      ['employee', d.plan.employeeCook],
                     ] as const
                   ).map(([cook, label]) => {
                     const selected = pickedCook === cook;
@@ -1141,7 +1165,7 @@ export default function PlanScreen() {
                 <View style={{ flex: 1 }} />
                 <View style={{ gap: 8 }}>
                   <LinkButton
-                    label="Pick something else"
+                    label={d.plan.pickSomethingElse}
                     onPress={() => {
                       setPickedRecipe(null);
                       setPickedCustom(null);
@@ -1151,20 +1175,23 @@ export default function PlanScreen() {
                   <Button
                     label={
                       editingEntryId
-                        ? 'Save changes'
+                        ? d.plan.saveChanges
                         : pickerCell
-                          ? `Add to ${DAY_LABELS[pickerCell.day]} ${SLOT_LABELS[pickerCell.slot].toLowerCase()}`
-                          : 'Add to the week'
+                          ? fmt(d.plan.addToDay, {
+                              day: d.common.days[pickerCell.day],
+                              slot: slotLabel(pickerCell.slot).toLowerCase(),
+                            })
+                          : d.plan.addToWeek
                     }
                     onPress={() => void confirmAdd()}
                     loading={busy}
                   />
-                  <Button label="Close" kind="secondary" onPress={closePicker} />
+                  <Button label={d.common.close} kind="secondary" onPress={closePicker} />
                 </View>
               </View>
             )}
             {!pickedRecipe && !pickedCustom ? (
-              <Button label="Close" kind="secondary" onPress={closePicker} />
+              <Button label={d.common.close} kind="secondary" onPress={closePicker} />
             ) : null}
           </View>
         </View>
@@ -1191,11 +1218,13 @@ export default function PlanScreen() {
             borderTopRightRadius: 16,
           }}
         >
-          <Eyebrow>{canReroll ? 'Choose again' : 'Choose for us'}</Eyebrow>
+          <Eyebrow>{canReroll ? d.plan.chooseAgain : d.plan.chooseForUs}</Eyebrow>
           <Muted>
             {canReroll
-              ? 'Swaps the auto-picked meals for a different selection. Meals you added yourself stay put.'
-              : `Fills the ${emptyCells.length} empty ${emptyCells.length === 1 ? 'meal' : 'meals'} for the whole household — recipes that haven't been cooked recently, varying the type from meal to meal. You can swap anything afterwards.`}
+              ? d.plan.chooseAgainBody
+              : emptyCells.length === 1
+                ? d.plan.fillBodyOne
+                : fmt(d.plan.fillBodyMany, { count: emptyCells.length })}
           </Muted>
           <View
             style={{
@@ -1205,7 +1234,7 @@ export default function PlanScreen() {
               minHeight: 52,
             }}
           >
-            <Body style={{ flex: 1 }}>Low-FODMAP for every family member</Body>
+            <Body style={{ flex: 1 }}>{d.plan.lowFodmapToggle}</Body>
             <Switch
               value={autoLowFodmap}
               onValueChange={setAutoLowFodmap}
@@ -1213,11 +1242,11 @@ export default function PlanScreen() {
             />
           </View>
           <Button
-            label={canReroll ? 'Pick a new selection' : 'Fill the week'}
+            label={canReroll ? d.plan.pickNewSelection : d.plan.fillTheWeek}
             onPress={() => void runAutoFill()}
             loading={autoBusy}
           />
-          <Button label="Cancel" kind="secondary" onPress={() => setAutoOpen(false)} />
+          <Button label={d.common.cancel} kind="secondary" onPress={() => setAutoOpen(false)} />
         </View>
       </Modal>
     </SafeAreaView>

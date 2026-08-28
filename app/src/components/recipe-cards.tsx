@@ -5,8 +5,9 @@ import { Pressable, Text, View } from 'react-native';
 
 import { BookmarkChip, CalendarChip, CategoryDot, Hairline, Muted } from '@/components/ui';
 import { matchCanonical, normalizeRaw } from '@/lib/canonical';
-import { CATEGORY_LABELS, resolveProteinCategory } from '@/lib/category';
+import { resolveProteinCategory, type ProteinCategory } from '@/lib/category';
 import { computeRecipeFodmap, recipeFodmapTier } from '@/lib/fodmap';
+import { fmt, useI18n } from '@/lib/i18n';
 import { useCanonicalIndex } from '@/lib/use-canonical';
 import { useImageUrl } from '@/lib/media';
 import { fonts, fontSize, radius, screenPadding, useTheme } from '@/lib/theme';
@@ -49,8 +50,16 @@ export function MetaLine({
   showBadge?: boolean;
 }) {
   const { colors } = useTheme();
+  const { d } = useI18n();
   const index = useCanonicalIndex();
   const category = resolveProteinCategory(recipe.tags, recipe.ingredients, index);
+  const categoryLabels: Record<ProteinCategory, string> = {
+    fish: d.components.catFish,
+    meat: d.components.catMeat,
+    vegan: d.components.catVegan,
+    vegetarian: d.components.catVegetarian,
+    legume: d.components.catLegume,
+  };
   const minutes = totalMinutes(recipe);
   // Recipe-level FODMAP tier: a manual override wins; otherwise local
   // matching only. 'check' stays silent on cards — the recipe page carries
@@ -73,19 +82,19 @@ export function MetaLine({
   const showTier = fodmapTier !== null && fodmapTier !== 'check';
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-      {minutes ? <Muted>{minutes} min</Muted> : null}
+      {minutes ? <Muted>{fmt(d.components.minutesShort, { minutes })}</Muted> : null}
       {minutes && category ? <Muted>·</Muted> : null}
       {category ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
           <CategoryDot category={category} />
-          <Muted>{CATEGORY_LABELS[category]}</Muted>
+          <Muted>{categoryLabels[category]}</Muted>
         </View>
       ) : null}
       {showTier ? (
         <>
           {minutes || category ? <Muted>·</Muted> : null}
           <Text
-            accessibilityLabel={`FODMAP level ${fodmapTier}`}
+            accessibilityLabel={fmt(d.components.fodmapLevel, { tier: fodmapTier })}
             style={{
               color:
                 fodmapTier === 'high'
@@ -98,22 +107,22 @@ export function MetaLine({
             }}
           >
             {fodmapTier === 'high'
-              ? 'High FODMAP'
+              ? d.components.fodmapHigh
               : fodmapTier === 'moderate'
-                ? 'Mod. FODMAP'
-                : 'Low FODMAP'}
+                ? d.components.fodmapModerate
+                : d.components.fodmapLow}
           </Text>
         </>
       ) : null}
       {showServings && recipe.servings ? (
         <>
           {minutes || category ? <Muted>·</Muted> : null}
-          <Muted>{recipe.servings} servings</Muted>
+          <Muted>{fmt(d.components.servingsCount, { count: recipe.servings })}</Muted>
         </>
       ) : null}
       {showBadge && recipe.needs_review ? (
         <Text style={{ color: colors.saffron, fontSize: fontSize.meta, fontFamily: fonts.uiSemi }}>
-          needs review
+          {d.components.needsReview}
         </Text>
       ) : null}
     </View>
@@ -169,10 +178,11 @@ export function Hero({
   onSave: () => void;
 }) {
   const { colors } = useTheme();
+  const { d } = useI18n();
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Open recipe ${recipe.title}`}
+      accessibilityLabel={fmt(d.components.openRecipe, { title: recipe.title })}
       onPress={onPress}
       style={({ pressed }) => ({
         marginHorizontal: -screenPadding,
@@ -185,7 +195,7 @@ export function Hero({
         <BookmarkChip
           saved={saved}
           onPress={onSave}
-          accessibilityLabel={saved ? 'Saved to your folders' : 'Save to a folder'}
+          accessibilityLabel={saved ? d.components.savedToFolders : d.components.saveToFolder}
           style={{ top: 12, right: 56 }}
         />
       </View>
@@ -225,10 +235,11 @@ export function CarouselCard({
   onSave: () => void;
 }) {
   const { colors } = useTheme();
+  const { d } = useI18n();
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Open recipe ${recipe.title}`}
+      accessibilityLabel={fmt(d.components.openRecipe, { title: recipe.title })}
       onPress={onPress}
       style={({ pressed }) => ({ width: 150, opacity: pressed ? 0.7 : 1 })}
     >
@@ -241,7 +252,7 @@ export function CarouselCard({
         <BookmarkChip
           saved={saved}
           onPress={onSave}
-          accessibilityLabel={saved ? 'Saved to your folders' : 'Save to a folder'}
+          accessibilityLabel={saved ? d.components.savedToFolders : d.components.saveToFolder}
           style={{ top: 6, right: 50 }}
         />
       </View>
@@ -283,10 +294,11 @@ export function ThisWeekCard({
   onBookmark?: () => void;
 }) {
   const { colors } = useTheme();
+  const { d } = useI18n();
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Open ${item.title}`}
+      accessibilityLabel={fmt(d.components.open, { title: item.title })}
       onPress={onPress}
       style={({ pressed }) => ({ width: 110, opacity: pressed ? 0.7 : 1 })}
     >
@@ -300,7 +312,7 @@ export function ThisWeekCard({
           <CalendarChip
             planned
             onPress={onBookmark}
-            accessibilityLabel={`Remove ${item.title} from this week`}
+            accessibilityLabel={fmt(d.components.removeFromWeek, { title: item.title })}
             style={{ top: 4, right: 4 }}
           />
         ) : null}
@@ -324,10 +336,11 @@ export function ThisWeekCard({
 /** Hairline list row (Search tab, v2 style — thumbnails omit the chip). */
 export function RecipeRow({ recipe, onPress }: { recipe: RecipeListItem; onPress: () => void }) {
   const { colors } = useTheme();
+  const { d } = useI18n();
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Open recipe ${recipe.title}`}
+      accessibilityLabel={fmt(d.components.openRecipe, { title: recipe.title })}
       onPress={onPress}
       style={({ pressed }) => ({
         flexDirection: 'row',
