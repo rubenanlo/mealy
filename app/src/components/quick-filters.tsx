@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Pressable, ScrollView, Text } from 'react-native';
 
 import { useI18n } from '@/lib/i18n';
@@ -8,9 +9,12 @@ import { fonts, fontSize, screenPadding, useTheme } from '@/lib/theme';
 export function QuickFilters({
   active,
   onToggle,
+  leading,
 }: {
   active: ReadonlySet<QuickFilter>;
   onToggle: (filter: QuickFilter) => void;
+  /** Rendered before the toggles — the Home feed's "added by" select chip. */
+  leading?: ReactNode;
 }) {
   const { colors } = useTheme();
   const { d } = useI18n();
@@ -29,6 +33,7 @@ export function QuickFilters({
       contentContainerStyle={{ gap: 8, paddingHorizontal: screenPadding }}
       style={{ marginHorizontal: -screenPadding }}
     >
+      {leading}
       {QUICK_FILTERS.map((filter) => {
         const selected = active.has(filter);
         return (

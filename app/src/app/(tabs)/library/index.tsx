@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -23,6 +24,11 @@ import {
   removeRecipeFromCurrentWeek,
 } from "@/components/add-to-week";
 import { QuickFilters } from "@/components/quick-filters";
+import {
+  buildUploaderOptions,
+  filterByUploader,
+  type UploaderOption,
+} from "@/lib/uploader-filter";
 import {
   CarouselCard,
   Hero,
@@ -94,7 +100,15 @@ export default function HomeScreen() {
   const { session } = useAuth();
   const userId = session?.user.id ?? "";
 
-  const [recipes, setRecipes] = useState<RecipeListItem[]>([]);
+  const [householdRecipes, setHouseholdRecipes] = useState<RecipeListItem[]>([]);
+  // "Added by" select: defaults to the signed-in user's own recipes.
+  const [uploaderFilter, setUploaderFilter] = useState<string | null>(userId || null);
+  const [uploaderOptions, setUploaderOptions] = useState<UploaderOption[]>([]);
+  const [uploaderSheetOpen, setUploaderSheetOpen] = useState(false);
+  const recipes = useMemo(
+    () => filterByUploader(householdRecipes, uploaderFilter),
+    [householdRecipes, uploaderFilter],
+  );
   const [plannedRecentIds, setPlannedRecentIds] = useState<Set<string>>(new Set());
   const [weekEntries, setWeekEntries] = useState<
     { id: string; recipe_id: string | null; custom_title: string | null }[]
@@ -152,12 +166,13 @@ export default function HomeScreen() {
       { data: folderRows },
       { data: linkRows },
       { data: memberRows },
+      { data: personRows },
       jobRows,
     ] = await Promise.all([
       supabase
         .from("recipes")
         .select(
-          "id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes, created_at, ingredients, fodmap_override, recipe_translations(locale, title)",
+          "id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes, created_at, created_by, ingredients, fodmap_override, recipe_translations(locale, title)",
         )
         .eq("household_id", householdId)
         .order("created_at", { ascending: false }),
@@ -183,7 +198,11 @@ export default function HomeScreen() {
       supabase.from("folder_recipes").select("folder_id, recipe_id, added_at"),
       supabase
         .from("household_members")
-        .select("user_id, email")
+        .select("user_id, email, person_id")
+        .eq("household_id", householdId),
+      supabase
+        .from("persons")
+        .select("id, name")
         .eq("household_id", householdId),
       loadActiveCaptureJobs(householdId),
     ]);
@@ -194,7 +213,7 @@ export default function HomeScreen() {
     if (recipeRows) {
       // Localize titles once at the fetch boundary, then drop the embed so
       // downstream state keeps the plain RecipeListItem shape.
-      setRecipes(
+      setHouseholdRecipes(
         (
           recipeRows as (RecipeListItem & {
             recipe_translations?: { locale: string; title: string }[] | null;
@@ -211,11 +230,17 @@ export default function HomeScreen() {
         (linkRows as FolderLink[]) ?? [],
       ),
     );
-    setMemberEmails(
-      new Map(
-        ((memberRows ?? []) as { user_id: string; email: string | null }[]).map(
-          (m) => [m.user_id, m.email],
-        ),
+    const members = (memberRows ?? []) as {
+      user_id: string;
+      email: string | null;
+      person_id: string | null;
+    }[];
+    setMemberEmails(new Map(members.map((m) => [m.user_id, m.email])));
+    setUploaderOptions(
+      buildUploaderOptions(
+        members,
+        ((personRows ?? []) as { id: string; name: string }[]),
+        d.library.familyMember,
       ),
     );
     if (entryRows) {
@@ -254,7 +279,7 @@ export default function HomeScreen() {
       setWeekEntries([]);
     }
     setLoaded(true);
-  }, [householdId, locale]);
+  }, [householdId, locale, d.library.familyMember]);
 
   useFocusEffect(
     useCallback(() => {
@@ -553,7 +578,53 @@ export default function HomeScreen() {
           </Pressable>
         </View>
 
-        <QuickFilters active={activeFilters} onToggle={toggleFilter} />
+        <QuickFilters
+          active={activeFilters}
+          onToggle={toggleFilter}
+          leading={
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={d.library.addedByTitle}
+              onPress={() => setUploaderSheetOpen(true)}
+              style={({ pressed }) => ({
+                minHeight: 36,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 5,
+                borderRadius: 999,
+                paddingHorizontal: 14,
+                borderWidth: uploaderFilter ? 0 : 1,
+                borderColor: colors.border,
+                backgroundColor: uploaderFilter
+                  ? colors.accent
+                  : pressed
+                    ? colors.cardPressed
+                    : "transparent",
+              })}
+            >
+              <Ionicons
+                name="person-outline"
+                size={13}
+                color={uploaderFilter ? colors.accentText : colors.text}
+              />
+              <Text
+                style={{
+                  color: uploaderFilter ? colors.accentText : colors.text,
+                  fontSize: fontSize.meta,
+                  fontFamily: fonts.uiMedium,
+                }}
+              >
+                {uploaderOptions.find((o) => o.id === uploaderFilter)?.name ??
+                  d.library.addedByEveryone}
+              </Text>
+              <Ionicons
+                name="chevron-down"
+                size={12}
+                color={uploaderFilter ? colors.accentText : colors.text}
+              />
+            </Pressable>
+          }
+        />
 
         <View style={{ marginBottom: 20 }} />
 
@@ -569,11 +640,22 @@ export default function HomeScreen() {
         {!loaded ? (
           <Loading />
         ) : recipes.length === 0 ? (
-          <EmptyState
-            message={d.library.emptyLibrary}
-            actionLabel={d.library.addFirstRecipe}
-            onAction={() => router.push("/capture")}
-          />
+          householdRecipes.length > 0 ? (
+            <EmptyState
+              message={d.library.noFilterMatches}
+              actionLabel={d.library.clearFilters}
+              onAction={() => {
+                setActiveFilters(new Set());
+                setUploaderFilter(null);
+              }}
+            />
+          ) : (
+            <EmptyState
+              message={d.library.emptyLibrary}
+              actionLabel={d.library.addFirstRecipe}
+              onAction={() => router.push("/capture")}
+            />
+          )
         ) : activeFilters.size > 0 ? (
           <View style={{ paddingTop: 8 }}>
             {filteredRecipes.map((recipe, i) => (
@@ -818,6 +900,74 @@ export default function HomeScreen() {
           onAdded={() => void load()}
         />
       ) : null}
+
+        <Modal
+          visible={uploaderSheetOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setUploaderSheetOpen(false)}
+        >
+          <Pressable
+            onPress={() => setUploaderSheetOpen(false)}
+            style={{
+              flex: 1,
+              backgroundColor: "rgba(0,0,0,0.5)",
+              justifyContent: "flex-end",
+            }}
+          >
+            <Pressable
+              onPress={() => {}}
+              style={{
+                backgroundColor: colors.card,
+                borderTopLeftRadius: 16,
+                borderTopRightRadius: 16,
+                padding: screenPadding,
+                paddingBottom: screenPadding + 12,
+                gap: 4,
+              }}
+            >
+              <Eyebrow style={{ marginBottom: 8 }}>{d.library.addedByTitle}</Eyebrow>
+              {[{ id: null as string | null, name: d.library.addedByEveryone }, ...uploaderOptions].map(
+                (option) => {
+                  const selected = uploaderFilter === option.id;
+                  return (
+                    <Pressable
+                      key={option.id ?? "everyone"}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                      onPress={() => {
+                        setUploaderFilter(option.id);
+                        setUploaderSheetOpen(false);
+                      }}
+                      style={({ pressed }) => ({
+                        minHeight: 44,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        borderRadius: 10,
+                        paddingHorizontal: 10,
+                        backgroundColor: pressed ? colors.cardPressed : "transparent",
+                      })}
+                    >
+                      <Text
+                        style={{
+                          color: colors.text,
+                          fontSize: fontSize.base,
+                          fontFamily: selected ? fonts.uiSemi : fonts.uiMedium,
+                        }}
+                      >
+                        {option.name}
+                      </Text>
+                      {selected ? (
+                        <Ionicons name="checkmark" size={18} color={colors.accent} />
+                      ) : null}
+                    </Pressable>
+                  );
+                },
+              )}
+            </Pressable>
+          </Pressable>
+        </Modal>
 
       {saveRecipe ? (
         <SaveSheet

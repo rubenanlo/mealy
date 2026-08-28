@@ -26,6 +26,8 @@ export interface RecipeListItem {
   cook_minutes: number | null;
   /** Present where a screen selects it (Home's "Recently added" window). */
   created_at?: string;
+  /** Present where a screen selects it — the Home feed's "added by" filter. */
+  created_by?: string | null;
   /** Present where a screen selects it — enables ingredient-derived category. */
   ingredients?: IngredientData[];
   /** Manual FODMAP level; null/absent = derive from ingredients. */
