@@ -18,6 +18,7 @@ import {
   Title,
 } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
+import { consumeInvalidation } from '@/lib/list-refresh';
 import { fmt, useI18n } from '@/lib/i18n';
 import { isMealUpcoming, normalizeMealTimes, type MealTimes } from '@/lib/meal-times';
 import { addWeeks, dayDate, weekStart, type MealSlot } from '@/lib/plan';
@@ -127,6 +128,8 @@ export default function WeeksScreen() {
   const currentWeek = weekStart(new Date());
 
   const load = useCallback(async () => {
+    // A meal/recipe change elsewhere invalidated the week: show the spinner.
+    if (consumeInvalidation('plan')) setLoaded(false);
     const [{ data: planRows }, { data: hh }] = await Promise.all([
       supabase
         .from('meal_plans')

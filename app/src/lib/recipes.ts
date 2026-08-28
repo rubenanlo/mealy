@@ -1,4 +1,5 @@
 import { type MealSlot, upsertEntryPayload } from '@/lib/plan';
+import { invalidateLists } from '@/lib/list-refresh';
 import { supabase } from '@/lib/supabase';
 
 /** Placeholder title for a manually created recipe before the user names it. */
@@ -89,5 +90,6 @@ export async function assignRecipeToSlot(input: {
     position: count ?? 0,
   });
   const { error: insertErr } = await supabase.from('plan_entries').insert(payload);
+  invalidateLists('plan', 'groceries');
   if (insertErr) throw new Error(insertErr.message);
 }

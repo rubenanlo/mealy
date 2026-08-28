@@ -47,6 +47,7 @@ import {
 import { useHousehold } from '@/lib/auth';
 import type { CanonicalIngredient, FodmapTier } from '@/lib/canonical';
 import { confirmDestructive, notify } from '@/lib/confirm';
+import { invalidateLists } from '@/lib/list-refresh';
 import {
   CATEGORY_LABELS,
   deriveCategory,
@@ -1127,6 +1128,7 @@ export default function RecipeSheetScreen() {
             notify(d.recipe.deleteRecipeFailTitle, d.recipe.tryAgain);
             return;
           }
+          invalidateLists('library', 'plan', 'groceries');
           // Opened by direct URL (web deep link / refresh) there is no history
           // to go back to — land on the library, which refetches on focus.
           if (router.canGoBack()) {

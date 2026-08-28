@@ -42,6 +42,7 @@ import {
   SectionHeader,
 } from "@/components/ui";
 import { useAuth, useHousehold } from "@/lib/auth";
+import { consumeInvalidation } from "@/lib/list-refresh";
 import { matchCanonical, normalizeRaw } from "@/lib/canonical";
 import {
   dismissCaptureJob,
@@ -139,6 +140,8 @@ export default function HomeScreen() {
     });
 
   const load = useCallback(async () => {
+    // A deletion elsewhere invalidated this list: spinner instead of stale rows.
+    if (consumeInvalidation("library")) setLoaded(false);
     const weekIso = weekStart(new Date());
     const [
       { data: recipeRows },

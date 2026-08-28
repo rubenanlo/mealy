@@ -26,6 +26,7 @@ import { matchCanonical, normalizeRaw } from '@/lib/canonical';
 import { resolveProteinCategory, type ProteinCategory } from '@/lib/category';
 import { normalizeDietProfile } from '@/lib/diet';
 import { computeRecipeFodmap, recipeFodmapTier } from '@/lib/fodmap';
+import { invalidateLists } from '@/lib/list-refresh';
 import { fmt, useI18n } from '@/lib/i18n';
 import { useImageUrl } from '@/lib/media';
 import {
@@ -320,6 +321,7 @@ export default function PlanScreen() {
         const ids = autoEntries.map((e) => e.id);
         await supabase.from('plan_entries').delete().in('id', ids);
         currentEntries = entries.filter((e) => !e.auto_picked);
+        invalidateLists('plan', 'groceries');
       }
       const openCells: { day: number; slot: MealSlot }[] = [];
       for (let day = 0; day < 7; day += 1) {
@@ -431,6 +433,7 @@ export default function PlanScreen() {
           auto_picked: true,
         }))
       );
+      invalidateLists('plan', 'groceries');
       setAutoOpen(false);
       await loadWeek(weekIso);
       if (unfilled.length > 0) {
@@ -558,6 +561,7 @@ export default function PlanScreen() {
         await supabase.from('plan_entries').insert(payload);
       }
       closePicker();
+        invalidateLists('plan', 'groceries');
       await loadWeek(weekIso);
     } finally {
       setBusy(false);
@@ -567,6 +571,7 @@ export default function PlanScreen() {
   const removeEntry = async (entryId: string) => {
     await supabase.from('plan_entries').delete().eq('id', entryId);
     await loadWeek(weekIso);
+    invalidateLists('plan', 'groceries');
   };
 
   const approveWeek = async () => {
@@ -630,8 +635,10 @@ export default function PlanScreen() {
           assigned_cook: e.assigned_cook,
           position: e.position,
         }));
+          invalidateLists('plan', 'groceries');
         await supabase.from('plan_entries').insert(rows);
         setWeekIso(currentWeekIso);
+        invalidateLists('plan', 'groceries');
       } finally {
         setBusy(false);
       }

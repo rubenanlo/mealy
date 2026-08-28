@@ -6,6 +6,7 @@ import { GuestStepper } from '@/components/guest-stepper';
 import { PersonChip } from '@/components/person-chip';
 import { Body, Button, Eyebrow, Muted, Title } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
+import { invalidateLists } from '@/lib/list-refresh';
 import { dictionaries, fmt, useI18n, type Dict } from '@/lib/i18n';
 import {
   dayDate,
@@ -38,6 +39,7 @@ export async function removeRecipeFromCurrentWeek(
     .maybeSingle();
   if (!plan) return;
   await supabase.from('plan_entries').delete().eq('meal_plan_id', plan.id).eq('recipe_id', recipeId);
+  invalidateLists('plan', 'groceries');
 }
 
 /** Small cross-platform confirm for the bookmark's remove action.
@@ -155,6 +157,7 @@ export function AddToWeekSheet({
         position: count ?? 0,
       });
       const { error: insertErr } = await supabase.from('plan_entries').insert(payload);
+      invalidateLists('plan', 'groceries');
       if (insertErr) throw new Error(insertErr.message);
       onAdded?.();
       onClose();

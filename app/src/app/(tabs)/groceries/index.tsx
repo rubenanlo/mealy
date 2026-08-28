@@ -6,7 +6,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { PersonChip, type PersonLike } from '@/components/person-chip';
 import { RecipeImage } from '@/components/recipe-cards';
-import { EmptyState, Eyebrow, Field, Hairline, Muted, Title } from '@/components/ui';
+import { EmptyState, Eyebrow, Field, Hairline, Loading, Muted, Title } from '@/components/ui';
 import {
   aggregate,
   groupByAisle,
@@ -18,6 +18,7 @@ import { useAuth, useHousehold } from '@/lib/auth';
 import { canonicalDisplayName, type CanonicalIngredient } from '@/lib/canonical';
 import { normalizeDietProfile } from '@/lib/diet';
 import { buildShoppingText, type ExportGroup } from '@/lib/export';
+import { consumeInvalidation } from '@/lib/list-refresh';
 import { fmt, useI18n } from '@/lib/i18n';
 import { resolveMatches } from '@/lib/matching';
 import { dayDate, weekStart } from '@/lib/plan';
@@ -318,6 +319,12 @@ export default function GroceriesScreen() {
   const [fodmapDots, setFodmapDots] = useState(false);
 
   const load = useCallback(async () => {
+    // A recipe/meal elsewhere changed this list: drop the stale rows so the
+    // spinner shows instead of flashing outdated content.
+    if (consumeInvalidation('groceries')) {
+      setAisles([]);
+      setUnmatched([]);
+    }
     setLoading(true);
     try {
       const [{ data: planRow }, { data: personRows }] = await Promise.all([
@@ -669,9 +676,7 @@ export default function GroceriesScreen() {
       </View>
 
       {loading && isEmpty && customItems.length === 0 ? (
-        <View style={{ padding: screenPadding }}>
-          <Muted>{d.groceries.building}</Muted>
-        </View>
+        <Loading />
       ) : (
         <ScrollView
           contentContainerStyle={{
@@ -680,7 +685,7 @@ export default function GroceriesScreen() {
           }}
           keyboardShouldPersistTaps="handled"
         >
-          {isEmpty ? (
+          {isEmpty && !loading ? (
             <EmptyState
               message={hasEntries ? d.groceries.nothingToBuy : d.groceries.noMeals}
               actionLabel={d.groceries.openWeek}
