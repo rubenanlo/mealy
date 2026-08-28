@@ -104,6 +104,20 @@ export async function translateAndStore(recipeId: string, content: RecipeContent
   return true;
 }
 
+/**
+ * A translation into `locale` should be on its way: the source language is
+ * known and different, and nothing usable has landed yet. Drives the
+ * "Translating…" pill; an unknown source stays silent (nothing was queued).
+ */
+export function translationPending(
+  recipeLanguage: string | null,
+  locale: Locale,
+  hasUsableTranslation: boolean
+): boolean {
+  if (hasUsableTranslation || !recipeLanguage) return false;
+  return recipeLanguage !== locale;
+}
+
 /** Fire-and-forget: never blocks UX; failures leave the original displayed. */
 export function queueRecipeTranslation(recipeId: string, content: RecipeContent): void {
   void translateAndStore(recipeId, content).catch(() => {});

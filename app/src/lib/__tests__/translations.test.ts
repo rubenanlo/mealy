@@ -1,6 +1,11 @@
 import { supabase } from '@/lib/supabase';
 
-import { localizeContent, localizedTitle, translateAndStore } from '../translations';
+import {
+  localizeContent,
+  localizedTitle,
+  translateAndStore,
+  translationPending,
+} from '../translations';
 
 jest.mock('@/lib/supabase', () => ({
   supabase: {
@@ -132,5 +137,22 @@ describe('translateAndStore', () => {
     const ok = await translateAndStore('r-1', RECIPE);
     expect(ok).toBe(false);
     expect(translationsTable.upsert).not.toHaveBeenCalled();
+  });
+});
+
+describe('translationPending', () => {
+  it('pending when the locale differs from the source and no usable translation', () => {
+    expect(translationPending('ro', 'es', false)).toBe(true);
+    expect(translationPending('en', 'fr', false)).toBe(true);
+  });
+
+  it('not pending once a usable translation exists', () => {
+    expect(translationPending('ro', 'es', true)).toBe(false);
+  });
+
+  it('not pending when viewing the original language or the source is unknown', () => {
+    expect(translationPending('es', 'es', false)).toBe(false);
+    expect(translationPending(null, 'es', false)).toBe(false);
+    expect(translationPending('', 'es', false)).toBe(false);
   });
 });

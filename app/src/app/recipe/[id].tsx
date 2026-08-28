@@ -72,7 +72,12 @@ import { entryServings, rescaleIngredients, servingsFactor } from '@/lib/serving
 import { convertIngredients, type UnitSystem } from '@/lib/unit-convert';
 import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, minTapTarget, radius, screenPadding, useTheme } from '@/lib/theme';
-import { localizeContent, queueRecipeTranslation, type TranslationRow } from '@/lib/translations';
+import {
+  localizeContent,
+  queueRecipeTranslation,
+  translationPending,
+  type TranslationRow,
+} from '@/lib/translations';
 import { useCanonicalIndex } from '@/lib/use-canonical';
 import {
   fetchWebImage,
@@ -570,6 +575,40 @@ export default function RecipeSheetScreen() {
     };
   }, [isNew]);
 
+  // A translation into the active locale exists and matches the current
+  // content (fresh + same line counts) — the display can use it.
+  const usableTranslation = !!(
+    recipe &&
+    translation &&
+    (!translation.translated_at || !recipe.updated_at || translation.translated_at >= recipe.updated_at) &&
+    translation.ingredients.length === recipe.ingredients.length &&
+    translation.steps.length === recipe.steps.length
+  );
+  const awaitingTranslation =
+    !!recipe && translationPending(recipe.language, locale, usableTranslation);
+
+  // "Translating…" pill: while a translation should be on its way, refetch
+  // its row every few seconds so the content flips over by itself. Bounded —
+  // a permanently failed translation stops the poll (and the pill) quietly.
+  const [translatePolls, setTranslatePolls] = useState(0);
+  const showTranslating = awaitingTranslation && translatePolls < 20;
+  useEffect(() => {
+    if (!id || !awaitingTranslation || translatePolls >= 20) return;
+    const timer = setTimeout(() => {
+      void (async () => {
+        const { data } = await supabase
+          .from('recipe_translations')
+          .select('locale, title, ingredients, steps, translated_at')
+          .eq('recipe_id', id)
+          .eq('locale', locale)
+          .maybeSingle();
+        if (data) setTranslation(data as TranslationRow & { translated_at: string | null });
+        setTranslatePolls((c) => c + 1);
+      })();
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [id, locale, awaitingTranslation, translatePolls]);
+
   // Resolve ingredient→canonical matches + who has a FODMAP mode enabled.
   const loadMatches = useCallback(async () => {
     if (!recipe || recipe.ingredients.length === 0) return;
@@ -1031,17 +1070,7 @@ export default function RecipeSheetScreen() {
   // quantities) the translations regenerate asynchronously — until the fresh
   // rows land, the stale ones would show the OLD quantities, so ignore any
   // translation older than the recipe's last edit.
-  const translationFresh =
-    !translation?.translated_at ||
-    !recipe.updated_at ||
-    translation.translated_at >= recipe.updated_at;
-  const contentTranslation =
-    translation &&
-    translationFresh &&
-    translation.ingredients.length === recipe.ingredients.length &&
-    translation.steps.length === recipe.steps.length
-      ? translation
-      : null;
+  const contentTranslation = usableTranslation ? translation : null;
   const localized = localizeContent(recipe, contentTranslation);
   const displayTitle = localized.title;
   const displaySteps = localized.steps;
@@ -1098,7 +1127,13 @@ export default function RecipeSheetScreen() {
             notify(d.recipe.deleteRecipeFailTitle, d.recipe.tryAgain);
             return;
           }
-          dismiss();
+          // Opened by direct URL (web deep link / refresh) there is no history
+          // to go back to — land on the library, which refetches on focus.
+          if (router.canGoBack()) {
+            router.back();
+          } else {
+            router.replace('/(tabs)/library');
+          }
         })();
       },
     });
@@ -1317,6 +1352,11 @@ export default function RecipeSheetScreen() {
               {recipe.needs_review ? (
                 <Text style={{ color: colors.saffron, fontSize: fontSize.meta, fontFamily: fonts.uiSemi }}>
                   {d.recipe.needsReview}
+                </Text>
+              ) : null}
+              {showTranslating ? (
+                <Text style={{ color: colors.textMuted, fontSize: fontSize.meta, fontFamily: fonts.uiSemi }}>
+                  {d.recipe.translating}
                 </Text>
               ) : null}
             </View>
