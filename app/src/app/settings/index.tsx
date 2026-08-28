@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Body, Eyebrow, SettingsGroup, SettingsRow, Title } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { useI18n } from '@/lib/i18n';
+import { backOr } from '@/lib/nav';
 import { fonts, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
 
 export default function SettingsScreen() {
@@ -20,7 +21,7 @@ export default function SettingsScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={d.common.back}
-          onPress={() => router.back()}
+          onPress={() => backOr('/(tabs)/library')}
           style={({ pressed }) => ({
             flexDirection: 'row',
             alignItems: 'center',

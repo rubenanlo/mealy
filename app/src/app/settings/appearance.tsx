@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Body, Eyebrow, SettingsGroup, SettingsRow, Title } from '@/components/ui';
 import { LOCALES, useI18n } from '@/lib/i18n';
+import { backOr } from '@/lib/nav';
 import {
   fonts,
   fontSize,
@@ -26,7 +27,7 @@ export default function AppearanceScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={d.settings.backToSettings}
-          onPress={() => router.back()}
+          onPress={() => backOr('/settings')}
           style={({ pressed }) => ({
             flexDirection: 'row',
             alignItems: 'center',

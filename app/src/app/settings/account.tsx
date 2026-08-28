@@ -18,6 +18,7 @@ import {
 import { confirmDestructive, notify } from '@/lib/confirm';
 import { useAuth, useHousehold } from '@/lib/auth';
 import { fmt, useI18n } from '@/lib/i18n';
+import { backOr } from '@/lib/nav';
 import { type SignupCodeRow, signupCodeStatus } from '@/lib/signup-codes';
 import { supabase } from '@/lib/supabase';
 import { controlHeight, fonts, fontSize, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
@@ -192,7 +193,7 @@ export default function AccountScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={d.settings.backToSettings}
-          onPress={() => router.back()}
+          onPress={() => backOr('/settings')}
           style={({ pressed }) => ({
             flexDirection: 'row',
             alignItems: 'center',

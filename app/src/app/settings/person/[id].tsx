@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { initials } from '@/components/person-chip';
 import { Body, Button, Eyebrow, Field, Hairline, Muted, Title } from '@/components/ui';
 import { confirmDestructive, notify } from '@/lib/confirm';
+import { backOr } from '@/lib/nav';
 import { useAuth, useHousehold } from '@/lib/auth';
 import { AVATAR_COLORS } from '@/lib/avatar';
 import { fmt, LOCALES, useI18n, type Locale } from '@/lib/i18n';
@@ -179,7 +180,7 @@ export default function PersonScreen() {
         if (!sent) notify(d.person.accountAccess, d.person.inviteEmailFailed);
       }
       setSaving(false);
-      router.back();
+      backOr('/settings/account');
       return;
     }
     setSaving(true);
@@ -188,7 +189,7 @@ export default function PersonScreen() {
       .update({ name: trimmed || name })
       .eq('id', id);
     setSaving(false);
-    router.back();
+    backOr('/settings/account');
   };
 
   const remove = () => {
@@ -213,14 +214,20 @@ export default function PersonScreen() {
       onConfirm: () => {
         void (async () => {
           if (revokable) {
-            // Deletes the auth account entirely; membership cascades.
-            await supabase.functions.invoke('remove-member', {
+            // Deletes the auth account entirely; membership cascades. If the
+            // revoke fails, keep the person too — a deleted person with a
+            // live login would linger as an unlinked member with full access.
+            const { error } = await supabase.functions.invoke('remove-member', {
               body: { user_id: revokable.user_id },
             });
+            if (error) {
+              notify(d.settings.revokeMemberFailedTitle, d.common.genericError);
+              return;
+            }
           }
           await supabase.from('invites').delete().eq('person_id', id);
           await supabase.from('persons').delete().eq('id', id);
-          router.back();
+          backOr('/settings/account');
         })();
       },
     });
@@ -242,7 +249,7 @@ export default function PersonScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={d.person.backToAccount}
-          onPress={() => router.back()}
+          onPress={() => backOr('/settings/account')}
           style={({ pressed }) => ({
             flexDirection: 'row',
             alignItems: 'center',

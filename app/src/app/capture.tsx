@@ -11,6 +11,7 @@ import { Body, Button, Eyebrow, Field, Muted, Title } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
 import { createCaptureJob, createMediaCaptureJob } from '@/lib/capture-jobs';
 import { fmt, useI18n } from '@/lib/i18n';
+import { backOr } from '@/lib/nav';
 import { createBlankRecipe } from '@/lib/recipes';
 import { supabase } from '@/lib/supabase';
 import { controlHeight, fonts, fontSize, radius, screenPadding, useTheme } from '@/lib/theme';
@@ -150,7 +151,7 @@ export default function CaptureScreen() {
       const userId = data.session?.user.id;
       if (!userId) throw new Error(d.capture.sessionExpired);
       await create({ householdId: membership.householdId, userId });
-      router.back();
+      backOr('/(tabs)/library');
     } catch (e) {
       setError(e instanceof Error ? e.message : d.capture.importError);
       setBusy(false);
@@ -283,7 +284,7 @@ export default function CaptureScreen() {
             ))}
           </View>
           {busy ? <Muted>{d.capture.analyzing}</Muted> : null}
-          <Button label={d.common.cancel} kind="secondary" onPress={() => router.back()} disabled={busy} />
+          <Button label={d.common.cancel} kind="secondary" onPress={() => backOr('/(tabs)/library')} disabled={busy} />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

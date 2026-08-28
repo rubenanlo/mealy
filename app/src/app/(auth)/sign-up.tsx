@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Body, Button, Eyebrow, Field, Muted } from '@/components/ui';
 import { fmt, useI18n } from '@/lib/i18n';
+import { backOr } from '@/lib/nav';
 import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, screenPadding, useTheme } from '@/lib/theme';
 
@@ -114,7 +115,7 @@ export default function SignUpScreen() {
               loading={busy}
               disabled={code.trim().length < 4}
             />
-            <Button label={d.auth.signInInstead} kind="secondary" onPress={() => router.back()} />
+            <Button label={d.auth.signInInstead} kind="secondary" onPress={() => backOr('/sign-in')} />
           </View>
         ) : step === 'email' ? (
           <View style={{ gap: 12 }}>

@@ -14,6 +14,7 @@ import {
   type FodmapMode,
 } from '@/lib/diet';
 import { useI18n } from '@/lib/i18n';
+import { backOr } from '@/lib/nav';
 import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, minTapTarget, radius, screenPadding, useTheme } from '@/lib/theme';
 
@@ -84,7 +85,7 @@ export default function PersonPreferencesScreen() {
       })
       .eq('id', id);
     setSaving(false);
-    router.back();
+    backOr('/settings/meal-preferences');
   };
 
   if (!profile) {
@@ -106,7 +107,7 @@ export default function PersonPreferencesScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={d.mealPrefs.title}
-          onPress={() => router.back()}
+          onPress={() => backOr('/settings/meal-preferences')}
           style={({ pressed }) => ({
             flexDirection: 'row',
             alignItems: 'center',

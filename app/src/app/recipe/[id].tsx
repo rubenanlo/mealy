@@ -48,6 +48,7 @@ import { useHousehold } from '@/lib/auth';
 import type { CanonicalIngredient, FodmapTier } from '@/lib/canonical';
 import { confirmDestructive, notify } from '@/lib/confirm';
 import { invalidateLists } from '@/lib/list-refresh';
+import { backOr } from '@/lib/nav';
 import {
   CATEGORY_LABELS,
   deriveCategory,
@@ -1012,7 +1013,7 @@ export default function RecipeSheetScreen() {
     }
   };
 
-  const dismiss = () => router.back();
+  const dismiss = () => backOr('/(tabs)/library');
 
   // Manual recipe created from Library/Search: keep it, drop the isNew flag,
   // and show it in normal view mode.
@@ -1035,7 +1036,7 @@ export default function RecipeSheetScreen() {
         slot: assignTarget.slot,
       });
       finalizedRef.current = true;
-      router.back();
+      backOr('/(tabs)/plan');
     } catch {
       notify(d.recipe.addToPlannerFailTitle, d.common.genericError);
     } finally {
@@ -1129,13 +1130,7 @@ export default function RecipeSheetScreen() {
             return;
           }
           invalidateLists('library', 'plan', 'groceries');
-          // Opened by direct URL (web deep link / refresh) there is no history
-          // to go back to — land on the library, which refetches on focus.
-          if (router.canGoBack()) {
-            router.back();
-          } else {
-            router.replace('/(tabs)/library');
-          }
+          backOr('/(tabs)/library');
         })();
       },
     });

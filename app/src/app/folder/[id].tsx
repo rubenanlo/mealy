@@ -9,6 +9,7 @@ import { Body, Button, Field, Hairline, Loading, Muted, Title } from '@/componen
 import { useAuth } from '@/lib/auth';
 import { confirmDestructive, notify } from '@/lib/confirm';
 import { fmt, useI18n } from '@/lib/i18n';
+import { backOr } from '@/lib/nav';
 import { supabase } from '@/lib/supabase';
 import { localizedTitle } from '@/lib/translations';
 import { fonts, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
@@ -112,7 +113,7 @@ export default function FolderScreen() {
       onConfirm: () => {
         void (async () => {
           await supabase.from('folders').delete().eq('id', id);
-          router.back();
+          backOr('/(tabs)/library');
         })();
       },
     });
@@ -127,7 +128,7 @@ export default function FolderScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={d.common.back}
-          onPress={() => router.back()}
+          onPress={() => backOr('/(tabs)/library')}
           style={({ pressed }) => ({
             flexDirection: 'row',
             alignItems: 'center',

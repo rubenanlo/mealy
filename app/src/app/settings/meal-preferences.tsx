@@ -18,6 +18,7 @@ import {
 import { useHousehold } from '@/lib/auth';
 import { normalizeDietProfile, type FodmapMode } from '@/lib/diet';
 import { useI18n } from '@/lib/i18n';
+import { backOr } from '@/lib/nav';
 import { normalizeMealTimes, parseHHMM, type MealTimes } from '@/lib/meal-times';
 import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
@@ -144,7 +145,7 @@ export default function MealPreferencesScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={d.mealPrefs.backToSettings}
-          onPress={() => router.back()}
+          onPress={() => backOr('/settings')}
           style={({ pressed }) => ({
             flexDirection: 'row',
             alignItems: 'center',

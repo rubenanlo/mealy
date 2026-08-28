@@ -6,11 +6,22 @@
 // invite row immediately.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
+// Browser clients (app.rawdev.link) send a CORS preflight; native apps skip
+// it. Auth still comes from the JWT, so a wildcard origin is safe here.
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
 Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: CORS });
+  }
   const json = (status: number, body: Record<string, unknown>) =>
     new Response(JSON.stringify(body), {
       status,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...CORS, 'Content-Type': 'application/json' },
     });
 
   let email = '';

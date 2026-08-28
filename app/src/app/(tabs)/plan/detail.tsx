@@ -28,6 +28,7 @@ import { normalizeDietProfile } from '@/lib/diet';
 import { computeRecipeFodmap, recipeFodmapTier } from '@/lib/fodmap';
 import { invalidateLists } from '@/lib/list-refresh';
 import { confirmDestructive, notify } from '@/lib/confirm';
+import { backOr } from '@/lib/nav';
 import { fmt, useI18n } from '@/lib/i18n';
 import { useImageUrl } from '@/lib/media';
 import {
@@ -725,7 +726,7 @@ export default function PlanScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={d.plan.backToWeeks}
-          onPress={() => (router.canGoBack() ? router.back() : router.navigate('/plan'))}
+          onPress={() => backOr('/plan')}
           style={({ pressed }) => ({
             width: minTapTarget,
             height: minTapTarget,
