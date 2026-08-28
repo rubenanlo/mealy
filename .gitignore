@@ -11,3 +11,4 @@ __pycache__/
 .DS_Store
 app/ios/
 app/android/
+.wrangler/
