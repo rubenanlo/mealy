@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import io
 
-import httpx
 from PIL import Image
+
+from .netguard import guarded_async_client
 
 MIN_W, MIN_H, MAX_EDGE = 500, 350, 1600
 _UA = "Mozilla/5.0 (Macintosh) Mealy/1.0"
@@ -40,7 +41,7 @@ def validate_image_bytes(data: bytes) -> bytes | None:
 async def fetch_validated_image(url: str) -> bytes | None:
     """Download + validate one candidate; None on any failure."""
     try:
-        async with httpx.AsyncClient(
+        async with guarded_async_client(
             follow_redirects=True, timeout=10.0, headers={"User-Agent": _UA}
         ) as client:
             response = await client.get(url)
