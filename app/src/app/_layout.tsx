@@ -12,6 +12,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { ActivityIndicator, Platform, View } from 'react-native';
 
+import { ConfirmHost } from '@/components/confirm-modal';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { LanguageProvider } from '@/lib/i18n';
 import { ThemeProvider, useTheme } from '@/lib/theme';
@@ -101,6 +102,7 @@ export default function RootLayout() {
       <LanguageProvider>
         <AuthProvider>
           <RootStack />
+          <ConfirmHost />
         </AuthProvider>
       </LanguageProvider>
     </ThemeProvider>

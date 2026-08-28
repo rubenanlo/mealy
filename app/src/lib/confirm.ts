@@ -6,14 +6,28 @@ import { Alert, Platform } from 'react-native';
  * confirm/alert. Same pattern as confirmRemoveFromWeek in add-to-week.tsx.
  */
 
-export function confirmDestructive(opts: {
+export interface ConfirmRequest {
   title: string;
   message?: string;
   confirmLabel: string;
   cancelLabel: string;
   onConfirm: () => void;
-}): void {
+}
+
+/** Set by the mounted ConfirmHost (web's styled modal); null when absent. */
+let presenter: ((req: ConfirmRequest) => void) | null = null;
+
+export function setConfirmPresenter(fn: ((req: ConfirmRequest) => void) | null): void {
+  presenter = fn;
+}
+
+export function confirmDestructive(opts: ConfirmRequest): void {
   if (Platform.OS === 'web') {
+    if (presenter) {
+      presenter(opts);
+      return;
+    }
+    // Host not mounted (early boot): the browser's confirm still works.
     const text = opts.message ? `${opts.title}\n\n${opts.message}` : opts.title;
     if (typeof window !== 'undefined' && window.confirm(text)) {
       opts.onConfirm();
