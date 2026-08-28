@@ -25,6 +25,11 @@ export function ConfirmHost() {
     setRequest(null);
     run?.();
   };
+  const cancel = () => {
+    const run = request?.onCancel;
+    setRequest(null);
+    run?.();
+  };
 
   return (
     <Modal
@@ -61,10 +66,14 @@ export function ConfirmHost() {
               {request.message ? <Body>{request.message}</Body> : null}
               <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
                 <View style={{ flex: 1 }}>
-                  <Button label={request.cancelLabel} kind="secondary" onPress={dismiss} />
+                  <Button label={request.cancelLabel} kind="secondary" onPress={cancel} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Button label={request.confirmLabel} kind="danger" onPress={confirm} />
+                  <Button
+                    label={request.confirmLabel}
+                    kind={request.destructive === false ? 'primary' : 'danger'}
+                    onPress={confirm}
+                  />
                 </View>
               </View>
             </>

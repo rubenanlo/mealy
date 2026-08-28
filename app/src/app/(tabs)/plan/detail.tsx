@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, FlatList, Modal, Platform, Pressable, ScrollView, Switch, Text, View } from 'react-native';
+import { FlatList, Modal, Platform, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { GuestStepper } from '@/components/guest-stepper';
@@ -27,6 +27,7 @@ import { resolveProteinCategory, type ProteinCategory } from '@/lib/category';
 import { normalizeDietProfile } from '@/lib/diet';
 import { computeRecipeFodmap, recipeFodmapTier } from '@/lib/fodmap';
 import { invalidateLists } from '@/lib/list-refresh';
+import { confirmDestructive, notify } from '@/lib/confirm';
 import { fmt, useI18n } from '@/lib/i18n';
 import { useImageUrl } from '@/lib/media';
 import {
@@ -412,7 +413,7 @@ export default function PlanScreen() {
       if (assignments.length === 0) {
         setAutoOpen(false);
         await loadWeek(weekIso);
-        Alert.alert(
+        notify(
           d.plan.noRecipesTitle,
           autoLowFodmap ? d.plan.noLowFodmapRecipes : d.plan.addRecipesFirst
         );
@@ -445,7 +446,7 @@ export default function PlanScreen() {
             : fmt(autoLowFodmap ? d.plan.partlyFilledManyLow : d.plan.partlyFilledMany, {
                 count: unfilled.length,
               });
-        Alert.alert(d.plan.weekPartlyFilled, body);
+        notify(d.plan.weekPartlyFilled, body);
       }
     } finally {
       setAutoBusy(false);
@@ -507,10 +508,15 @@ export default function PlanScreen() {
   const onAddCustom = () => {
     const title = customDraft.trim();
     if (!title) return;
-    Alert.alert(d.plan.addAsRecipeTitle, fmt(d.plan.addAsRecipeBody, { title }), [
-      { text: d.plan.noJustAdd, onPress: pickCustom },
-      { text: d.plan.yesCreateRecipe, onPress: () => startRecipeFromMeal(title) },
-    ]);
+    confirmDestructive({
+      title: d.plan.addAsRecipeTitle,
+      message: fmt(d.plan.addAsRecipeBody, { title }),
+      confirmLabel: d.plan.yesCreateRecipe,
+      cancelLabel: d.plan.noJustAdd,
+      destructive: false,
+      onConfirm: () => startRecipeFromMeal(title),
+      onCancel: pickCustom,
+    });
   };
 
   const startRecipeFromMeal = (title: string) => {
@@ -650,16 +656,16 @@ export default function PlanScreen() {
         .select('id', { count: 'exact', head: true })
         .eq('meal_plan_id', targetPlanId);
       if ((count ?? 0) > 0) {
-        Alert.alert(
-          d.plan.replaceWeekTitle,
-          count === 1
-            ? d.plan.replaceWeekBodyOne
-            : fmt(d.plan.replaceWeekBodyMany, { count: count ?? 0 }),
-          [
-            { text: d.common.cancel, style: 'cancel' },
-            { text: d.plan.replace, style: 'destructive', onPress: () => void run() },
-          ]
-        );
+        confirmDestructive({
+          title: d.plan.replaceWeekTitle,
+          message:
+            count === 1
+              ? d.plan.replaceWeekBodyOne
+              : fmt(d.plan.replaceWeekBodyMany, { count: count ?? 0 }),
+          confirmLabel: d.plan.replace,
+          cancelLabel: d.common.cancel,
+          onConfirm: () => void run(),
+        });
         return;
       }
     }

@@ -12,6 +12,10 @@ export interface ConfirmRequest {
   confirmLabel: string;
   cancelLabel: string;
   onConfirm: () => void;
+  /** Two-choice dialogs: the cancel button is itself an action. */
+  onCancel?: () => void;
+  /** false renders the confirm button as primary instead of danger. */
+  destructive?: boolean;
 }
 
 /** Set by the mounted ConfirmHost (web's styled modal); null when absent. */
@@ -29,14 +33,23 @@ export function confirmDestructive(opts: ConfirmRequest): void {
     }
     // Host not mounted (early boot): the browser's confirm still works.
     const text = opts.message ? `${opts.title}\n\n${opts.message}` : opts.title;
-    if (typeof window !== 'undefined' && window.confirm(text)) {
-      opts.onConfirm();
+    if (typeof window !== 'undefined') {
+      if (window.confirm(text)) opts.onConfirm();
+      else opts.onCancel?.();
     }
     return;
   }
   Alert.alert(opts.title, opts.message, [
-    { text: opts.cancelLabel, style: 'cancel' },
-    { text: opts.confirmLabel, style: 'destructive', onPress: opts.onConfirm },
+    {
+      text: opts.cancelLabel,
+      style: opts.onCancel ? 'default' : 'cancel',
+      onPress: opts.onCancel,
+    },
+    {
+      text: opts.confirmLabel,
+      style: opts.destructive === false ? 'default' : 'destructive',
+      onPress: opts.onConfirm,
+    },
   ]);
 }
 

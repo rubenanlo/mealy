@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
@@ -15,6 +15,7 @@ import {
   SettingsRow,
   Title,
 } from '@/components/ui';
+import { confirmDestructive, notify } from '@/lib/confirm';
 import { useAuth, useHousehold } from '@/lib/auth';
 import { fmt, useI18n } from '@/lib/i18n';
 import { type SignupCodeRow, signupCodeStatus } from '@/lib/signup-codes';
@@ -103,25 +104,24 @@ export default function AccountScreen() {
   /** Owner-only: delete a member's account entirely (remove-member function). */
   const revokeMember = (member: MemberRow) => {
     const email = member.email ?? d.settings.unknownMember;
-    Alert.alert(d.settings.revokeMemberTitle, fmt(d.settings.revokeMemberBody, { email }), [
-      { text: d.common.cancel, style: 'cancel' },
-      {
-        text: d.common.delete,
-        style: 'destructive',
-        onPress: () => {
-          void (async () => {
-            const { error } = await supabase.functions.invoke('remove-member', {
-              body: { user_id: member.user_id },
-            });
-            if (error) {
-              Alert.alert(d.settings.revokeMemberFailedTitle, d.common.genericError);
-              return;
-            }
-            await load();
-          })();
-        },
+    confirmDestructive({
+      title: d.settings.revokeMemberTitle,
+      message: fmt(d.settings.revokeMemberBody, { email }),
+      confirmLabel: d.common.delete,
+      cancelLabel: d.common.cancel,
+      onConfirm: () => {
+        void (async () => {
+          const { error } = await supabase.functions.invoke('remove-member', {
+            body: { user_id: member.user_id },
+          });
+          if (error) {
+            notify(d.settings.revokeMemberFailedTitle, d.common.genericError);
+            return;
+          }
+          await load();
+        })();
       },
-    ]);
+    });
   };
 
   const copyCode = async (code: string) => {
@@ -135,11 +135,11 @@ export default function AccountScreen() {
     const { data, error } = await supabase.rpc('create_signup_code');
     setCodeBusy(false);
     if (error || !data) {
-      Alert.alert(d.settings.codeCreateFailedTitle, d.common.genericError);
+      notify(d.settings.codeCreateFailedTitle, d.common.genericError);
       return;
     }
     await Clipboard.setStringAsync(data as string);
-    Alert.alert(d.settings.newCodeTitle, fmt(d.settings.newCodeBody, { code: data as string }));
+    notify(d.settings.newCodeTitle, fmt(d.settings.newCodeBody, { code: data as string }));
     await load();
   };
 
@@ -155,37 +155,32 @@ export default function AccountScreen() {
     const { error } = await supabase.auth.updateUser({ email });
     setEmailBusy(false);
     if (error) {
-      Alert.alert(d.settings.emailChangeFailedTitle, error.message);
+      notify(d.settings.emailChangeFailedTitle, error.message);
       return;
     }
     setNewEmail('');
-    Alert.alert(d.settings.confirmEmailTitle, d.settings.confirmEmailBody);
+    notify(d.settings.confirmEmailTitle, d.settings.confirmEmailBody);
   };
 
   const deleteAccount = () => {
-    Alert.alert(
-      d.settings.deleteAccountTitle,
-      d.settings.deleteAccountBody,
-      [
-        { text: d.common.cancel, style: 'cancel' },
-        {
-          text: d.common.delete,
-          style: 'destructive',
-          onPress: () => {
-            void (async () => {
-              setDeleteBusy(true);
-              const { error } = await supabase.functions.invoke('delete-account');
-              setDeleteBusy(false);
-              if (error) {
-                Alert.alert(d.settings.deleteAccountFailedTitle, d.common.genericError);
-                return;
-              }
-              await signOut();
-            })();
-          },
-        },
-      ]
-    );
+    confirmDestructive({
+      title: d.settings.deleteAccountTitle,
+      message: d.settings.deleteAccountBody,
+      confirmLabel: d.common.delete,
+      cancelLabel: d.common.cancel,
+      onConfirm: () => {
+        void (async () => {
+          setDeleteBusy(true);
+          const { error } = await supabase.functions.invoke('delete-account');
+          setDeleteBusy(false);
+          if (error) {
+            notify(d.settings.deleteAccountFailedTitle, d.common.genericError);
+            return;
+          }
+          await signOut();
+        })();
+      },
+    });
   };
 
   return (

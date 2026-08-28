@@ -1,12 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, Pressable, ScrollView, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RecipeRow, type RecipeListItem } from '@/components/recipe-cards';
 import { Body, Button, Field, Hairline, Loading, Muted, Title } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
+import { confirmDestructive, notify } from '@/lib/confirm';
 import { fmt, useI18n } from '@/lib/i18n';
 import { supabase } from '@/lib/supabase';
 import { localizedTitle } from '@/lib/translations';
@@ -93,7 +94,7 @@ export default function FolderScreen() {
     if (!trimmed || !id) return;
     const { error } = await supabase.from('folders').update({ name: trimmed }).eq('id', id);
     if (error) {
-      Alert.alert(
+      notify(
         d.library.couldNotRename,
         error.code === '23505' ? d.library.duplicateFolderName : d.library.tryAgain
       );
@@ -103,19 +104,18 @@ export default function FolderScreen() {
   };
 
   const removeFolder = () => {
-    Alert.alert(d.library.deleteFolderTitle, fmt(d.library.deleteFolderBody, { name }), [
-      { text: d.common.cancel, style: 'cancel' },
-      {
-        text: d.common.delete,
-        style: 'destructive',
-        onPress: () => {
-          void (async () => {
-            await supabase.from('folders').delete().eq('id', id);
-            router.back();
-          })();
-        },
+    confirmDestructive({
+      title: d.library.deleteFolderTitle,
+      message: fmt(d.library.deleteFolderBody, { name }),
+      confirmLabel: d.common.delete,
+      cancelLabel: d.common.cancel,
+      onConfirm: () => {
+        void (async () => {
+          await supabase.from('folders').delete().eq('id', id);
+          router.back();
+        })();
       },
-    ]);
+    });
   };
 
   return (

@@ -41,6 +41,7 @@ import {
   Muted,
   SectionHeader,
 } from "@/components/ui";
+import { confirmDestructive, notify } from "@/lib/confirm";
 import { useAuth, useHousehold } from "@/lib/auth";
 import { consumeInvalidation } from "@/lib/list-refresh";
 import { matchCanonical, normalizeRaw } from "@/lib/canonical";
@@ -410,24 +411,19 @@ export default function HomeScreen() {
   };
 
   const deleteFolderConfirm = (folder: FolderSummary) => {
-    Alert.alert(
-      d.library.deleteFolderTitle,
-      fmt(d.library.deleteFolderBody, { name: folder.name }),
-      [
-        { text: d.common.cancel, style: "cancel" },
-        {
-          text: d.common.delete,
-          style: "destructive",
-          onPress: () => {
-            void supabase
-              .from("folders")
-              .delete()
-              .eq("id", folder.id)
-              .then(() => void load());
-          },
-        },
-      ],
-    );
+    confirmDestructive({
+      title: d.library.deleteFolderTitle,
+      message: fmt(d.library.deleteFolderBody, { name: folder.name }),
+      confirmLabel: d.common.delete,
+      cancelLabel: d.common.cancel,
+      onConfirm: () => {
+        void supabase
+          .from("folders")
+          .delete()
+          .eq("id", folder.id)
+          .then(() => void load());
+      },
+    });
   };
 
   /** ⋯ on a folder I own: quick actions without opening the folder. */
@@ -462,7 +458,7 @@ export default function HomeScreen() {
           .then(() => void load());
       });
     } else {
-      Alert.alert(d.library.newFolder, d.library.newFolderHint);
+      notify(d.library.newFolder, d.library.newFolderHint);
     }
   };
 

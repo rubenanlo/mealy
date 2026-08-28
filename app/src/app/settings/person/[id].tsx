@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, Share, Switch, Text, View } from 'react-native';
+import { Pressable, ScrollView, Share, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { initials } from '@/components/person-chip';
 import { Body, Button, Eyebrow, Field, Hairline, Muted, Title } from '@/components/ui';
+import { confirmDestructive, notify } from '@/lib/confirm';
 import { useAuth, useHousehold } from '@/lib/auth';
 import { AVATAR_COLORS } from '@/lib/avatar';
 import { fmt, LOCALES, useI18n, type Locale } from '@/lib/i18n';
@@ -175,7 +176,7 @@ export default function PersonScreen() {
           return;
         }
         const sent = await sendInviteEmail(email);
-        if (!sent) Alert.alert(d.person.accountAccess, d.person.inviteEmailFailed);
+        if (!sent) notify(d.person.accountAccess, d.person.inviteEmailFailed);
       }
       setSaving(false);
       router.back();
@@ -204,26 +205,25 @@ export default function PersonScreen() {
           email: revokable.email ?? d.settings.unknownMember,
         })
       : fmt(d.person.removeBody, { name });
-    Alert.alert(d.person.removeTitle, body, [
-      { text: d.common.cancel, style: 'cancel' },
-      {
-        text: d.person.remove,
-        style: 'destructive',
-        onPress: () => {
-          void (async () => {
-            if (revokable) {
-              // Deletes the auth account entirely; membership cascades.
-              await supabase.functions.invoke('remove-member', {
-                body: { user_id: revokable.user_id },
-              });
-            }
-            await supabase.from('invites').delete().eq('person_id', id);
-            await supabase.from('persons').delete().eq('id', id);
-            router.back();
-          })();
-        },
+    confirmDestructive({
+      title: d.person.removeTitle,
+      message: body,
+      confirmLabel: d.person.remove,
+      cancelLabel: d.common.cancel,
+      onConfirm: () => {
+        void (async () => {
+          if (revokable) {
+            // Deletes the auth account entirely; membership cascades.
+            await supabase.functions.invoke('remove-member', {
+              body: { user_id: revokable.user_id },
+            });
+          }
+          await supabase.from('invites').delete().eq('person_id', id);
+          await supabase.from('persons').delete().eq('id', id);
+          router.back();
+        })();
       },
-    ]);
+    });
   };
 
   if (!loaded) {

@@ -1037,7 +1037,7 @@ export default function RecipeSheetScreen() {
       finalizedRef.current = true;
       router.back();
     } catch {
-      Alert.alert(d.recipe.addToPlannerFailTitle, d.common.genericError);
+      notify(d.recipe.addToPlannerFailTitle, d.common.genericError);
     } finally {
       setBusyAssign(false);
     }

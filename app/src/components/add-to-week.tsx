@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Alert, Modal, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { GuestStepper } from '@/components/guest-stepper';
 import { PersonChip } from '@/components/person-chip';
 import { Body, Button, Eyebrow, Muted, Title } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
+import { confirmDestructive } from '@/lib/confirm';
 import { invalidateLists } from '@/lib/list-refresh';
 import { dictionaries, fmt, useI18n, type Dict } from '@/lib/i18n';
 import {
@@ -50,20 +51,13 @@ export function confirmRemoveFromWeek(
   onConfirm: () => void,
   d: Dict = dictionaries.en
 ): void {
-  if (Platform.OS === 'web') {
-    // Alert with buttons is a no-op on react-native-web.
-    if (
-      typeof window !== 'undefined' &&
-      window.confirm(fmt(d.components.removeFromWeekWeb, { title: recipeTitle }))
-    ) {
-      onConfirm();
-    }
-    return;
-  }
-  Alert.alert(d.components.removeFromWeekTitle, recipeTitle, [
-    { text: d.common.cancel, style: 'cancel' },
-    { text: d.components.remove, style: 'destructive', onPress: onConfirm },
-  ]);
+  confirmDestructive({
+    title: d.components.removeFromWeekTitle,
+    message: recipeTitle,
+    confirmLabel: d.components.remove,
+    cancelLabel: d.common.cancel,
+    onConfirm,
+  });
 }
 
 /**
