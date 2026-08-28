@@ -101,8 +101,8 @@ export default function HomeScreen() {
   const userId = session?.user.id ?? "";
 
   const [householdRecipes, setHouseholdRecipes] = useState<RecipeListItem[]>([]);
-  // "Added by" select: defaults to the signed-in user's own recipes.
-  const [uploaderFilter, setUploaderFilter] = useState<string | null>(userId || null);
+  // "Added by" select: defaults to everyone's recipes.
+  const [uploaderFilter, setUploaderFilter] = useState<string | null>(null);
   const [uploaderOptions, setUploaderOptions] = useState<UploaderOption[]>([]);
   const [uploaderSheetOpen, setUploaderSheetOpen] = useState(false);
   const recipes = useMemo(
