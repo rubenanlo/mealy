@@ -44,6 +44,8 @@ export async function signInWithApple(): Promise<{ error: string | null }> {
 
 export function googleAvailable(): boolean {
   if (!GOOGLE_WEB_CLIENT_ID) return false;
+  // Web uses Supabase's OAuth redirect flow — no native module involved.
+  if (Platform.OS === 'web') return typeof window !== 'undefined';
   try {
     require('@react-native-google-signin/google-signin');
     return true;
@@ -59,6 +61,15 @@ interface GoogleSignInResult {
 }
 
 export async function signInWithGoogle(): Promise<{ error: string | null }> {
+  if (Platform.OS === 'web') {
+    // Full-page redirect to Google and back; Supabase parses the returning
+    // URL hash (detectSessionInUrl) and the auth listener re-routes.
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.origin },
+    });
+    return { error: error ? 'Could not sign in with Google. Try again.' : null };
+  }
   try {
     const { GoogleSignin } = require('@react-native-google-signin/google-signin');
     GoogleSignin.configure({

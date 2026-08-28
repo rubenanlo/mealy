@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mealy-app",
+  "compatibility_date": "2026-08-01",
+  "workers_dev": false,
+  "account_id": "f8e4646011eea2771f852f9310392ccb",
+  "observability": { "enabled": true },
+  // Static Expo web export (SPA). Rebuild with `pnpm --dir ../../app exec expo export -p web`
+  // before deploying; app/dist is gitignored.
+  "assets": {
+    "directory": "../../app/dist",
+    "not_found_handling": "single-page-application"
+  },
+  "routes": [{ "pattern": "app.rawdev.link", "custom_domain": true }]
+}

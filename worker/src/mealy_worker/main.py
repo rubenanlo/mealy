@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from fastapi import BackgroundTasks, Depends, File, HTTPException, UploadFile
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
 
@@ -26,6 +27,16 @@ from .translate import TranslateRequest, TranslateResponse, translate_recipe
 from .units import UnitConversion, classify_units
 
 app = FastAPI(title="Mealy Worker", version="0.1.0")
+
+# The web app is a browser client; native apps send no Origin and are
+# unaffected. Localhost covers `pnpm web` dev on any port.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://app.rawdev.link"],
+    allow_origin_regex=r"http://localhost:\d+",
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class UrlBody(BaseModel):
