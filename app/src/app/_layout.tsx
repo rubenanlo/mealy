@@ -16,9 +16,11 @@ import { ConfirmHost } from '@/components/confirm-modal';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { LanguageProvider } from '@/lib/i18n';
 import { ThemeProvider, useTheme } from '@/lib/theme';
+import { hideWebScrollbars } from '@/lib/web-style';
 
 // Keep the splash up until the display faces are ready (design.md §Type).
 SplashScreen.preventAutoHideAsync().catch(() => {});
+hideWebScrollbars();
 
 function RootStack() {
   const { colors } = useTheme();
