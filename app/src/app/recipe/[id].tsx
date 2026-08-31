@@ -625,13 +625,18 @@ export default function RecipeSheetScreen() {
   const saveRecipe = useCallback(
     async (patch: Record<string, unknown>) => {
       if (!recipe) return;
+      // updated_at means "translatable content last edited": the freshness
+      // guard compares translated_at against it, so bumping it on non-content
+      // edits (tags, meal type, FODMAP override, cover) would permanently
+      // mark every translation stale — those edits never regenerate them.
+      const contentEdit = 'title' in patch || 'ingredients' in patch || 'steps' in patch;
       await supabase
         .from('recipes')
-        .update({ ...patch, updated_at: new Date().toISOString() })
+        .update(contentEdit ? { ...patch, updated_at: new Date().toISOString() } : patch)
         .eq('id', recipe.id);
       // Content edits invalidate the derived translations: regenerate them all
       // (fire-and-forget) so the other languages never drift from the original.
-      if ('title' in patch || 'ingredients' in patch || 'steps' in patch) {
+      if (contentEdit) {
         const next = { ...recipe, ...patch } as RecipeDetail;
         queueRecipeTranslation(recipe.id, {
           title: next.title,
