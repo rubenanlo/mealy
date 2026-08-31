@@ -62,16 +62,19 @@ export function DraggableSheet({
   const pan = Gesture.Pan()
     .withTestId('recipe-sheet-pan')
     .onUpdate((e) => {
-      // Reduced motion: no travel while dragging; release still dismisses.
-      if (!reduced) dragY.value = Math.max(0, e.translationY);
+      // Direct manipulation, not an animation: the card tracks the finger
+      // even under reduced motion (only release effects are toned down).
+      dragY.value = Math.max(0, e.translationY);
     })
     .onEnd((e) => {
       const shouldDismiss = e.translationY > DISMISS_DISTANCE || e.velocityY > DISMISS_VELOCITY;
       if (!shouldDismiss) {
+        // Reduced motion: instant snap back instead of the spring.
         dragY.value = reduced ? 0 : withSpring(0, { damping: 22, stiffness: 260 });
         return;
       }
       if (reduced) {
+        // Reduced motion: no slide-off travel on release.
         runOnJS(onDismiss)();
         return;
       }
@@ -90,7 +93,8 @@ export function DraggableSheet({
   }));
 
   const cardStyle = useAnimatedStyle(() => {
-    if (reduced) return { opacity: progress.value };
+    // Reduced motion: fade-only entry, but the drag still moves the card.
+    if (reduced) return { opacity: progress.value, transform: [{ translateY: dragY.value }] };
     return { transform: [{ translateY: (1 - progress.value) * sheetHeight + dragY.value }] };
   });
 
