@@ -163,116 +163,108 @@ export function RecipeImage({
   );
 }
 
-/** Full-bleed 4:3 hero card with plan + save chips (Home). */
+/** Full-bleed 4:3 hero card with a save chip (Home). */
 export function Hero({
   recipe,
-  planned,
   saved,
   onPress,
-  onPlan,
   onSave,
 }: {
   recipe: RecipeListItem;
-  planned: boolean;
   saved: boolean;
   onPress: () => void;
-  onPlan: () => void;
   onSave: () => void;
 }) {
   const { colors } = useTheme();
   const { d } = useI18n();
+  // Chips are siblings of the card pressable (not children): nested
+  // role="button" pressables render nested <button>s on web — invalid HTML.
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={fmt(d.components.openRecipe, { title: recipe.title })}
-      onPress={onPress}
-      style={({ pressed }) => ({
-        marginHorizontal: -screenPadding,
-        backgroundColor: pressed ? colors.cardPressed : 'transparent',
-      })}
-    >
-      <View>
+    <View style={{ marginHorizontal: -screenPadding }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={fmt(d.components.openRecipe, { title: recipe.title })}
+        onPress={onPress}
+        style={({ pressed }) => ({
+          backgroundColor: pressed ? colors.cardPressed : 'transparent',
+        })}
+      >
         <RecipeImage path={recipe.cover_image_path} style={{ width: '100%', aspectRatio: 4 / 3 }} iconSize={48} />
-        <CalendarChip planned={planned} onPress={onPlan} style={{ top: 12, right: 12 }} />
-        <BookmarkChip
-          saved={saved}
-          onPress={onSave}
-          accessibilityLabel={saved ? d.components.savedToFolders : d.components.saveToFolder}
-          style={{ top: 12, right: 56 }}
-        />
-      </View>
-      <View style={{ paddingHorizontal: screenPadding, paddingTop: 12, paddingBottom: 16, gap: 6 }}>
-        <Text
-          style={{
-            color: colors.text,
-            fontSize: fontSize.heroTitle,
-            lineHeight: Math.round(fontSize.heroTitle * 1.15),
-            letterSpacing: -0.3,
-            fontFamily: fonts.display,
-          }}
-        >
-          {recipe.title}
-        </Text>
-        <MetaLine recipe={recipe} showServings />
-      </View>
-      <Hairline style={{ marginHorizontal: screenPadding }} />
-    </Pressable>
+        <View style={{ paddingHorizontal: screenPadding, paddingTop: 12, paddingBottom: 16, gap: 6 }}>
+          <Text
+            style={{
+              color: colors.text,
+              fontSize: fontSize.heroTitle,
+              lineHeight: Math.round(fontSize.heroTitle * 1.15),
+              letterSpacing: -0.3,
+              fontFamily: fonts.display,
+            }}
+          >
+            {recipe.title}
+          </Text>
+          <MetaLine recipe={recipe} showServings />
+        </View>
+        <Hairline style={{ marginHorizontal: screenPadding }} />
+      </Pressable>
+      <BookmarkChip
+        saved={saved}
+        onPress={onSave}
+        accessibilityLabel={saved ? d.components.savedToFolders : d.components.saveToFolder}
+        style={{ top: 12, right: 12 }}
+      />
+    </View>
   );
 }
 
 /** 150×190 carousel card ("Suggested for you", "Recently added"). */
 export function CarouselCard({
   recipe,
-  planned,
   saved,
   onPress,
-  onPlan,
   onSave,
 }: {
   recipe: RecipeListItem;
-  planned: boolean;
   saved: boolean;
   onPress: () => void;
-  onPlan: () => void;
   onSave: () => void;
 }) {
   const { colors } = useTheme();
   const { d } = useI18n();
+  // Chip as a sibling of the pressable — see the Hero note.
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={fmt(d.components.openRecipe, { title: recipe.title })}
-      onPress={onPress}
-      style={({ pressed }) => ({ width: 150, opacity: pressed ? 0.7 : 1 })}
-    >
-      <View>
+    <View style={{ width: 150 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={fmt(d.components.openRecipe, { title: recipe.title })}
+        onPress={onPress}
+        style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+      >
         <RecipeImage
           path={recipe.cover_image_path}
           style={{ width: 150, height: 110, borderRadius: radius.card }}
         />
-        <CalendarChip planned={planned} onPress={onPlan} style={{ top: 6, right: 6 }} />
-        <BookmarkChip
-          saved={saved}
-          onPress={onSave}
-          accessibilityLabel={saved ? d.components.savedToFolders : d.components.saveToFolder}
-          style={{ top: 6, right: 50 }}
-        />
-      </View>
-      <View style={{ paddingTop: 8, gap: 4 }}>
-        <Text
-          numberOfLines={2}
-          style={{
-            color: colors.text,
-            fontSize: fontSize.cardTitle,
-            lineHeight: 21,
-            fontFamily: fonts.displaySemi,
-          }}
-        >
-          {recipe.title}
-        </Text>
-        <MetaLine recipe={recipe} />
-      </View>
-    </Pressable>
+        <View style={{ paddingTop: 8, gap: 4 }}>
+          <Text
+            numberOfLines={2}
+            style={{
+              color: colors.text,
+              fontSize: fontSize.cardTitle,
+              lineHeight: 21,
+              fontFamily: fonts.displaySemi,
+            }}
+          >
+            {recipe.title}
+          </Text>
+          <MetaLine recipe={recipe} />
+        </View>
+      </Pressable>
+      <BookmarkChip
+        saved={saved}
+        onPress={onSave}
+        accessibilityLabel={saved ? d.components.savedToFolders : d.components.saveToFolder}
+        style={{ top: 6, right: 6 }}
+      />
+    </View>
   );
 }
 
@@ -297,41 +289,42 @@ export function ThisWeekCard({
 }) {
   const { colors } = useTheme();
   const { d } = useI18n();
+  // Chip as a sibling of the pressable — see the Hero note.
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={fmt(d.components.open, { title: item.title })}
-      onPress={onPress}
-      style={({ pressed }) => ({ width: 110, opacity: pressed ? 0.7 : 1 })}
-    >
-      <View>
+    <View style={{ width: 110 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={fmt(d.components.open, { title: item.title })}
+        onPress={onPress}
+        style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+      >
         <RecipeImage
           path={item.path}
           style={{ width: 110, height: 82, borderRadius: radius.card }}
           iconSize={22}
         />
-        {onBookmark ? (
-          <CalendarChip
-            planned
-            onPress={onBookmark}
-            accessibilityLabel={fmt(d.components.removeFromWeek, { title: item.title })}
-            style={{ top: 4, right: 4 }}
-          />
-        ) : null}
-      </View>
-      <Text
-        numberOfLines={2}
-        style={{
-          color: colors.text,
-          fontSize: fontSize.small,
-          lineHeight: 19,
-          fontFamily: fonts.uiMedium,
-          paddingTop: 6,
-        }}
-      >
-        {item.title}
-      </Text>
-    </Pressable>
+        <Text
+          numberOfLines={2}
+          style={{
+            color: colors.text,
+            fontSize: fontSize.small,
+            lineHeight: 19,
+            fontFamily: fonts.uiMedium,
+            paddingTop: 6,
+          }}
+        >
+          {item.title}
+        </Text>
+      </Pressable>
+      {onBookmark ? (
+        <CalendarChip
+          planned
+          onPress={onBookmark}
+          accessibilityLabel={fmt(d.components.removeFromWeek, { title: item.title })}
+          style={{ top: 4, right: 4 }}
+        />
+      ) : null}
+    </View>
   );
 }
 

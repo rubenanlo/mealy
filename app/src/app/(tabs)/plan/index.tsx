@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View, type GestureResponderEvent } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RecipeImage } from '@/components/recipe-cards';
@@ -22,6 +22,7 @@ import { consumeInvalidation } from '@/lib/list-refresh';
 import { fmt, useI18n } from '@/lib/i18n';
 import { shareEmployeeLink } from '@/lib/employee-link';
 import { isMealUpcoming, normalizeMealTimes, type MealTimes } from '@/lib/meal-times';
+import { anchorFromEvent, pickOption } from '@/lib/options';
 import { addWeeks, dayDate, weekStart, type MealSlot } from '@/lib/plan';
 import { entryServings } from '@/lib/servings';
 import { supabase } from '@/lib/supabase';
@@ -280,7 +281,7 @@ export default function WeeksScreen() {
     void saveEmployeeNotes(items);
   };
 
-  const newPlan = () => {
+  const newPlan = (e?: GestureResponderEvent) => {
     const options = [0, 1, 2, 3].map((delta) => {
       const week = addWeeks(currentWeek, delta);
       const label =
@@ -291,10 +292,12 @@ export default function WeeksScreen() {
             : fmt(d.plan.inWeeks, { n: delta });
       return { text: `${label} — ${weekDate(week)}`, week };
     });
-    Alert.alert(d.plan.planWhichWeek, undefined, [
-      ...options.map((o) => ({ text: o.text, onPress: () => openWeek(o.week) })),
-      { text: d.common.cancel, style: 'cancel' as const },
-    ]);
+    pickOption({
+      title: d.plan.planWhichWeek,
+      cancelLabel: d.common.cancel,
+      anchor: anchorFromEvent(e),
+      options: options.map((o) => ({ label: o.text, onPress: () => openWeek(o.week) })),
+    });
   };
 
   const todayIndex = Math.floor(

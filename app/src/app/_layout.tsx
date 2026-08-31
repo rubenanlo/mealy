@@ -6,15 +6,16 @@ import {
   useFonts,
 } from '@expo-google-fonts/libre-franklin';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useKeepAwake } from 'expo-keep-awake';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { ActivityIndicator, Platform, View } from 'react-native';
 
 import { ConfirmHost } from '@/components/confirm-modal';
+import { OptionPickerHost } from '@/components/option-picker';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { LanguageProvider } from '@/lib/i18n';
+import { useKeepAwakeSafe } from '@/lib/keep-awake';
 import { ThemeProvider, useTheme } from '@/lib/theme';
 import { hideWebScrollbars } from '@/lib/web-style';
 
@@ -27,7 +28,7 @@ function RootStack() {
   const { session, membership } = useAuth();
   // Cooking with the recipe up: never let the screen sleep while the app is
   // foregrounded (the OS restores normal sleep once we're backgrounded).
-  useKeepAwake();
+  useKeepAwakeSafe();
 
   const restoring = session === undefined || (!!session && membership === undefined);
   if (restoring) {
@@ -105,6 +106,7 @@ export default function RootLayout() {
         <AuthProvider>
           <RootStack />
           <ConfirmHost />
+          <OptionPickerHost />
         </AuthProvider>
       </LanguageProvider>
     </ThemeProvider>

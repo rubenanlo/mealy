@@ -12,6 +12,7 @@ import {
   ScrollView,
   Text,
   View,
+  type GestureResponderEvent,
 } from "react-native";
 import {
   SafeAreaView,
@@ -48,6 +49,7 @@ import {
   SectionHeader,
 } from "@/components/ui";
 import { confirmDestructive, notify } from "@/lib/confirm";
+import { anchorFromEvent, pickOption } from "@/lib/options";
 import { useAuth, useHousehold } from "@/lib/auth";
 import { consumeInvalidation } from "@/lib/list-refresh";
 import { matchCanonical, normalizeRaw } from "@/lib/canonical";
@@ -452,19 +454,24 @@ export default function HomeScreen() {
   };
 
   /** ⋯ on a folder I own: quick actions without opening the folder. */
-  const folderMenu = (folder: FolderSummary) => {
-    Alert.alert(folder.name, undefined, [
-      { text: d.library.open, onPress: () => router.push(`/folder/${folder.id}`) },
-      ...(Platform.OS === "ios"
-        ? [{ text: d.library.rename, onPress: () => renameFolderPrompt(folder) }]
-        : []),
-      {
-        text: d.common.delete,
-        style: "destructive" as const,
-        onPress: () => deleteFolderConfirm(folder),
-      },
-      { text: d.common.cancel, style: "cancel" as const },
-    ]);
+  const folderMenu = (folder: FolderSummary, e?: GestureResponderEvent) => {
+    pickOption({
+      title: folder.name,
+      cancelLabel: d.common.cancel,
+      anchor: anchorFromEvent(e),
+      options: [
+        { label: d.library.open, onPress: () => router.push(`/folder/${folder.id}`) },
+        // Alert.prompt is iOS-only; elsewhere rename lives on the folder page.
+        ...(Platform.OS === "ios"
+          ? [{ label: d.library.rename, onPress: () => renameFolderPrompt(folder) }]
+          : []),
+        {
+          label: d.common.delete,
+          destructive: true,
+          onPress: () => deleteFolderConfirm(folder),
+        },
+      ],
+    });
   };
 
   const createFolderPrompt = () => {
@@ -680,11 +687,8 @@ export default function HomeScreen() {
             {hero ? (
               <Hero
                 recipe={hero}
-                planned={thisWeekSet.has(hero.id)}
                 saved={savedSet.has(hero.id)}
-                onPress={() => openRecipe(hero.id)}
-                onPlan={() => onPlan(hero)}
-                onSave={() => setSaveRecipe(hero)}
+                onPress={() => openRecipe(hero.id)}                onSave={() => setSaveRecipe(hero)}
               />
             ) : null}
 
@@ -701,10 +705,8 @@ export default function HomeScreen() {
                     <CarouselCard
                       key={recipe.id}
                       recipe={recipe}
-                      planned={thisWeekSet.has(recipe.id)}
                       saved={savedSet.has(recipe.id)}
                       onPress={() => openRecipe(recipe.id)}
-                      onPlan={() => onPlan(recipe)}
                       onSave={() => setSaveRecipe(recipe)}
                     />
                   ))}
@@ -765,10 +767,8 @@ export default function HomeScreen() {
                     <CarouselCard
                       key={recipe.id}
                       recipe={recipe}
-                      planned={thisWeekSet.has(recipe.id)}
                       saved={savedSet.has(recipe.id)}
                       onPress={() => openRecipe(recipe.id)}
-                      onPlan={() => onPlan(recipe)}
                       onSave={() => setSaveRecipe(recipe)}
                     />
                   ))}
@@ -795,10 +795,8 @@ export default function HomeScreen() {
                     <CarouselCard
                       key={recipe.id}
                       recipe={recipe}
-                      planned={thisWeekSet.has(recipe.id)}
                       saved={savedSet.has(recipe.id)}
                       onPress={() => openRecipe(recipe.id)}
-                      onPlan={() => onPlan(recipe)}
                       onSave={() => setSaveRecipe(recipe)}
                     />
                   ))}
@@ -1086,7 +1084,7 @@ function FolderCollection({
   coverByRecipe: Map<string, string | null>;
   onOpen: (id: string) => void;
   /** Present only for folders the viewer owns (⋯ quick actions). */
-  onMenu?: (folder: FolderSummary) => void;
+  onMenu?: (folder: FolderSummary, e?: GestureResponderEvent) => void;
 }) {
   if (view === "list") {
     return (
@@ -1097,7 +1095,7 @@ function FolderCollection({
             folder={f}
             cover={collageCovers(f, coverByRecipe)[0]}
             onPress={() => onOpen(f.id)}
-            onMenu={onMenu ? () => onMenu(f) : undefined}
+            onMenu={onMenu ? (e?: GestureResponderEvent) => onMenu(f, e) : undefined}
           />
         ))}
       </View>
@@ -1118,7 +1116,7 @@ function FolderCollection({
           folder={f}
           covers={collageCovers(f, coverByRecipe)}
           onPress={() => onOpen(f.id)}
-          onMenu={onMenu ? () => onMenu(f) : undefined}
+          onMenu={onMenu ? (e?: GestureResponderEvent) => onMenu(f, e) : undefined}
         />
       ))}
     </View>
@@ -1131,7 +1129,7 @@ function FolderMenuButton({
   onPress,
 }: {
   name: string;
-  onPress: () => void;
+  onPress: (e?: GestureResponderEvent) => void;
 }) {
   const { colors } = useTheme();
   const { d } = useI18n();
@@ -1158,67 +1156,72 @@ function FolderGridItem({
   folder: FolderSummary;
   covers: (string | null)[];
   onPress: () => void;
-  onMenu?: () => void;
+  onMenu?: (e?: GestureResponderEvent) => void;
 }) {
   const { colors } = useTheme();
   const { d } = useI18n();
+  // The ⋯ button overlays the name row from outside the tile pressable:
+  // nested role="button" pressables render nested <button>s on web.
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={fmt(d.library.openFolderA11y, { name: folder.name })}
-      onPress={onPress}
-      style={({ pressed }) => ({
-        width: "47.5%",
-        opacity: pressed ? 0.7 : 1,
-      })}
-    >
-      <View
-        style={{
-          flexDirection: "row",
-          flexWrap: "wrap",
-          justifyContent: "space-between",
-          alignContent: "space-between",
-          aspectRatio: 1,
-          borderRadius: radius.card,
-          overflow: "hidden",
-        }}
+    <View style={{ width: "47.5%" }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={fmt(d.library.openFolderA11y, { name: folder.name })}
+        onPress={onPress}
+        style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
       >
-        {covers.map((path, i) => (
-          <RecipeImage
-            key={i}
-            path={path}
-            style={{ width: "48.5%", height: "48.5%" }}
-            iconSize={20}
-          />
-        ))}
-      </View>
-      <View style={{ paddingTop: 8, gap: 2 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <Text
-            numberOfLines={1}
-            style={{
-              flex: 1,
-              color: colors.text,
-              fontSize: fontSize.cardTitle,
-              fontFamily: fonts.displaySemi,
-            }}
-          >
-            {folder.name}
-          </Text>
-          {onMenu ? (
-            <FolderMenuButton name={folder.name} onPress={onMenu} />
-          ) : null}
+        <View
+          style={{
+            flexDirection: "row",
+            flexWrap: "wrap",
+            justifyContent: "space-between",
+            alignContent: "space-between",
+            aspectRatio: 1,
+            borderRadius: radius.card,
+            overflow: "hidden",
+          }}
+        >
+          {covers.map((path, i) => (
+            <RecipeImage
+              key={i}
+              path={path}
+              style={{ width: "48.5%", height: "48.5%" }}
+              iconSize={20}
+            />
+          ))}
         </View>
-        <Muted>
-          {fmt(
-            folder.recipeIds.length === 1
-              ? d.library.recipeCountOne
-              : d.library.recipeCountMany,
-            { count: folder.recipeIds.length },
-          )}
-        </Muted>
-      </View>
-    </Pressable>
+        <View style={{ paddingTop: 8, gap: 2 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Text
+              numberOfLines={1}
+              style={{
+                flex: 1,
+                color: colors.text,
+                fontSize: fontSize.cardTitle,
+                fontFamily: fonts.displaySemi,
+              }}
+            >
+              {folder.name}
+            </Text>
+            {/* Spacer keeps the name clear of the overlaid ⋯ button. */}
+            {onMenu ? <View style={{ width: 28 }} /> : null}
+          </View>
+          <Muted>
+            {fmt(
+              folder.recipeIds.length === 1
+                ? d.library.recipeCountOne
+                : d.library.recipeCountMany,
+              { count: folder.recipeIds.length },
+            )}
+          </Muted>
+        </View>
+      </Pressable>
+      {onMenu ? (
+        <View style={{ position: "absolute", right: -4, bottom: 16 }}>
+          <FolderMenuButton name={folder.name} onPress={onMenu} />
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -1232,49 +1235,54 @@ function FolderRowItem({
   folder: FolderSummary;
   cover: string | null;
   onPress: () => void;
-  onMenu?: () => void;
+  onMenu?: (e?: GestureResponderEvent) => void;
 }) {
   const { colors } = useTheme();
   const { d } = useI18n();
+  // The ⋯ button sits beside (not inside) the row pressable: nested
+  // role="button" pressables render nested <button>s on web — invalid HTML.
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={fmt(d.library.openFolderA11y, { name: folder.name })}
-      onPress={onPress}
-      style={({ pressed }) => ({
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 14,
-        paddingVertical: 6,
-        backgroundColor: pressed ? colors.cardPressed : "transparent",
-      })}
-    >
-      <RecipeImage
-        path={cover}
-        style={{ width: 64, height: 64, borderRadius: 8 }}
-        iconSize={20}
-      />
-      <View style={{ flex: 1, gap: 2 }}>
-        <Text
-          numberOfLines={1}
-          style={{
-            color: colors.text,
-            fontSize: fontSize.cardTitle,
-            fontFamily: fonts.displaySemi,
-          }}
-        >
-          {folder.name}
-        </Text>
-        <Muted>
-          {fmt(
-            folder.recipeIds.length === 1
-              ? d.library.recipeCountOne
-              : d.library.recipeCountMany,
-            { count: folder.recipeIds.length },
-          )}
-        </Muted>
-      </View>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={fmt(d.library.openFolderA11y, { name: folder.name })}
+        onPress={onPress}
+        style={({ pressed }) => ({
+          flex: 1,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 14,
+          paddingVertical: 6,
+          backgroundColor: pressed ? colors.cardPressed : "transparent",
+        })}
+      >
+        <RecipeImage
+          path={cover}
+          style={{ width: 64, height: 64, borderRadius: 8 }}
+          iconSize={20}
+        />
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text
+            numberOfLines={1}
+            style={{
+              color: colors.text,
+              fontSize: fontSize.cardTitle,
+              fontFamily: fonts.displaySemi,
+            }}
+          >
+            {folder.name}
+          </Text>
+          <Muted>
+            {fmt(
+              folder.recipeIds.length === 1
+                ? d.library.recipeCountOne
+                : d.library.recipeCountMany,
+              { count: folder.recipeIds.length },
+            )}
+          </Muted>
+        </View>
+      </Pressable>
       {onMenu ? <FolderMenuButton name={folder.name} onPress={onMenu} /> : null}
-    </Pressable>
+    </View>
   );
 }

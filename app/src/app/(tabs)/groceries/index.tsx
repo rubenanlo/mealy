@@ -1,7 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, Share, Text, View } from 'react-native';
+import {
+  Pressable,
+  ScrollView,
+  Share,
+  Text,
+  View,
+  type GestureResponderEvent,
+} from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PersonChip, type PersonLike } from '@/components/person-chip';
@@ -21,6 +28,7 @@ import { buildShoppingText, type ExportGroup } from '@/lib/export';
 import { consumeInvalidation } from '@/lib/list-refresh';
 import { fmt, useI18n } from '@/lib/i18n';
 import { resolveMatches } from '@/lib/matching';
+import { anchorFromEvent, pickOption } from '@/lib/options';
 import { dayDate, weekStart } from '@/lib/plan';
 import { resolveUnitOverrides } from '@/lib/units';
 import { collectWeekIngredients } from '@/lib/shopping';
@@ -90,7 +98,7 @@ function CheckRow({
   /** Source recipes shown as horizontal cards when the row is expanded. */
   recipes?: { title: string; qty?: string; cover: string | null; onPress?: () => void }[];
   /** User-added items only: person responsible (chip) + picker. */
-  assign?: { person: PersonLike | null; onPress: () => void };
+  assign?: { person: PersonLike | null; onPress: (e?: GestureResponderEvent) => void };
   /** User-added items only: trailing remove button. */
   onRemove?: () => void;
 }) {
@@ -563,18 +571,27 @@ export default function GroceriesScreen() {
   };
 
   /** Pick who's responsible for a custom item (or nobody). */
-  const assignItem = (item: CustomItem) => {
+  const assignItem = (item: CustomItem, e?: GestureResponderEvent) => {
     const set = (personId: string | null) => {
       setCustomItems((prev) =>
         prev.map((i) => (i.id === item.id ? { ...i, person_id: personId } : i))
       );
       void supabase.from('grocery_items').update({ person_id: personId }).eq('id', item.id);
     };
-    Alert.alert(item.label, d.groceries.assignTitle, [
-      ...persons.map((person) => ({ text: person.name, onPress: () => set(person.id) })),
-      { text: d.groceries.nobody, onPress: () => set(null) },
-      { text: d.common.cancel, style: 'cancel' as const },
-    ]);
+    pickOption({
+      title: item.label,
+      message: d.groceries.assignTitle,
+      cancelLabel: d.common.cancel,
+      anchor: anchorFromEvent(e),
+      options: [
+        ...persons.map((person) => ({
+          label: person.name,
+          checked: item.person_id === person.id,
+          onPress: () => set(person.id),
+        })),
+        { label: d.groceries.nobody, checked: item.person_id === null, onPress: () => set(null) },
+      ],
+    });
   };
 
   const removeItem = (item: CustomItem) => {
@@ -783,7 +800,7 @@ export default function GroceriesScreen() {
                     person: item.person_id
                       ? (persons.find((p) => p.id === item.person_id) ?? null)
                       : null,
-                    onPress: () => assignItem(item),
+                    onPress: (e?: GestureResponderEvent) => assignItem(item, e),
                   }}
                   onRemove={() => removeItem(item)}
                 />

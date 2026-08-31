@@ -1,4 +1,4 @@
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View, type GestureResponderEvent } from 'react-native';
 
 import { fonts, minTapTarget, useTheme } from '@/lib/theme';
 
@@ -31,7 +31,7 @@ export function PersonChip({
   person: PersonLike;
   hollow?: boolean;
   selected?: boolean;
-  onPress?: () => void;
+  onPress?: (e?: GestureResponderEvent) => void;
 }) {
   const { colors } = useTheme();
   const chip = (
