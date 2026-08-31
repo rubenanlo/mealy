@@ -3,12 +3,14 @@ import { Image } from 'expo-image';
 import { useEffect, useRef, useState } from 'react';
 import {
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   View,
   useWindowDimensions,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  type ViewStyle,
 } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
@@ -24,6 +26,13 @@ import { useImageUrl } from '@/lib/media';
 
 const MAX_SCALE = 4;
 const DOUBLE_TAP_SCALE = 2.5;
+
+// Web paging: pagingEnabled and momentum events don't exist there, so the
+// gallery snaps via CSS scroll-snap and tracks the index with onScroll.
+const WEB_SNAP_CONTAINER =
+  Platform.OS === 'web' ? ({ scrollSnapType: 'x mandatory' } as unknown as ViewStyle) : undefined;
+const WEB_SNAP_PAGE =
+  Platform.OS === 'web' ? ({ scrollSnapAlign: 'start' } as unknown as ViewStyle) : undefined;
 
 /**
  * A single full-screen, pinch-to-zoom / pan image page. Reports its zoom state
@@ -128,7 +137,9 @@ function ZoomableImage({
   }));
 
   return (
-    <GestureDetector gesture={gesture}>
+    // pan-x lets mobile-web horizontal swipes reach the gallery scroller
+    // (the default touch-action: none swallows them); taps still zoom/close.
+    <GestureDetector gesture={gesture} touchAction="pan-x">
       <Animated.View
         style={[{ width, height, alignItems: 'center', justifyContent: 'center' }, animatedStyle]}
       >
@@ -186,6 +197,12 @@ export function ImageLightbox({
   // Deleting the last page leaves a stale index until state catches up.
   const safeIndex = Math.min(index, paths.length - 1);
 
+  const goTo = (i: number) => {
+    const clamped = Math.max(0, Math.min(i, paths.length - 1));
+    setIndex(clamped);
+    scrollRef.current?.scrollTo({ x: clamped * width, animated: true });
+  };
+
   return (
     <Modal
       visible={visible}
@@ -204,18 +221,59 @@ export function ImageLightbox({
             showsHorizontalScrollIndicator={false}
             contentOffset={{ x: initialIndex * width, y: 0 }}
             onMomentumScrollEnd={onMomentumEnd}
+            onScroll={Platform.OS === 'web' ? onMomentumEnd : undefined}
+            scrollEventThrottle={16}
+            style={WEB_SNAP_CONTAINER}
           >
             {paths.map((path) => (
-              <ZoomableImage
-                key={path}
-                path={path}
-                width={width}
-                height={height}
-                onZoomChange={setZoomed}
-                onRequestClose={onClose}
-              />
+              <View key={path} style={WEB_SNAP_PAGE}>
+                <ZoomableImage
+                  path={path}
+                  width={width}
+                  height={height}
+                  onZoomChange={setZoomed}
+                  onRequestClose={onClose}
+                />
+              </View>
             ))}
           </ScrollView>
+
+          {/* Web: mouse users can't swipe — page with chevrons instead. */}
+          {Platform.OS === 'web' && paths.length > 1
+            ? ([
+                ['prev', -1],
+                ['next', 1],
+              ] as const).map(([dir, delta]) =>
+                (dir === 'prev' ? safeIndex > 0 : safeIndex < paths.length - 1) ? (
+                  <Pressable
+                    key={dir}
+                    accessibilityRole="button"
+                    accessibilityLabel={dir === 'prev' ? d.components.prevImage : d.components.nextImage}
+                    onPress={() => goTo(safeIndex + delta)}
+                    hitSlop={12}
+                    style={({ pressed }) => ({
+                      position: 'absolute',
+                      top: '50%',
+                      marginTop: -20,
+                      [dir === 'prev' ? 'left' : 'right']: 12,
+                      width: 40,
+                      height: 40,
+                      borderRadius: 20,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: 'rgba(0,0,0,0.5)',
+                      opacity: pressed ? 0.6 : 1,
+                    })}
+                  >
+                    <Ionicons
+                      name={dir === 'prev' ? 'chevron-back' : 'chevron-forward'}
+                      size={26}
+                      color="#FFFFFF"
+                    />
+                  </Pressable>
+                ) : null
+              )
+            : null}
 
           <Pressable
             accessibilityRole="button"

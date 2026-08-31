@@ -4,31 +4,67 @@ import { Platform } from 'react-native';
 
 const TAG = 'mealy';
 
+interface WakeLockSentinel {
+  release(): Promise<void>;
+  addEventListener(type: 'release', listener: () => void): void;
+}
+
 /**
- * expo-keep-awake's hook, hardened for web: browsers reject wake-lock requests
- * while the tab is hidden (unhandled rejection → red dev overlay), and drop the
- * lock on hide. Swallow the failures and re-acquire on visibilitychange.
+ * Keep the screen awake while the app is foregrounded.
+ *
+ * Native uses expo-keep-awake. On web we own the Wake Lock sentinel
+ * ourselves: expo's web module requests it once and never retakes it, but
+ * browsers release wake locks aggressively (tab hidden, screen locked once,
+ * battery saver) — so we re-acquire on the sentinel's release event and on
+ * visibilitychange, and swallow the NotAllowedError thrown for hidden tabs.
  */
 export function useKeepAwakeSafe(): void {
   useEffect(() => {
-    const activate = () => {
+    if (Platform.OS !== 'web') {
       activateKeepAwakeAsync(TAG).catch(() => {});
-    };
-    activate();
-
-    let removeVisibilityListener: (() => void) | undefined;
-    if (Platform.OS === 'web' && typeof document !== 'undefined') {
-      const onVisibilityChange = () => {
-        if (document.visibilityState === 'visible') activate();
+      return () => {
+        Promise.resolve(deactivateKeepAwake(TAG)).catch(() => {});
       };
-      document.addEventListener('visibilitychange', onVisibilityChange);
-      removeVisibilityListener = () =>
-        document.removeEventListener('visibilitychange', onVisibilityChange);
     }
 
+    const nav = navigator as unknown as {
+      wakeLock?: { request(type: 'screen'): Promise<WakeLockSentinel> };
+    };
+    if (!nav.wakeLock || typeof document === 'undefined') return;
+    const doc = document;
+
+    let sentinel: WakeLockSentinel | null = null;
+    let disposed = false;
+
+    const acquire = () => {
+      if (disposed || doc.visibilityState !== 'visible') return;
+      nav
+        .wakeLock!.request('screen')
+        .then((s) => {
+          if (disposed) {
+            s.release().catch(() => {});
+            return;
+          }
+          sentinel = s;
+          s.addEventListener('release', () => {
+            sentinel = null;
+            // The browser dropped the lock; retake it while we're visible.
+            if (!disposed && doc.visibilityState === 'visible') acquire();
+          });
+        })
+        .catch(() => {});
+    };
+
+    acquire();
+    const onVisibilityChange = () => {
+      if (doc.visibilityState === 'visible' && !sentinel) acquire();
+    };
+    doc.addEventListener('visibilitychange', onVisibilityChange);
+
     return () => {
-      removeVisibilityListener?.();
-      Promise.resolve(deactivateKeepAwake(TAG)).catch(() => {});
+      disposed = true;
+      doc.removeEventListener('visibilitychange', onVisibilityChange);
+      sentinel?.release().catch(() => {});
     };
   }, []);
 }

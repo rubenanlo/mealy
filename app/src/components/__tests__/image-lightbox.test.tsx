@@ -1,4 +1,5 @@
 import { fireEvent, render } from '@testing-library/react-native';
+import { Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ThemeProvider } from '@/lib/theme';
@@ -33,6 +34,23 @@ describe('ImageLightbox', () => {
     );
     fireEvent.press(getByLabelText('Close image viewer'));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('web: pages with chevrons, hiding them at the ends', () => {
+    jest.replaceProperty(Platform, 'OS', 'web');
+    try {
+      const { getByLabelText, queryByLabelText } = wrap(
+        <ImageLightbox visible paths={['a/1.jpg', 'a/2.jpg', 'a/3.jpg']} onClose={() => {}} />
+      );
+      expect(queryByLabelText('Previous image')).toBeNull();
+      fireEvent.press(getByLabelText('Next image'));
+      expect(getByLabelText('Previous image')).toBeTruthy();
+      fireEvent.press(getByLabelText('Next image'));
+      expect(queryByLabelText('Next image')).toBeNull();
+      expect(getByLabelText('Previous image')).toBeTruthy();
+    } finally {
+      jest.restoreAllMocks();
+    }
   });
 
   it('renders one paging dot per image when there are several', () => {
