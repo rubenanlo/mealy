@@ -122,3 +122,20 @@ export function translationPending(
 export function queueRecipeTranslation(recipeId: string, content: RecipeContent): void {
   void translateAndStore(recipeId, content).catch(() => {});
 }
+
+/**
+ * Human name of a recipe's source language in the viewer's locale
+ * ("it" → "Italian" / "Italiano"). Falls back to the uppercased code.
+ */
+export function languageDisplayName(code: string | null, locale: Locale): string | null {
+  if (!code) return null;
+  try {
+    const name = new Intl.DisplayNames([locale], { type: 'language' }).of(code);
+    if (name && name.toLowerCase() !== code.toLowerCase()) {
+      return name.charAt(0).toUpperCase() + name.slice(1);
+    }
+  } catch {
+    // Intl.DisplayNames unavailable (older Hermes) — fall through.
+  }
+  return code.toUpperCase();
+}

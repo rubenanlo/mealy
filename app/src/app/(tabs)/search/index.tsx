@@ -9,6 +9,7 @@ import { useHousehold } from '@/lib/auth';
 import { resolveProteinCategory, type ProteinCategory } from '@/lib/category';
 import { useI18n, type Dict } from '@/lib/i18n';
 import { supabase } from '@/lib/supabase';
+import { titleMatches } from '@/lib/search-text';
 import { localizedTitle } from '@/lib/translations';
 import { fonts, fontSize, minTapTarget, radius, screenPadding, tabBarClearance, useTheme } from '@/lib/theme';
 import { useCanonicalIndex } from '@/lib/use-canonical';
@@ -77,7 +78,7 @@ export default function SearchScreen() {
   const insets = useSafeAreaInsets();
   const { householdId } = useHousehold();
 
-  const [recipes, setRecipes] = useState<RecipeListItem[]>([]);
+  const [recipes, setRecipes] = useState<(RecipeListItem & { searchTitles: string[] })[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
@@ -96,8 +97,8 @@ export default function SearchScreen() {
         .then(({ data }) => {
           if (cancelled) return;
           if (data) {
-            // Localize titles at the fetch boundary and drop the embed so
-            // state (and title search) uses the plain RecipeListItem shape.
+            // Localize the display title at the fetch boundary, but keep every
+            // language variant around so the query matches any of them.
             setRecipes(
               (
                 data as (RecipeListItem & {
@@ -106,6 +107,7 @@ export default function SearchScreen() {
               ).map(({ recipe_translations, ...r }) => ({
                 ...r,
                 title: localizedTitle({ title: r.title, recipe_translations }, locale),
+                searchTitles: [r.title, ...(recipe_translations ?? []).map((t) => t.title)],
               }))
             );
           }
@@ -118,9 +120,9 @@ export default function SearchScreen() {
   );
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = query.trim();
     return recipes.filter((recipe) => {
-      if (q && !recipe.title.toLowerCase().includes(q)) return false;
+      if (!titleMatches(recipe.searchTitles, q)) return false;
       if (filter === 'all') return true;
       if (filter === 'needs_review') return recipe.needs_review;
       if ((MEAL_TYPE_FILTERS as readonly string[]).includes(filter)) {

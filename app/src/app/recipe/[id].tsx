@@ -78,6 +78,7 @@ import { convertIngredients, type UnitSystem } from '@/lib/unit-convert';
 import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, minTapTarget, radius, screenPadding, useTheme } from '@/lib/theme';
 import {
+  languageDisplayName,
   localizeContent,
   queueRecipeTranslation,
   translationPending,
@@ -396,6 +397,8 @@ export default function RecipeSheetScreen() {
   }>({ servings: '', prep: '', cook: '', fodmap: 'auto' });
   const [inThisWeek, setInThisWeek] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  // "Original (Italiano)" toggle: view the untranslated recipe on demand.
+  const [showOriginal, setShowOriginal] = useState(false);
   const [coverMenuOpen, setCoverMenuOpen] = useState(false);
   const [repositionOpen, setRepositionOpen] = useState(false);
   const [pickCapturedOpen, setPickCapturedOpen] = useState(false);
@@ -1022,7 +1025,11 @@ export default function RecipeSheetScreen() {
   // quantities) the translations regenerate asynchronously — until the fresh
   // rows land, the stale ones would show the OLD quantities, so ignore any
   // translation older than the recipe's last edit.
-  const contentTranslation = usableTranslation ? translation : null;
+  const contentTranslation = usableTranslation && !showOriginal ? translation : null;
+  const originalLanguage = recipe ? languageDisplayName(recipe.language, locale) : null;
+  const showOriginalLabel = originalLanguage
+    ? fmt(d.recipe.showOriginal, { language: originalLanguage })
+    : d.recipe.showOriginalShort;
   const localized = localizeContent(recipe, contentTranslation);
   const displayTitle = localized.title;
   const displaySteps = localized.steps;
@@ -1305,6 +1312,29 @@ export default function RecipeSheetScreen() {
                 <Text style={{ color: colors.textMuted, fontSize: fontSize.meta, fontFamily: fonts.uiSemi }}>
                   {d.recipe.translating}
                 </Text>
+              ) : null}
+              {usableTranslation ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: showOriginal }}
+                  onPress={() => setShowOriginal((v) => !v)}
+                  style={({ pressed }) => ({
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4,
+                    minHeight: 28,
+                    paddingHorizontal: 10,
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    opacity: pressed ? 0.7 : 1,
+                  })}
+                >
+                  <Ionicons name="language-outline" size={14} color={colors.textMuted} />
+                  <Text style={{ color: colors.textMuted, fontSize: fontSize.meta, fontFamily: fonts.uiSemi }}>
+                    {showOriginal ? d.recipe.showTranslation : showOriginalLabel}
+                  </Text>
+                </Pressable>
               ) : null}
             </View>
 

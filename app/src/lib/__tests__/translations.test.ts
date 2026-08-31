@@ -156,3 +156,17 @@ describe('translationPending', () => {
     expect(translationPending('', 'es', false)).toBe(false);
   });
 });
+
+describe('languageDisplayName', () => {
+  const { languageDisplayName } = jest.requireActual('@/lib/translations');
+
+  it('renders the language name in the active locale', () => {
+    expect(languageDisplayName('it', 'en')).toBe('Italian');
+    expect(languageDisplayName('it', 'es')).toBe('Italiano');
+  });
+
+  it('falls back for unknown or missing codes', () => {
+    expect(languageDisplayName(null, 'en')).toBeNull();
+    expect(languageDisplayName('zz', 'en')).toBe('ZZ');
+  });
+});
