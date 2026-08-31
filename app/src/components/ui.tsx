@@ -515,6 +515,9 @@ export function Field({
           fontFamily: fonts.ui,
           flex: icon ? 1 : undefined,
         },
+        // The Field frame is the focus indicator; the browser's default
+        // outline on the inner <input> double-draws, misaligned.
+        Platform.OS === 'web' ? ({ outlineStyle: 'none' } as unknown as TextStyle) : null,
         props.style,
       ]}
     />
