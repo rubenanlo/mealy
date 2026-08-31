@@ -17,6 +17,7 @@ import {
   Text,
   useWindowDimensions,
   View,
+  type GestureResponderEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
@@ -32,6 +33,7 @@ import { EditRowControls, SectionTitle } from '@/components/editable-list';
 import { FixMatchSheet } from '@/components/fix-match';
 import { ImageLightbox } from '@/components/image-lightbox';
 import { IngredientRow } from '@/components/ingredient-row';
+import { RecipeSheet } from '@/components/recipe-sheet';
 import {
   Body,
   BookmarkChip,
@@ -49,6 +51,7 @@ import type { CanonicalIngredient, FodmapTier } from '@/lib/canonical';
 import { confirmDestructive, notify } from '@/lib/confirm';
 import { invalidateLists } from '@/lib/list-refresh';
 import { backOr } from '@/lib/nav';
+import { anchorFromEvent, pickOption } from '@/lib/options';
 import {
   CATEGORY_LABELS,
   deriveCategory,
@@ -139,70 +142,6 @@ function tierWord(d: Dict, tier: FodmapTier): string {
       : tier === 'high'
         ? d.recipe.tierHigh
         : d.recipe.tierCheck;
-}
-
-/**
- * v3.2 sheet chrome. iOS relies on the native pageSheet (rounded top, peek,
- * swipe-down); Android/web get a self-drawn dimmed backdrop + 95%-height
- * container with 16px top radii and a 280ms slide-up (reduced-motion: fade).
- */
-function Sheet({ children, onDismiss }: { children: ReactNode; onDismiss: () => void }) {
-  const { colors } = useTheme();
-  const { d } = useI18n();
-  const { height: windowHeight } = useWindowDimensions();
-  const reduced = useReducedMotion();
-  const progress = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (Platform.OS === 'ios') return;
-    if (reduced) {
-      // Reduced motion: quick fade, no travel.
-      Animated.timing(progress, { toValue: 1, duration: 150, useNativeDriver: Platform.OS !== 'web' }).start();
-      return;
-    }
-    Animated.timing(progress, {
-      toValue: 1,
-      duration: 280,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: Platform.OS !== 'web',
-    }).start();
-  }, [progress, reduced]);
-
-  if (Platform.OS === 'ios') {
-    return <View style={{ flex: 1, backgroundColor: colors.bg }}>{children}</View>;
-  }
-
-  const translateY = reduced
-    ? 0
-    : progress.interpolate({ inputRange: [0, 1], outputRange: [windowHeight * 0.95, 0] });
-
-  return (
-    <View style={{ flex: 1, justifyContent: 'flex-end' }}>
-      <Animated.View
-        style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0, 0, 0, 0.45)', opacity: progress }]}
-      >
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={d.recipe.closeRecipe}
-          onPress={onDismiss}
-          style={{ flex: 1 }}
-        />
-      </Animated.View>
-      <Animated.View
-        style={{
-          height: '95%',
-          backgroundColor: colors.bg,
-          borderTopLeftRadius: 16,
-          borderTopRightRadius: 16,
-          overflow: 'hidden',
-          opacity: reduced ? progress : 1,
-          transform: [{ translateY }],
-        }}
-      >
-        {children}
-      </Animated.View>
-    </View>
-  );
 }
 
 function Hero({
@@ -429,15 +368,22 @@ export default function RecipeSheetScreen() {
     AsyncStorage.setItem('mealy.unit-system', system).catch(() => {});
   };
 
-  const pickUnitSystem = () => {
-    const mark = (system: UnitSystem, label: string) =>
-      unitSystem === system ? `✓ ${label}` : label;
-    Alert.alert(d.recipe.unitsTitle, undefined, [
-      { text: mark('original', d.recipe.unitsOriginal), onPress: () => changeUnitSystem('original') },
-      { text: mark('metric', d.recipe.unitsMetric), onPress: () => changeUnitSystem('metric') },
-      { text: mark('us', d.recipe.unitsUs), onPress: () => changeUnitSystem('us') },
-      { text: d.common.cancel, style: 'cancel' },
-    ]);
+  const pickUnitSystem = (e?: GestureResponderEvent) => {
+    const systems: [UnitSystem, string][] = [
+      ['original', d.recipe.unitsOriginal],
+      ['metric', d.recipe.unitsMetric],
+      ['us', d.recipe.unitsUs],
+    ];
+    pickOption({
+      title: d.recipe.unitsTitle,
+      cancelLabel: d.common.cancel,
+      anchor: anchorFromEvent(e),
+      options: systems.map(([system, label]) => ({
+        label,
+        checked: unitSystem === system,
+        onPress: () => changeUnitSystem(system),
+      })),
+    });
   };
   const [sources, setSources] = useState<SourceRow[]>([]);
   const [images, setImages] = useState<ImageRow[]>([]);
@@ -780,7 +726,7 @@ export default function RecipeSheetScreen() {
   };
 
   /** Tap the byline type: pick the recipe category in place (stored as a tag). */
-  const editCategory = () => {
+  const editCategory = (e?: GestureResponderEvent) => {
     if (!recipe) return;
     const currentTag = deriveCategory(recipe.tags);
     const pick = (cat: ProteinCategory | null) => {
@@ -789,21 +735,24 @@ export default function RecipeSheetScreen() {
       );
       void saveRecipe({ tags: cat ? [...rest, cat] : rest });
     };
-    Alert.alert(d.recipe.recipeTypeTitle, d.recipe.autoDerivesHint, [
-      {
-        text: currentTag === null ? `${d.recipe.auto} ✓` : d.recipe.auto,
-        onPress: () => pick(null),
-      },
-      ...PROTEIN_CATEGORIES.map((cat) => ({
-        text: currentTag === cat ? `${CATEGORY_LABELS[cat]} ✓` : CATEGORY_LABELS[cat],
-        onPress: () => pick(cat),
-      })),
-      { text: d.common.cancel, style: 'cancel' as const },
-    ]);
+    pickOption({
+      title: d.recipe.recipeTypeTitle,
+      message: d.recipe.autoDerivesHint,
+      cancelLabel: d.common.cancel,
+      anchor: anchorFromEvent(e),
+      options: [
+        { label: d.recipe.auto, checked: currentTag === null, onPress: () => pick(null) },
+        ...PROTEIN_CATEGORIES.map((cat) => ({
+          label: CATEGORY_LABELS[cat],
+          checked: currentTag === cat,
+          onPress: () => pick(cat),
+        })),
+      ],
+    });
   };
 
   /** Tap the byline meal chip: main (lunch/dinner) / breakfast / dessert / side. */
-  const editMealType = () => {
+  const editMealType = (e?: GestureResponderEvent) => {
     if (!recipe) return;
     const current = recipe.meal_type ?? 'main';
     const options: ['main' | 'breakfast' | 'dessert' | 'side', string][] = [
@@ -812,39 +761,40 @@ export default function RecipeSheetScreen() {
       ['dessert', d.recipe.mealDessert],
       ['side', d.recipe.mealSide],
     ];
-    Alert.alert(d.recipe.mealTypeTitle, d.recipe.mealTypeHint, [
-      ...options.map(([value, label]) => ({
-        text: current === value ? `${label} ✓` : label,
+    pickOption({
+      title: d.recipe.mealTypeTitle,
+      message: d.recipe.mealTypeHint,
+      cancelLabel: d.common.cancel,
+      anchor: anchorFromEvent(e),
+      options: options.map(([value, label]) => ({
+        label,
+        checked: current === value,
         onPress: () => void saveRecipe({ meal_type: value }),
       })),
-      { text: d.common.cancel, style: 'cancel' as const },
-    ]);
+    });
   };
 
   /** Tap the byline badge: pick the FODMAP level in place. */
-  const editFodmapLevel = () => {
+  const editFodmapLevel = (e?: GestureResponderEvent) => {
     if (!recipe) return;
     const current = recipe.fodmap_override ?? 'auto';
-    const mark = (v: string, label: string) => (current === v ? `${label} ✓` : label);
-    Alert.alert(d.recipe.fodmapLevelTitle, d.recipe.autoDerivesHint, [
-      {
-        text: mark('auto', d.recipe.auto),
-        onPress: () => void saveRecipe({ fodmap_override: null }),
-      },
-      {
-        text: mark('low', d.recipe.low),
-        onPress: () => void saveRecipe({ fodmap_override: 'low' }),
-      },
-      {
-        text: mark('moderate', d.recipe.moderate),
-        onPress: () => void saveRecipe({ fodmap_override: 'moderate' }),
-      },
-      {
-        text: mark('high', d.recipe.high),
-        onPress: () => void saveRecipe({ fodmap_override: 'high' }),
-      },
-      { text: d.common.cancel, style: 'cancel' },
-    ]);
+    const levels: [string, string, 'low' | 'moderate' | 'high' | null][] = [
+      ['auto', d.recipe.auto, null],
+      ['low', d.recipe.low, 'low'],
+      ['moderate', d.recipe.moderate, 'moderate'],
+      ['high', d.recipe.high, 'high'],
+    ];
+    pickOption({
+      title: d.recipe.fodmapLevelTitle,
+      message: d.recipe.autoDerivesHint,
+      cancelLabel: d.common.cancel,
+      anchor: anchorFromEvent(e),
+      options: levels.map(([value, label, override]) => ({
+        label,
+        checked: current === value,
+        onPress: () => void saveRecipe({ fodmap_override: override }),
+      })),
+    });
   };
 
   const saveDetails = async () => {
@@ -1046,11 +996,11 @@ export default function RecipeSheetScreen() {
 
   if (!recipe) {
     return (
-      <Sheet onDismiss={dismiss}>
+      <RecipeSheet onDismiss={dismiss}>
         <View style={{ padding: screenPadding }}>
           <Muted>{d.common.loading}</Muted>
         </View>
-      </Sheet>
+      </RecipeSheet>
     );
   }
 
@@ -1139,7 +1089,7 @@ export default function RecipeSheetScreen() {
   const actionBottom = (Platform.OS === 'ios' ? insets.bottom : insets.bottom) + 16;
 
   return (
-    <Sheet onDismiss={dismiss}>
+    <RecipeSheet onDismiss={dismiss}>
       <ImageLightbox
         visible={viewer !== null}
         paths={viewer?.paths ?? []}
@@ -2169,6 +2119,6 @@ export default function RecipeSheetScreen() {
           onCorrected={() => void loadMatches()}
         />
       ) : null}
-    </Sheet>
+    </RecipeSheet>
   );
 }
