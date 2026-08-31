@@ -112,3 +112,24 @@ describe('DraggableSheet', () => {
     expect(getByText('Recipe body')).toBeTruthy();
   });
 });
+
+describe('touch-drag decision helpers', () => {
+  const { shouldDismissDrag, hasScrolledAncestor } = jest.requireActual('../recipe-sheet');
+
+  it('shouldDismissDrag: distance or velocity past threshold', () => {
+    expect(shouldDismissDrag(121, 0)).toBe(true);
+    expect(shouldDismissDrag(40, 900)).toBe(true);
+    expect(shouldDismissDrag(119, 700)).toBe(false);
+    expect(shouldDismissDrag(-200, 0)).toBe(false);
+  });
+
+  it('hasScrolledAncestor: true only when a scroller between target and card is off the top', () => {
+    const card = { scrollTop: 0, parentElement: null };
+    const scroller = { scrollTop: 40, parentElement: card };
+    const leaf = { scrollTop: 0, parentElement: scroller };
+    expect(hasScrolledAncestor(leaf, card)).toBe(true);
+    scroller.scrollTop = 0;
+    expect(hasScrolledAncestor(leaf, card)).toBe(false);
+    expect(hasScrolledAncestor(null, card)).toBe(false);
+  });
+});
