@@ -1,5 +1,5 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
-import { Platform } from 'react-native';
+import { Modal, Platform } from 'react-native';
 
 import { ConfirmHost } from '@/components/confirm-modal';
 import { confirmDestructive } from '@/lib/confirm';
@@ -24,6 +24,18 @@ describe('ConfirmHost (web confirm modal)', () => {
         <ConfirmHost />
       </ThemeProvider>
     );
+
+  // Web modals stack in portal mount order, not show order: an always-mounted
+  // Modal from the root layout would sit *under* any screen-level modal that is
+  // open when the request arrives (e.g. the plan picker). The host must stay
+  // unmounted until asked so its portal is appended last.
+  it('mounts no Modal while idle', () => {
+    const screen = mount();
+    expect(screen.UNSAFE_queryByType(Modal)).toBeNull();
+
+    act(() => request(jest.fn()));
+    expect(screen.UNSAFE_queryByType(Modal)).toBeTruthy();
+  });
 
   it('shows the request in a modal and confirms', () => {
     const onConfirm = jest.fn();

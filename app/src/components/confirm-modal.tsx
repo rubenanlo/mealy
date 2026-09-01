@@ -19,25 +19,26 @@ export function ConfirmHost() {
     return () => setConfirmPresenter(null);
   }, []);
 
+  // Web modals stack in portal mount order, not show order: keeping this Modal
+  // mounted from boot puts it *under* any screen-level modal that is open when
+  // a request arrives (e.g. the plan picker). Mount only on demand, like
+  // OptionPickerHost, so the portal is appended last and lands on top.
+  if (!request) return null;
+
   const dismiss = () => setRequest(null);
   const confirm = () => {
-    const run = request?.onConfirm;
+    const run = request.onConfirm;
     setRequest(null);
-    run?.();
+    run();
   };
   const cancel = () => {
-    const run = request?.onCancel;
+    const run = request.onCancel;
     setRequest(null);
     run?.();
   };
 
   return (
-    <Modal
-      visible={request !== null}
-      transparent
-      animationType="fade"
-      onRequestClose={dismiss}
-    >
+    <Modal visible transparent animationType="fade" onRequestClose={dismiss}>
       <Pressable
         onPress={dismiss}
         style={{
@@ -60,24 +61,20 @@ export function ConfirmHost() {
             gap: 12,
           }}
         >
-          {request ? (
-            <>
-              <Title>{request.title}</Title>
-              {request.message ? <Body>{request.message}</Body> : null}
-              <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
-                <View style={{ flex: 1 }}>
-                  <Button label={request.cancelLabel} kind="secondary" onPress={cancel} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Button
-                    label={request.confirmLabel}
-                    kind={request.destructive === false ? 'primary' : 'danger'}
-                    onPress={confirm}
-                  />
-                </View>
-              </View>
-            </>
-          ) : null}
+          <Title>{request.title}</Title>
+          {request.message ? <Body>{request.message}</Body> : null}
+          <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
+            <View style={{ flex: 1 }}>
+              <Button label={request.cancelLabel} kind="secondary" onPress={cancel} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Button
+                label={request.confirmLabel}
+                kind={request.destructive === false ? 'primary' : 'danger'}
+                onPress={confirm}
+              />
+            </View>
+          </View>
         </Pressable>
       </Pressable>
     </Modal>
