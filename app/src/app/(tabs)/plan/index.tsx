@@ -72,6 +72,8 @@ interface MealCell {
   recipeIds: string[];
   /** Servings (covered eaters + guests) per recipe, parallel to recipeIds. */
   servings: number[];
+  /** Eater names per dish, parallel to titles; empty ⇒ whole household. */
+  eaters: string[][];
 }
 
 /** Group a week's entries into ordered meal cells (day asc, lunch first). */
@@ -79,23 +81,29 @@ function buildCells(
   entries: EntryRow[],
   recipesById: Map<string, RecipeLite>,
   eaterCount: number,
-  recipeFallback: string
+  recipeFallback: string,
+  personNameById: Map<string, string>
 ): MealCell[] {
   const byKey = new Map<string, MealCell>();
   for (const entry of entries) {
     const key = `${entry.day}-${entry.slot}`;
     const cell =
       byKey.get(key) ??
-      { day: entry.day, slot: entry.slot, titles: [], covers: [], recipeIds: [], servings: [] };
+      { day: entry.day, slot: entry.slot, titles: [], covers: [], recipeIds: [], servings: [], eaters: [] };
+    const names = entry.person_ids
+      .map((pid) => personNameById.get(pid))
+      .filter((n): n is string => !!n);
     if (entry.recipe_id) {
       const recipe = recipesById.get(entry.recipe_id);
       cell.titles.push(recipe?.title ?? recipeFallback);
       cell.covers.push(recipe?.cover_image_path ?? null);
       cell.recipeIds.push(entry.recipe_id);
       cell.servings.push(entryServings(entry.person_ids, entry.guest_count, eaterCount));
+      cell.eaters.push(names);
     } else if (entry.custom_title) {
       cell.titles.push(entry.custom_title);
       cell.covers.push(null);
+      cell.eaters.push(names);
     }
     byKey.set(key, cell);
   }
@@ -124,6 +132,7 @@ export default function WeeksScreen() {
   const [employeeNames, setEmployeeNames] = useState<string[]>([]);
   const [employeeToken, setEmployeeToken] = useState<string | null>(null);
   const [eaterCount, setEaterCount] = useState(0);
+  const [personNameById, setPersonNameById] = useState<Map<string, string>>(new Map());
   const [loaded, setLoaded] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
   const [noteDraft, setNoteDraft] = useState('');
@@ -142,11 +151,12 @@ export default function WeeksScreen() {
       supabase.from('households').select('meal_times').eq('id', householdId).single(),
       supabase
         .from('persons')
-        .select('name, is_employee, share_token')
+        .select('id, name, is_employee, share_token')
         .eq('household_id', householdId)
         .order('created_at')
         .then((res) => {
           const rows = ((res.data ?? []) as {
+            id: string;
             name: string;
             is_employee: boolean;
             share_token: string | null;
@@ -155,6 +165,7 @@ export default function WeeksScreen() {
           setEmployeeNames(employees.map((p) => p.name));
           setEmployeeToken(employees.find((p) => p.share_token)?.share_token ?? null);
           setEaterCount(rows.filter((p) => !p.is_employee).length);
+          setPersonNameById(new Map(rows.map((p) => [p.id, p.name])));
           return res;
         }),
     ]);
@@ -212,7 +223,8 @@ export default function WeeksScreen() {
       entries.filter((e) => e.meal_plan_id === plan.id),
       recipesById,
       eaterCount,
-      d.plan.recipeFallback
+      d.plan.recipeFallback,
+      personNameById
     );
     const now = new Date();
     const todayIndex = Math.floor(
@@ -222,7 +234,7 @@ export default function WeeksScreen() {
     return cells.filter((c) =>
       isMealUpcoming(c.day, c.slot, todayIndex, nowMinutes, mealTimes)
     );
-  }, [plans, entries, recipesById, currentWeek, mealTimes, eaterCount, d]);
+  }, [plans, entries, recipesById, currentWeek, mealTimes, eaterCount, personNameById, d]);
 
   /** This week's meals the employee cooks (whole week, not just upcoming). */
   const employeeCells = useMemo(() => {
@@ -232,9 +244,10 @@ export default function WeeksScreen() {
       entries.filter((e) => e.meal_plan_id === plan.id && e.assigned_cook === 'employee'),
       recipesById,
       eaterCount,
-      d.plan.recipeFallback
+      d.plan.recipeFallback,
+      personNameById
     );
-  }, [plans, entries, recipesById, currentWeek, eaterCount, d]);
+  }, [plans, entries, recipesById, currentWeek, eaterCount, personNameById, d]);
 
   /** Past weeks with a plan, newest first. */
   const pastWeeks = useMemo(
@@ -247,10 +260,11 @@ export default function WeeksScreen() {
             entries.filter((e) => e.meal_plan_id === p.id),
             recipesById,
             eaterCount,
-            d.plan.recipeFallback
+            d.plan.recipeFallback,
+            personNameById
           ),
         })),
-    [plans, entries, recipesById, currentWeek, eaterCount, d]
+    [plans, entries, recipesById, currentWeek, eaterCount, personNameById, d]
   );
 
   const currentPlan = plans.find((p) => p.week_start === currentWeek);
@@ -399,6 +413,16 @@ export default function WeeksScreen() {
                     >
                       {cell.titles.join(' · ')}
                     </Text>
+                    {/* Who eats, per dish in title order; hidden when every dish is for everyone. */}
+                    {cell.eaters.some((names) => names.length > 0) ? (
+                      <Muted numberOfLines={1}>
+                        {cell.eaters
+                          .map((names) =>
+                            names.length > 0 ? names.join(', ') : d.plan.wholeHousehold
+                          )
+                          .join(' · ')}
+                      </Muted>
+                    ) : null}
                     {cell.recipeIds.length === 1 ? (
                       <Muted>{fmt(d.plan.serves, { n: cell.servings[0] })}</Muted>
                     ) : null}
