@@ -21,10 +21,10 @@ import { useHousehold } from '@/lib/auth';
 import { consumeInvalidation } from '@/lib/list-refresh';
 import { fmt, useI18n } from '@/lib/i18n';
 import { shareEmployeeLink } from '@/lib/employee-link';
+import { buildCells, type EntryRow, type RecipeLite } from '@/lib/meal-cells';
 import { isMealUpcoming, normalizeMealTimes, type MealTimes } from '@/lib/meal-times';
 import { anchorFromEvent, pickOption } from '@/lib/options';
 import { addWeeks, dayDate, weekStart, type MealSlot } from '@/lib/plan';
-import { entryServings } from '@/lib/servings';
 import { supabase } from '@/lib/supabase';
 import { localizedTitle } from '@/lib/translations';
 import {
@@ -42,74 +42,6 @@ interface PlanRow {
   week_start: string;
   /** Extra checklist items for the employee (migration 0016). */
   employee_notes: string[];
-}
-
-interface EntryRow {
-  meal_plan_id: string;
-  day: number;
-  slot: MealSlot;
-  recipe_id: string | null;
-  custom_title: string | null;
-  assigned_cook: 'family' | 'employee';
-  /** Empty ⇒ whole household eats it. */
-  person_ids: string[];
-  /** Non-family guests eating this meal (migration 0017). */
-  guest_count: number;
-}
-
-interface RecipeLite {
-  id: string;
-  title: string;
-  cover_image_path: string | null;
-}
-
-/** One planned meal cell (day + slot) with everything scheduled in it. */
-interface MealCell {
-  day: number;
-  slot: MealSlot;
-  titles: string[];
-  covers: (string | null)[];
-  recipeIds: string[];
-  /** Servings (covered eaters + guests) per recipe, parallel to recipeIds. */
-  servings: number[];
-  /** Eater names per dish, parallel to titles; empty ⇒ whole household. */
-  eaters: string[][];
-}
-
-/** Group a week's entries into ordered meal cells (day asc, lunch first). */
-function buildCells(
-  entries: EntryRow[],
-  recipesById: Map<string, RecipeLite>,
-  eaterCount: number,
-  recipeFallback: string,
-  personNameById: Map<string, string>
-): MealCell[] {
-  const byKey = new Map<string, MealCell>();
-  for (const entry of entries) {
-    const key = `${entry.day}-${entry.slot}`;
-    const cell =
-      byKey.get(key) ??
-      { day: entry.day, slot: entry.slot, titles: [], covers: [], recipeIds: [], servings: [], eaters: [] };
-    const names = entry.person_ids
-      .map((pid) => personNameById.get(pid))
-      .filter((n): n is string => !!n);
-    if (entry.recipe_id) {
-      const recipe = recipesById.get(entry.recipe_id);
-      cell.titles.push(recipe?.title ?? recipeFallback);
-      cell.covers.push(recipe?.cover_image_path ?? null);
-      cell.recipeIds.push(entry.recipe_id);
-      cell.servings.push(entryServings(entry.person_ids, entry.guest_count, eaterCount));
-      cell.eaters.push(names);
-    } else if (entry.custom_title) {
-      cell.titles.push(entry.custom_title);
-      cell.covers.push(null);
-      cell.eaters.push(names);
-    }
-    byKey.set(key, cell);
-  }
-  return [...byKey.values()].sort(
-    (a, b) => a.day - b.day || (a.slot === b.slot ? 0 : a.slot === 'lunch' ? -1 : 1)
-  );
 }
 
 export default function WeeksScreen() {
@@ -365,7 +297,7 @@ export default function WeeksScreen() {
                           pathname: '/recipe/[id]',
                           params: { id: cell.recipeIds[0], planServings: String(cell.servings[0]) },
                         })
-                      : openWeek(currentWeek)
+                      : router.push('/plan/upcoming')
                   }
                   style={({ pressed }) => ({ width: 150, opacity: pressed ? 0.7 : 1 })}
                 >
