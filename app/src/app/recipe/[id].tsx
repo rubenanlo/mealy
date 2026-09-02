@@ -521,7 +521,8 @@ export default function RecipeSheetScreen() {
     return () => {
       const r = recipeRef.current;
       if (isNew && !finalizedRef.current && r && isRecipeUntouched(r)) {
-        void supabase.from('recipes').delete().eq('id', r.id);
+        // .then() is what fires the request — lazy builder.
+        supabase.from('recipes').delete().eq('id', r.id).then(() => {});
       }
     };
   }, [isNew]);

@@ -1081,7 +1081,10 @@ export default function PlanScreen() {
                     {pickedRecipe ? (
                       <LinkButton
                         label={d.plan.viewRecipe}
-                        onPress={() =>
+                        onPress={() => {
+                          // Close the native modal first: a route pushed while
+                          // it's open mounts underneath and stays hidden.
+                          closePicker();
                           router.push({
                             pathname: '/recipe/[id]',
                             params: {
@@ -1090,8 +1093,8 @@ export default function PlanScreen() {
                                 entryServings(pickedPersonIds, pickedGuests, eaters.length)
                               ),
                             },
-                          })
-                        }
+                          });
+                        }}
                         style={{ alignSelf: 'flex-start' }}
                         textStyle={{ fontSize: fontSize.small }}
                       />

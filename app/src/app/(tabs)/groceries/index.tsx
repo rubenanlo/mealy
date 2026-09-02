@@ -576,7 +576,18 @@ export default function GroceriesScreen() {
       setCustomItems((prev) =>
         prev.map((i) => (i.id === item.id ? { ...i, person_id: personId } : i))
       );
-      void supabase.from('grocery_items').update({ person_id: personId }).eq('id', item.id);
+      // PostgREST builders only execute once awaited/.then()'d — a bare
+      // `void builder` silently sends nothing.
+      supabase
+        .from('grocery_items')
+        .update({ person_id: personId })
+        .eq('id', item.id)
+        .then(({ error }) => {
+          if (error)
+            setCustomItems((prev) =>
+              prev.map((i) => (i.id === item.id ? { ...i, person_id: item.person_id } : i))
+            );
+        });
     };
     pickOption({
       title: item.label,
@@ -596,13 +607,21 @@ export default function GroceriesScreen() {
 
   const removeItem = (item: CustomItem) => {
     setCustomItems((prev) => prev.filter((i) => i.id !== item.id));
-    void supabase.from('grocery_items').delete().eq('id', item.id);
+    supabase
+      .from('grocery_items')
+      .delete()
+      .eq('id', item.id)
+      .then(({ error }) => {
+        if (error)
+          setCustomItems((prev) => (prev.some((i) => i.id === item.id) ? prev : [...prev, item]));
+      });
     // Items outlive weeks now — clear their checks from every week.
-    void supabase
+    supabase
       .from('grocery_checks')
       .delete()
       .eq('household_id', householdId)
-      .eq('item_key', customKey(item.id));
+      .eq('item_key', customKey(item.id))
+      .then(() => {});
   };
 
   const toggleExpanded = (key: string) =>

@@ -284,7 +284,14 @@ export default function PersonScreen() {
                     const next = selected ? null : color;
                     setAvatarColor(next);
                     if (!isNew) {
-                      void supabase.from('persons').update({ avatar_color: next }).eq('id', id);
+                      // .then() is what fires the request — lazy builder.
+                      supabase
+                        .from('persons')
+                        .update({ avatar_color: next })
+                        .eq('id', id)
+                        .then(({ error }) => {
+                          if (error) setAvatarColor(avatarColor);
+                        });
                     }
                   }}
                   style={({ pressed }) => ({
@@ -328,7 +335,13 @@ export default function PersonScreen() {
                 // once the flag is saved, so don't wait for the Save button.
                 setIsEmployee(value);
                 if (!isNew) {
-                  void supabase.from('persons').update({ is_employee: value }).eq('id', id);
+                  supabase
+                    .from('persons')
+                    .update({ is_employee: value })
+                    .eq('id', id)
+                    .then(({ error }) => {
+                      if (error) setIsEmployee(!value);
+                    });
                 }
               }}
               trackColor={{ true: colors.accent }}
@@ -437,10 +450,13 @@ export default function PersonScreen() {
                     onPress={() => {
                       // Persist immediately: the shared page reads it live.
                       setLinkLanguage(option.code);
-                      void supabase
+                      supabase
                         .from('persons')
                         .update({ link_language: option.code })
-                        .eq('id', id);
+                        .eq('id', id)
+                        .then(({ error }) => {
+                          if (error) setLinkLanguage(linkLanguage);
+                        });
                     }}
                     style={({ pressed }) => ({
                       minHeight: minTapTarget,
