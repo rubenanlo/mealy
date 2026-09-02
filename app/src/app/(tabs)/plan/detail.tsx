@@ -7,6 +7,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { GuestStepper } from '@/components/guest-stepper';
 import { PersonChip } from '@/components/person-chip';
+import { WeekDaysRedesign } from '@/components/week-days-redesign';
 import { MetaLine, RecipeImage, RecipeRow, type RecipeListItem } from '@/components/recipe-cards';
 import {
   Body,
@@ -83,6 +84,11 @@ interface RecipeLite {
   /** Planner classification; null is treated as 'main'. */
   meal_type?: 'main' | 'breakfast' | 'dessert' | 'side' | null;
 }
+
+// Week-list redesign experiment (2026-09-02): day cards, saffron today rail,
+// compact dashed add-rows. Flip to false to restore the previous list; the
+// redesigned rendering lives entirely in components/week-days-redesign.tsx.
+const WEEK_REDESIGN = true;
 
 interface MealPlanRow {
   id: string;
@@ -796,7 +802,20 @@ export default function PlanScreen() {
         }}
       >
         {loadedWeek !== weekIso ? <Loading /> : null}
-        {loadedWeek === weekIso ? DAY_LABELS.map((_, day) => {
+        {loadedWeek === weekIso && WEEK_REDESIGN ? (
+          <WeekDaysRedesign
+            entries={entries}
+            weekIso={weekIso}
+            todayIndex={todayIndex}
+            eaterIds={eaters.map((p) => p.id)}
+            personById={personById}
+            recipeById={recipeById}
+            onAddDish={openPicker}
+            onEditEntry={openEditor}
+            onRemoveEntry={(id) => void removeEntry(id)}
+          />
+        ) : null}
+        {loadedWeek === weekIso && !WEEK_REDESIGN ? DAY_LABELS.map((_, day) => {
           const dayLabel = d.common.days[day];
           const isToday = day === todayIndex;
           return (
@@ -969,7 +988,7 @@ export default function PlanScreen() {
             </View>
           );
         }) : null}
-        {loadedWeek === weekIso ? <Hairline /> : null}
+        {loadedWeek === weekIso && !WEEK_REDESIGN ? <Hairline /> : null}
       </ScrollView>
 
       {/* v3.1: approve floats ABOVE the capsule tab bar (draft + non-empty only) */}
