@@ -23,17 +23,14 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import {
-  AddToWeekSheet,
-  confirmRemoveFromWeek,
-  removeRecipeFromCurrentWeek,
-} from '@/components/add-to-week';
+import { AddToWeekSheet } from '@/components/add-to-week';
 import { CoverRepositionModal } from '@/components/cover-editor';
 import { EditRowControls, SectionTitle } from '@/components/editable-list';
 import { FixMatchSheet } from '@/components/fix-match';
 import { ImageLightbox } from '@/components/image-lightbox';
 import { IngredientRow } from '@/components/ingredient-row';
 import { RecipeSheet } from '@/components/recipe-sheet';
+import { SaveSheet } from '@/components/save-sheet';
 import {
   Body,
   BookmarkChip,
@@ -46,7 +43,7 @@ import {
   Muted,
   Title,
 } from '@/components/ui';
-import { useHousehold } from '@/lib/auth';
+import { useAuth, useHousehold } from '@/lib/auth';
 import type { CanonicalIngredient, FodmapTier } from '@/lib/canonical';
 import { confirmDestructive, notify } from '@/lib/confirm';
 import { invalidateLists } from '@/lib/list-refresh';
@@ -74,7 +71,7 @@ import { useReducedMotion } from '@/lib/motion';
 import { type MealSlot, weekStart } from '@/lib/plan';
 import { assignRecipeToSlot, isRecipeUntouched } from '@/lib/recipes';
 import { entryServings, rescaleIngredients, servingsFactor } from '@/lib/servings';
-import { convertIngredients, type UnitSystem } from '@/lib/unit-convert';
+import { convertIngredients, convertStepText, type UnitSystem } from '@/lib/unit-convert';
 import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, minTapTarget, radius, screenPadding, useTheme } from '@/lib/theme';
 import {
@@ -207,7 +204,14 @@ function Hero({
         </Pressable>
       ) : null}
       {/* Bookmark chip sits above the image Pressable so it keeps its own taps. */}
-      {path ? <BookmarkChip saved={saved} onPress={onBookmark} style={{ top: 12, right: 12 }} /> : null}
+      {path ? (
+        <BookmarkChip
+          saved={saved}
+          onPress={onBookmark}
+          accessibilityLabel={saved ? d.components.savedToFolders : d.components.saveToFolder}
+          style={{ top: 12, right: 12 }}
+        />
+      ) : null}
       {/* Edit chip sits bottom-right, clear of the top-right bookmark chip. */}
       {path && onEdit ? (
         <View style={{ position: 'absolute', bottom: 12, right: 12 }}>
@@ -334,6 +338,8 @@ export default function RecipeSheetScreen() {
   const insets = useSafeAreaInsets();
   const reduced = useReducedMotion();
   const { householdId } = useHousehold();
+  const { session } = useAuth();
+  const userId = session?.user.id ?? '';
   const canonicalIndex = useCanonicalIndex();
 
   const isNew = isNewParam === '1';
@@ -397,6 +403,9 @@ export default function RecipeSheetScreen() {
   }>({ servings: '', prep: '', cook: '', fodmap: 'auto' });
   const [inThisWeek, setInThisWeek] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  /** Bookmark fill + Save-recipe sheet: is this recipe in one of MY folders? */
+  const [savedToFolder, setSavedToFolder] = useState(false);
+  const [saveOpen, setSaveOpen] = useState(false);
   // "Original (Italiano)" toggle: view the untranslated recipe on demand.
   const [showOriginal, setShowOriginal] = useState(false);
   const [coverMenuOpen, setCoverMenuOpen] = useState(false);
@@ -454,7 +463,7 @@ export default function RecipeSheetScreen() {
 
   const load = useCallback(async () => {
     if (!id) return;
-    const [r, s, i, t, weekPlan] = await Promise.all([
+    const [r, s, i, t, weekPlan, myFolders, folderLinks] = await Promise.all([
       supabase.from('recipes').select('*').eq('id', id).single(),
       supabase.from('recipe_sources').select('*').eq('recipe_id', id).order('captured_at'),
       supabase.from('recipe_images').select('id, storage_path, position').eq('recipe_id', id).order('position'),
@@ -470,10 +479,18 @@ export default function RecipeSheetScreen() {
         .eq('household_id', householdId)
         .eq('week_start', weekStart(new Date()))
         .maybeSingle(),
+      supabase.from('folders').select('id').eq('owner_id', userId),
+      supabase.from('folder_recipes').select('folder_id').eq('recipe_id', id),
     ]);
     if (r.data) setRecipe(r.data as RecipeDetail);
     if (s.data) setSources(s.data as SourceRow[]);
     if (i.data) setImages(i.data as ImageRow[]);
+    const mine = new Set(
+      (((myFolders.data ?? []) as { id: string }[])).map((f) => f.id)
+    );
+    setSavedToFolder(
+      (((folderLinks.data ?? []) as { folder_id: string }[])).some((l) => mine.has(l.folder_id))
+    );
     setTranslation((t.data as (TranslationRow & { translated_at: string | null }) | null) ?? null);
     if (weekPlan.data) {
       // Live meal servings: reflects who eats this right now, so quantities
@@ -505,7 +522,7 @@ export default function RecipeSheetScreen() {
       setInThisWeek(false);
       setLivePlanServings(null);
     }
-  }, [id, householdId, locale]);
+  }, [id, householdId, locale, userId]);
 
   useEffect(() => {
     void load();
@@ -929,20 +946,10 @@ export default function RecipeSheetScreen() {
     await saveRecipe({ ingredients, steps: r.steps });
   };
 
-  /** Bookmark chip: plan it, or confirm-remove when already in this week (v3). */
+  /** Bookmark chip: save into my folders — same sheet as the library cards. */
   const onBookmark = () => {
     if (!recipe) return;
-    if (inThisWeek) {
-      confirmRemoveFromWeek(
-        localizeContent(recipe, translation).title,
-        () => {
-          void removeRecipeFromCurrentWeek(householdId, recipe.id).then(load);
-        },
-        d
-      );
-    } else {
-      setSheetOpen(true);
-    }
+    setSaveOpen(true);
   };
 
   const togglePanel = useCallback(
@@ -1038,7 +1045,8 @@ export default function RecipeSheetScreen() {
     : d.recipe.showOriginalShort;
   const localized = localizeContent(recipe, contentTranslation);
   const displayTitle = localized.title;
-  const displaySteps = localized.steps;
+  // Step prose follows the unit toggle too ("½ cup water", "400 degrees").
+  const displaySteps = localized.steps.map((s) => convertStepText(s, unitSystem));
   // Display pipeline: plan scaling first, then the unit-system conversion.
   // Both are skipped while editing — drafts always operate on the original.
   const viewIngredients =
@@ -1122,7 +1130,7 @@ export default function RecipeSheetScreen() {
         >
           <Hero
             path={heroPath}
-            saved={inThisWeek}
+            saved={savedToFolder}
             onBookmark={onBookmark}
             focal={recipe.cover_focal}
             onEdit={() => setCoverMenuOpen(true)}
@@ -1696,7 +1704,7 @@ export default function RecipeSheetScreen() {
             {panelOpen ? (
               <Animated.View
                 style={{
-                  maxHeight: Math.max(sheetHeight * 0.6, 200),
+                  maxHeight: Math.max(sheetHeight * 0.8, 320),
                   backgroundColor: colors.bg,
                   borderBottomWidth: StyleSheet.hairlineWidth,
                   borderBottomColor: colors.border,
@@ -1802,6 +1810,24 @@ export default function RecipeSheetScreen() {
         recipeTitle={displayTitle}
         onClose={() => setSheetOpen(false)}
         onAdded={() => void load()}
+      />
+
+      <SaveSheet
+        visible={saveOpen}
+        recipeId={recipe.id}
+        recipeTitle={displayTitle}
+        householdId={householdId}
+        userId={userId}
+        onClose={() => setSaveOpen(false)}
+        onAddToWeek={() => {
+          setSaveOpen(false);
+          setSheetOpen(true);
+        }}
+        onChanged={() => {
+          // Library's bookmark fills key off folder membership too.
+          invalidateLists('library');
+          void load();
+        }}
       />
 
       <Modal visible={detailsOpen} transparent animationType="fade" onRequestClose={() => setDetailsOpen(false)}>

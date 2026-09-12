@@ -1,4 +1,4 @@
-import { convertIngredient, convertIngredients } from '../unit-convert';
+import { convertIngredient, convertIngredients, convertStepText } from '../unit-convert';
 import type { IngredientRow } from '../worker';
 
 const ing = (quantity: number | null, unit: string | null): IngredientRow => ({
@@ -37,5 +37,47 @@ describe('convertIngredient', () => {
   it('original returns the same list unchanged', () => {
     const list = [ing(1, 'lb'), ing(2, 'g')];
     expect(convertIngredients(list, 'original')).toBe(list);
+  });
+});
+
+describe('convertStepText', () => {
+  it('original passes through untouched', () => {
+    const text = 'Heat the oven to 400 degrees.';
+    expect(convertStepText(text, 'original')).toBe(text);
+  });
+
+  it('metric: converts oven Fahrenheit (bare "degrees" read as F at oven range)', () => {
+    expect(convertStepText('Heat the oven to 400 degrees.', 'metric')).toBe(
+      'Heat the oven to 205°C.'
+    );
+    expect(convertStepText('bake at 350°F until golden', 'metric')).toBe(
+      'bake at 175°C until golden'
+    );
+  });
+
+  it('metric: leaves Celsius alone, converts cups and ounces', () => {
+    expect(convertStepText('Cuire 30 min à 180°C', 'metric')).toBe('Cuire 30 min à 180°C');
+    expect(convertStepText('stir in ½ cup water', 'metric')).toBe('stir in 120 ml water');
+    expect(convertStepText('add 8 ounces feta', 'metric')).toBe('add 227 g feta');
+    expect(convertStepText('add 1 pound shrimp', 'metric')).toBe('add 454 g shrimp');
+  });
+
+  it('metric: spoons and times stay untouched', () => {
+    const text = 'heat 2 tablespoons olive oil, cook about 4 minutes';
+    expect(convertStepText(text, 'metric')).toBe(text);
+  });
+
+  it('us: converts metric mass/volume and Celsius', () => {
+    expect(convertStepText('préchauffer le four à 180 degrés C', 'us')).toBe(
+      'préchauffer le four à 180 degrés C' // "degrés" is not matched — French keeps its own text
+    );
+    expect(convertStepText('bake at 200°C', 'us')).toBe('bake at 390°F');
+    expect(convertStepText('add 240 ml stock', 'us')).toBe('add 1 cup stock');
+    expect(convertStepText('add 450 g potatoes', 'us')).toBe('add 15.9 oz potatoes');
+  });
+
+  it('handles mixed fractions in prose', () => {
+    expect(convertStepText('pour in 1½ cups broth', 'metric')).toBe('pour in 360 ml broth');
+    expect(convertStepText('pour in 1 1/2 cups broth', 'metric')).toBe('pour in 360 ml broth');
   });
 });
