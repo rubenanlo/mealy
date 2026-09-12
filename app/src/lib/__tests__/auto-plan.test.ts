@@ -4,7 +4,8 @@ const cand = (id: string, over: Partial<AutoCandidate> = {}): AutoCandidate => (
   id,
   category: null,
   fodmapTier: 'low',
-  plannedRecently: false,
+  weeksSincePlanned: null,
+  totalMinutes: null,
   ...over,
 });
 const cell = (day: number, slot: 'lunch' | 'dinner' = 'lunch'): EmptyCell => ({ day, slot });
@@ -23,7 +24,11 @@ describe('autoFillWeek', () => {
   it('avoids back-to-back same category when an alternative exists', () => {
     const { assignments } = autoFillWeek(
       [cell(0), cell(0, 'dinner'), cell(1)],
-      [cand('meat1', { category: 'meat' }), cand('meat2', { category: 'meat' }), cand('fish1', { category: 'fish' })],
+      [
+        cand('meat1', { category: 'meat' }),
+        cand('meat2', { category: 'meat' }),
+        cand('fish1', { category: 'fish' }),
+      ],
       { lowFodmapOnly: false }
     );
     expect(assignments.map((a) => a.recipeId)).toEqual(['meat1', 'fish1', 'meat2']);
@@ -32,10 +37,19 @@ describe('autoFillWeek', () => {
   it('prefers recipes not planned recently', () => {
     const { assignments } = autoFillWeek(
       [cell(0)],
-      [cand('recent', { plannedRecently: true }), cand('fresh')],
+      [cand('recent', { weeksSincePlanned: 1 }), cand('fresh')],
       { lowFodmapOnly: false }
     );
     expect(assignments[0].recipeId).toBe('fresh');
+  });
+
+  it('ranks longest-ago over recently cooked', () => {
+    const { assignments } = autoFillWeek(
+      [cell(0)],
+      [cand('lastWeek', { weeksSincePlanned: 1 }), cand('lastMonth', { weeksSincePlanned: 5 })],
+      { lowFodmapOnly: false, restWeeks: 3 }
+    );
+    expect(assignments[0].recipeId).toBe('lastMonth');
   });
 
   it('low-FODMAP mode drops non-low candidates and reports unfilled cells', () => {
@@ -48,7 +62,7 @@ describe('autoFillWeek', () => {
     expect(unfilled).toHaveLength(2);
   });
 
-  it('reuses candidates on a second lap when slots outnumber recipes', () => {
+  it('reuses candidates when slots outnumber recipes', () => {
     const { assignments, unfilled } = autoFillWeek(
       [cell(0), cell(1), cell(2)],
       [cand('a'), cand('b')],
@@ -57,6 +71,63 @@ describe('autoFillWeek', () => {
     expect(assignments).toHaveLength(3);
     expect(unfilled).toEqual([]);
     expect(assignments[2].recipeId).toBe('a');
+  });
+});
+
+describe('protein spacing', () => {
+  it('spreads a repeated category across the week', () => {
+    // Four consecutive meals, two meats: the meats must not sit together.
+    const { assignments } = autoFillWeek(
+      [cell(0), cell(0, 'dinner'), cell(1), cell(1, 'dinner')],
+      [
+        cand('meat1', { category: 'meat' }),
+        cand('meat2', { category: 'meat' }),
+        cand('fish1', { category: 'fish' }),
+        cand('veg1', { category: 'vegetarian' }),
+      ],
+      { lowFodmapOnly: false }
+    );
+    const meatSlots = assignments
+      .filter((a) => a.recipeId.startsWith('meat'))
+      .map((a) => a.day * 2 + (a.slot === 'dinner' ? 1 : 0));
+    expect(meatSlots).toHaveLength(2);
+    expect(Math.abs(meatSlots[0] - meatSlots[1])).toBeGreaterThanOrEqual(2);
+  });
+
+  it('respects manual meals as spacing anchors', () => {
+    // Monday dinner already has meat (manual): the auto pick for Monday
+    // lunch and Tuesday lunch must avoid meat next to it.
+    const { assignments } = autoFillWeek(
+      [cell(0)],
+      [cand('meat1', { category: 'meat' }), cand('fish1', { category: 'fish' })],
+      {
+        lowFodmapOnly: false,
+        existing: [{ day: 0, slot: 'dinner', category: 'meat' }],
+      }
+    );
+    expect(assignments[0].recipeId).toBe('fish1');
+  });
+});
+
+describe('midweek quickness', () => {
+  it('puts quick recipes midweek and long ones on the weekend', () => {
+    const { assignments } = autoFillWeek(
+      [cell(2), cell(5)], // Wednesday and Saturday
+      [cand('slow', { totalMinutes: 90 }), cand('quick', { totalMinutes: 25 })],
+      { lowFodmapOnly: false }
+    );
+    const byDay = new Map(assignments.map((a) => [a.day, a.recipeId]));
+    expect(byDay.get(2)).toBe('quick');
+    expect(byDay.get(5)).toBe('slow');
+  });
+
+  it('recipes without time info stay neutral', () => {
+    const { assignments } = autoFillWeek(
+      [cell(2)],
+      [cand('unknown'), cand('slow', { totalMinutes: 120 })],
+      { lowFodmapOnly: false }
+    );
+    expect(assignments[0].recipeId).toBe('unknown');
   });
 });
 
@@ -73,7 +144,11 @@ describe('quota-aware fill', () => {
   it('never exceeds a category maximum, counting already-planned meals', () => {
     const { assignments } = autoFillWeek(
       [cell(0), cell(1)],
-      [cand('meat1', { category: 'meat' }), cand('meat2', { category: 'meat' }), cand('veg1', { category: 'vegetarian' })],
+      [
+        cand('meat1', { category: 'meat' }),
+        cand('meat2', { category: 'meat' }),
+        cand('veg1', { category: 'vegetarian' }),
+      ],
       {
         lowFodmapOnly: false,
         quotas: [{ category: 'meat', min: 0, max: 2 }],
@@ -104,5 +179,14 @@ describe('choose again', () => {
     expect(again.assignments[0].recipeId).toBe('b');
     const only = autoFillWeek([cell(0)], [cand('a')], { lowFodmapOnly: false, avoidIds: ['a'] });
     expect(only.assignments[0].recipeId).toBe('a');
+  });
+
+  it('prefers repeating last round over repeating within the week', () => {
+    const { assignments } = autoFillWeek(
+      [cell(0), cell(3)],
+      [cand('a'), cand('lastRound')],
+      { lowFodmapOnly: false, avoidIds: ['lastRound'] }
+    );
+    expect(assignments.map((a) => a.recipeId)).toEqual(['a', 'lastRound']);
   });
 });

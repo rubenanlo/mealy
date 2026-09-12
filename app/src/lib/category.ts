@@ -36,6 +36,17 @@ export function deriveCategory(tags: readonly string[]): ProteinCategory | null 
   return null;
 }
 
+// Conservative on purpose: only unambiguous dessert words, so "sweet potato"
+// or "crab cakes" never match. Safety net for recipes whose meal_type was
+// never set but whose extracted dish_type says dessert.
+const DESSERT_RE = /\b(desserts?|postres?|dolci|dolce|sobremesas?|goûters?)\b|sweets?$/i;
+
+/** True when the dish type or tags mark this recipe as a dessert. */
+export function looksLikeDessert(dishType: string | null | undefined, tags: readonly string[]): boolean {
+  if (dishType && DESSERT_RE.test(dishType)) return true;
+  return tags.some((t) => DESSERT_RE.test(t));
+}
+
 /** Spine color for a category; transparent when unknown (no spine). */
 export function spineColor(category: ProteinCategory | null, colors: Palette): string {
   switch (category) {

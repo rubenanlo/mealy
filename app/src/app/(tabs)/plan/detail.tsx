@@ -24,7 +24,7 @@ import {
 import { useHousehold } from '@/lib/auth';
 import { autoFillWeek, type AutoCandidate } from '@/lib/auto-plan';
 import { matchCanonical, normalizeRaw } from '@/lib/canonical';
-import { resolveProteinCategory, type ProteinCategory } from '@/lib/category';
+import { looksLikeDessert, resolveProteinCategory, type ProteinCategory } from '@/lib/category';
 import { normalizeDietProfile } from '@/lib/diet';
 import { computeRecipeFodmap, recipeFodmapTier } from '@/lib/fodmap';
 import { invalidateLists } from '@/lib/list-refresh';
@@ -83,6 +83,7 @@ interface RecipeLite {
   fodmap_override?: 'low' | 'moderate' | 'high' | null;
   /** Planner classification; null is treated as 'main'. */
   meal_type?: 'main' | 'breakfast' | 'dessert' | 'side' | null;
+  dish_type?: string | null;
 }
 
 // Week-list redesign experiment (2026-09-02): day cards, saffron today rail,
@@ -237,7 +238,7 @@ export default function PlanScreen() {
           supabase
             .from('recipes')
             .select(
-              'id, title, tags, needs_review, cover_image_path, ingredients, prep_minutes, cook_minutes, servings, fodmap_override, meal_type, recipe_translations(locale, title)'
+              'id, title, tags, needs_review, cover_image_path, ingredients, prep_minutes, cook_minutes, servings, fodmap_override, meal_type, dish_type, recipe_translations(locale, title)'
             )
             .eq('household_id', householdId)
             .order('title'),
@@ -337,29 +338,35 @@ export default function PlanScreen() {
           if (slotEntries(currentEntries, day, slot).length === 0) openCells.push({ day, slot });
         }
       }
-      // Cool-down window: same rule as "Suggested for you".
-      const [{ data: hh }, { data: recentRows }] = await Promise.all([
+      // Full plan history: freshness ranks recipes by how long ago they were
+      // last cooked; the household's rest window demotes anything recent.
+      const [{ data: hh }, { data: historyRows }] = await Promise.all([
         supabase.from('households').select('suggested_rest_weeks').eq('id', householdId).single(),
         supabase
           .from('plan_entries')
           .select('recipe_id, meal_plans!inner(household_id, week_start)')
           .eq('meal_plans.household_id', householdId),
       ]);
-      const cutoff = addWeeks(weekStart(new Date()), -(hh?.suggested_rest_weeks ?? 3));
-      const recentIds = new Set(
-        (
-          (recentRows ?? []) as unknown as {
-            recipe_id: string | null;
-            meal_plans: { week_start: string };
-          }[]
-        )
-          .filter((e) => e.meal_plans.week_start >= cutoff)
-          .map((e) => e.recipe_id)
-          .filter((id): id is string => id !== null)
-      );
+      // Latest PAST week each recipe was planned (weeks >= this one don't count).
+      const lastPlanned = new Map<string, string>();
+      for (const row of (historyRows ?? []) as unknown as {
+        recipe_id: string | null;
+        meal_plans: { week_start: string };
+      }[]) {
+        const week = row.meal_plans.week_start;
+        if (!row.recipe_id || week >= weekIso) continue;
+        const prev = lastPlanned.get(row.recipe_id);
+        if (!prev || week > prev) lastPlanned.set(row.recipe_id, week);
+      }
+      const weeksSince = (week: string) =>
+        Math.max(0, Math.round((Date.parse(weekIso) - Date.parse(week)) / 604_800_000));
 
-      // Only lunch/dinner recipes belong on the week grid (null = main).
-      const mains = recipes.filter((r) => (r.meal_type ?? 'main') === 'main');
+      // Only lunch/dinner recipes belong on the week grid (null = main) —
+      // and never desserts, even when meal_type was left unset.
+      const mains = recipes.filter(
+        (r) =>
+          (r.meal_type ?? 'main') === 'main' && !looksLikeDessert(r.dish_type, r.tags)
+      );
       const candidates: AutoCandidate[] = mains.map((r) => {
         const lines = (r.ingredients ?? []).map((ing) => ({
           raw: ing.raw || ing.name,
@@ -375,11 +382,16 @@ export default function PlanScreen() {
                 )
               )
             : 'check';
+        const last = lastPlanned.get(r.id);
         return {
           id: r.id,
           category: resolveProteinCategory(r.tags, r.ingredients, index),
           fodmapTier: r.fodmap_override ?? computed,
-          plannedRecently: recentIds.has(r.id),
+          weeksSincePlanned: last !== undefined ? weeksSince(last) : null,
+          totalMinutes:
+            r.prep_minutes == null && r.cook_minutes == null
+              ? null
+              : (r.prep_minutes ?? 0) + (r.cook_minutes ?? 0),
         };
       });
 
@@ -408,11 +420,20 @@ export default function PlanScreen() {
         const cat = entry.recipe_id ? categoryById.get(entry.recipe_id) : null;
         if (cat) existingCounts[cat] = (existingCounts[cat] ?? 0) + 1;
       }
+      // Manual meals anchor protein spacing: an auto pick never lands the
+      // same category next to a dish someone placed by hand.
+      const existing = currentEntries.map((entry) => ({
+        day: entry.day,
+        slot: entry.slot as MealSlot,
+        category: entry.recipe_id ? (categoryById.get(entry.recipe_id) ?? null) : null,
+      }));
 
       const { assignments, unfilled } = autoFillWeek(openCells, candidates, {
         lowFodmapOnly: autoLowFodmap,
         quotas,
         existingCounts,
+        existing,
+        restWeeks: hh?.suggested_rest_weeks ?? 3,
         avoidIds: autoEntries
           .map((e) => e.recipe_id)
           .filter((id): id is string => id !== null),

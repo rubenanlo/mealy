@@ -1,4 +1,4 @@
-import { deriveCategory, spineColor, proteinCategoryFromIngredients, resolveProteinCategory } from '../category';
+import { deriveCategory, looksLikeDessert, spineColor, proteinCategoryFromIngredients, resolveProteinCategory } from '../category';
 import { palettes } from '../theme';
 import { buildCanonicalIndex, type CanonicalIngredient } from '../canonical';
 
@@ -80,5 +80,20 @@ describe('resolveProteinCategory', () => {
   });
   it('falls back to tags when index is null', () => {
     expect(resolveProteinCategory(['fish'], [{ raw: '1 saumon', name: 'saumon' }], null)).toBe('fish');
+  });
+});
+
+describe('looksLikeDessert', () => {
+  it('flags dessert dish types in the four app languages', () => {
+    expect(looksLikeDessert('Dessert', [])).toBe(true);
+    expect(looksLikeDessert('Desserts', [])).toBe(true);
+    expect(looksLikeDessert('Postre', [])).toBe(true);
+    expect(looksLikeDessert('Dolci', [])).toBe(true);
+    expect(looksLikeDessert(null, ['dessert'])).toBe(true);
+  });
+  it('never flags savory dishes with sweet-sounding ingredients', () => {
+    expect(looksLikeDessert('Main course', ['sweet potato'])).toBe(false);
+    expect(looksLikeDessert('Crab Cakes', [])).toBe(false);
+    expect(looksLikeDessert(null, [])).toBe(false);
   });
 });
