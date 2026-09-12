@@ -19,6 +19,35 @@ export interface PlanEntry {
   position: number;
   /** True when "Choose for us" inserted it (migration 0014). */
   auto_picked?: boolean;
+  /** Free-text note for whoever cooks this meal (migration 0031). */
+  instructions?: string | null;
+}
+
+/** One person marked "eats away" for one meal (migration 0031). */
+export interface PlanAbsence {
+  day: number;
+  slot: MealSlot;
+  person_id: string;
+}
+
+/** People away for a given meal, as a set of person ids. */
+export function awayIds(absences: readonly PlanAbsence[], day: number, slot: MealSlot): Set<string> {
+  return new Set(absences.filter((a) => a.day === day && a.slot === slot).map((a) => a.person_id));
+}
+
+/**
+ * Eater list an entry should store once absences exist for its meal:
+ * "whole household" ([]) becomes the concrete list minus whoever is away,
+ * so servings, groceries, and the employee page all follow automatically.
+ */
+export function effectivePersonIds(
+  picked: string[],
+  eaterIds: string[],
+  away: ReadonlySet<string>
+): string[] {
+  if (away.size === 0) return picked;
+  const base = picked.length === 0 ? eaterIds : picked;
+  return base.filter((id) => !away.has(id));
 }
 
 export const DAY_LABELS = [
@@ -115,6 +144,8 @@ export interface UpsertEntryInput {
   guestCount?: number;
   assignedCook?: CookType;
   position?: number;
+  /** Free-text note for whoever cooks this meal. */
+  instructions?: string | null;
 }
 
 /** Insert payload for a plan_entries row: a library recipe or a free-text meal. */
@@ -136,6 +167,7 @@ export function upsertEntryPayload(input: UpsertEntryInput) {
     guest_count: Math.max(0, input.guestCount ?? 0),
     assigned_cook: input.assignedCook ?? ('family' as CookType),
     position: input.position ?? 0,
+    instructions: input.instructions?.trim() || null,
   };
 }
 

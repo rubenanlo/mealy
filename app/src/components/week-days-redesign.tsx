@@ -23,7 +23,16 @@ import { CategoryDot, Eyebrow, Muted } from '@/components/ui';
 import { resolveProteinCategory } from '@/lib/category';
 import { fmt, useI18n } from '@/lib/i18n';
 import { useImageUrl } from '@/lib/media';
-import { DAY_LABELS, dayDate, slotCoverage, slotEntries, type MealSlot, type PlanEntry } from '@/lib/plan';
+import {
+  DAY_LABELS,
+  awayIds,
+  dayDate,
+  slotCoverage,
+  slotEntries,
+  type MealSlot,
+  type PlanAbsence,
+  type PlanEntry,
+} from '@/lib/plan';
 import { entryServings } from '@/lib/servings';
 import { fonts, fontSize, radius, useTheme } from '@/lib/theme';
 import { useCanonicalIndex } from '@/lib/use-canonical';
@@ -45,6 +54,10 @@ interface Props {
   eaterIds: string[];
   personById: ReadonlyMap<string, PersonLike>;
   recipeById: ReadonlyMap<string, RecipeLike>;
+  /** Per-meal "eats away" marks for this week. */
+  absences: PlanAbsence[];
+  /** Opens the AwaySheet for one day. */
+  onEditAway: (day: number) => void;
   onAddDish: (day: number, slot: MealSlot) => void;
   onEditEntry: (entry: PlanEntry) => void;
   onRemoveEntry: (entryId: string) => void;
@@ -81,6 +94,8 @@ export function WeekDaysRedesign({
   eaterIds,
   personById,
   recipeById,
+  absences,
+  onEditAway,
   onAddDish,
   onEditEntry,
   onRemoveEntry,
@@ -160,11 +175,39 @@ export function WeekDaysRedesign({
                     </Text>
                   </View>
                 ) : null}
+                {/* "Eats away" — set absences before any dish is picked. */}
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={fmt(d.plan.awayDayA11y, { day: dayLabel })}
+                  onPress={() => onEditAway(day)}
+                  hitSlop={8}
+                  style={({ pressed }) => ({
+                    width: 28,
+                    height: 28,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    opacity: pressed ? 0.5 : 1,
+                  })}
+                >
+                  <Ionicons name="person-remove-outline" size={16} color={colors.textMuted} />
+                </Pressable>
               </View>
 
               {(['lunch', 'dinner'] as const).map((slot) => {
                 const cellEntries = slotEntries(entries, day, slot);
-                const coverage = slotCoverage(entries, day, slot, eaterIds);
+                const away = awayIds(absences, day, slot);
+                // Away people never nag as "uncovered" — they're not eating.
+                const coverage = slotCoverage(
+                  entries,
+                  day,
+                  slot,
+                  eaterIds.filter((id) => !away.has(id))
+                );
+                const awayNames = eaterIds
+                  .filter((id) => away.has(id))
+                  .map((id) => personById.get(id)?.name)
+                  .filter(Boolean)
+                  .join(', ');
                 if (cellEntries.length === 0) {
                   // Empty slot: one compact dashed row, tappable end to end.
                   return (
@@ -176,7 +219,7 @@ export function WeekDaysRedesign({
                       style={({ pressed }) => ({
                         flexDirection: 'row',
                         alignItems: 'center',
-                        justifyContent: 'space-between',
+                        gap: 8,
                         borderWidth: 1,
                         borderStyle: 'dashed',
                         borderColor: colors.border,
@@ -187,6 +230,13 @@ export function WeekDaysRedesign({
                       })}
                     >
                       <Eyebrow>{slotLabel(slot)}</Eyebrow>
+                      <View style={{ flex: 1 }}>
+                        {awayNames ? (
+                          <Muted numberOfLines={1} style={{ textAlign: 'right' }}>
+                            {fmt(d.plan.eatsAwayLine, { names: awayNames })}
+                          </Muted>
+                        ) : null}
+                      </View>
                       <Text
                         style={{
                           color: colors.accent,
@@ -221,6 +271,11 @@ export function WeekDaysRedesign({
                           {d.plan.addShort}
                         </Text>
                       </Pressable>
+                      {awayNames ? (
+                        <Muted numberOfLines={1} style={{ flex: 1, textAlign: 'right' }}>
+                          {fmt(d.plan.eatsAwayLine, { names: awayNames })}
+                        </Muted>
+                      ) : null}
                     </View>
                     {cellEntries.map((entry) => {
                       const recipe = entry.recipe_id ? recipeById.get(entry.recipe_id) : undefined;
@@ -314,6 +369,30 @@ export function WeekDaysRedesign({
                                   </View>
                                 ) : null}
                               </View>
+                              {/* Cook's note: saffron-railed, same voice as the employee page. */}
+                              {entry.instructions ? (
+                                <View style={{ flexDirection: 'row', gap: 8, marginTop: 2 }}>
+                                  <View
+                                    style={{
+                                      width: 3,
+                                      borderRadius: 2,
+                                      backgroundColor: colors.saffron,
+                                    }}
+                                  />
+                                  <Text
+                                    numberOfLines={2}
+                                    style={{
+                                      flex: 1,
+                                      color: colors.textMuted,
+                                      fontSize: fontSize.meta,
+                                      fontFamily: fonts.ui,
+                                      fontStyle: 'italic',
+                                    }}
+                                  >
+                                    {entry.instructions}
+                                  </Text>
+                                </View>
+                              ) : null}
                             </View>
                           </Pressable>
                           <Pressable

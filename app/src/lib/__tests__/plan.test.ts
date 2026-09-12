@@ -1,5 +1,7 @@
 import {
   addWeeks,
+  awayIds,
+  effectivePersonIds,
   plannedEvents,
   removeEntryPayload,
   slotCoverage,
@@ -103,6 +105,7 @@ describe('payload builders', () => {
       guest_count: 0,
       assigned_cook: 'family',
       position: 0,
+      instructions: null,
     });
   });
 
@@ -197,5 +200,25 @@ describe('plannedEvents', () => {
       slot: 'dinner',
       custom_title: 'Leftover soup',
     });
+  });
+});
+
+describe('eats away (migration 0031)', () => {
+  const absences = [
+    { day: 2, slot: 'lunch', person_id: 'p1' },
+    { day: 2, slot: 'dinner', person_id: 'p2' },
+  ] as const;
+  it('awayIds collects only the asked meal', () => {
+    expect(awayIds(absences, 2, 'lunch')).toEqual(new Set(['p1']));
+    expect(awayIds(absences, 3, 'lunch').size).toBe(0);
+  });
+  it('whole household concretizes to everyone minus away', () => {
+    expect(effectivePersonIds([], ['p1', 'p2', 'p3'], new Set(['p1']))).toEqual(['p2', 'p3']);
+  });
+  it('explicit picks lose away people too', () => {
+    expect(effectivePersonIds(['p1', 'p3'], ['p1', 'p2', 'p3'], new Set(['p1']))).toEqual(['p3']);
+  });
+  it('no absences keeps the whole-household sentinel', () => {
+    expect(effectivePersonIds([], ['p1', 'p2'], new Set())).toEqual([]);
   });
 });

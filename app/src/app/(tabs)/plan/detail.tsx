@@ -5,6 +5,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { FlatList, Modal, Platform, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AwaySheet } from '@/components/away-sheet';
 import { GuestStepper } from '@/components/guest-stepper';
 import { PersonChip } from '@/components/person-chip';
 import { WeekDaysRedesign } from '@/components/week-days-redesign';
@@ -35,7 +36,9 @@ import { useImageUrl } from '@/lib/media';
 import {
   DAY_LABELS,
   addWeeks,
+  awayIds,
   dayDate,
+  effectivePersonIds,
   plannedEvents,
   slotCoverage,
   slotEntries,
@@ -43,6 +46,7 @@ import {
   weekStart,
   type CookType,
   type MealSlot,
+  type PlanAbsence,
   type PlanEntry,
 } from '@/lib/plan';
 import { quotaProgress } from '@/lib/quotas';
@@ -183,6 +187,10 @@ export default function PlanScreen() {
   );
   const [plan, setPlan] = useState<MealPlanRow | null>(null);
   const [entries, setEntries] = useState<PlanEntry[]>([]);
+  /** Per-meal "eats away" marks for the shown week (migration 0031). */
+  const [absences, setAbsences] = useState<PlanAbsence[]>([]);
+  /** Day whose AwaySheet is open; null = closed. */
+  const [awayDay, setAwayDay] = useState<number | null>(null);
   /** Which week's data is on screen — spinner until it matches weekIso. */
   const [loadedWeek, setLoadedWeek] = useState<string | null>(null);
   const [persons, setPersons] = useState<Person[]>([]);
@@ -199,6 +207,8 @@ export default function PlanScreen() {
   const [pickedPersonIds, setPickedPersonIds] = useState<string[]>([]);
   const [pickedGuests, setPickedGuests] = useState(0);
   const [pickedCook, setPickedCook] = useState<CookType>('family');
+  /** Free-text note for whoever cooks this meal ("veggies first"). */
+  const [pickedNote, setPickedNote] = useState('');
   /** Set when the picker is editing an existing entry rather than adding one. */
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
 
@@ -212,13 +222,18 @@ export default function PlanScreen() {
         .maybeSingle();
       setPlan((planRow as MealPlanRow) ?? null);
       if (planRow) {
-        const { data: entryRows } = await supabase
-          .from('plan_entries')
-          .select('*')
-          .eq('meal_plan_id', planRow.id);
+        const [{ data: entryRows }, { data: absenceRows }] = await Promise.all([
+          supabase.from('plan_entries').select('*').eq('meal_plan_id', planRow.id),
+          supabase
+            .from('plan_absences')
+            .select('day, slot, person_id')
+            .eq('meal_plan_id', planRow.id),
+        ]);
         setEntries((entryRows as PlanEntry[]) ?? []);
+        setAbsences((absenceRows as PlanAbsence[]) ?? []);
       } else {
         setEntries([]);
+        setAbsences([]);
       }
       setLoadedWeek(week);
     },
@@ -267,6 +282,16 @@ export default function PlanScreen() {
   const recipeById = useMemo(() => new Map(recipes.map((r) => [r.id, r])), [recipes]);
   const personById = useMemo(() => new Map(persons.map((p) => [p.id, p])), [persons]);
   const eaters = useMemo(() => persons.filter((p) => !p.is_employee), [persons]);
+  /** Away set for the meal the picker is on (empty when closed). */
+  const pickerAway = useMemo(
+    () => (pickerCell ? awayIds(absences, pickerCell.day, pickerCell.slot) : new Set<string>()),
+    [pickerCell, absences]
+  );
+  const pickerServes = entryServings(
+    effectivePersonIds(pickedPersonIds, eaters.map((p) => p.id), pickerAway),
+    pickedGuests,
+    eaters.length
+  );
 
   /**
    * Household quota strip: per category, worst-covered eater (lowest planned)
@@ -455,7 +480,12 @@ export default function PlanScreen() {
             day: a.day,
             slot: a.slot,
             recipeId: a.recipeId,
-            personIds: [], // empty = whole household
+            // Whole household, minus whoever eats away for that meal.
+            personIds: effectivePersonIds(
+              [],
+              eaters.map((p) => p.id),
+              awayIds(absences, a.day, a.slot)
+            ),
             assignedCook: 'family',
             position: 0,
           }),
@@ -503,6 +533,7 @@ export default function PlanScreen() {
     setPickedPersonIds([]);
     setPickedGuests(0);
     setPickedCook('family');
+    setPickedNote('');
   };
 
   /** Open the picker on an existing entry, pre-filled so it can be edited. */
@@ -516,6 +547,7 @@ export default function PlanScreen() {
     setPickedPersonIds(entry.person_ids);
     setPickedGuests(entry.guest_count);
     setPickedCook(entry.assigned_cook);
+    setPickedNote(entry.instructions ?? '');
   };
 
   const closePicker = () => {
@@ -566,6 +598,13 @@ export default function PlanScreen() {
     if (!pickerCell || (!pickedRecipe && !pickedCustom)) return;
     setBusy(true);
     try {
+      // "Whole household" becomes a concrete list when someone eats away for
+      // this meal, so servings/groceries/employee page all follow.
+      const personIds = effectivePersonIds(
+        pickedPersonIds,
+        eaters.map((p) => p.id),
+        awayIds(absences, pickerCell.day, pickerCell.slot)
+      );
       if (editingEntryId) {
         // Editing keeps the entry's slot/position; only who eats, guests, cook,
         // and (via "Pick something else") the recipe/title can change.
@@ -574,9 +613,10 @@ export default function PlanScreen() {
           .update({
             recipe_id: pickedRecipe ? pickedRecipe.id : null,
             custom_title: pickedRecipe ? null : pickedCustom,
-            person_ids: pickedPersonIds,
+            person_ids: personIds,
             guest_count: Math.max(0, pickedGuests),
             assigned_cook: pickedCook,
+            instructions: pickedNote.trim() || null,
           })
           .eq('id', editingEntryId);
       } else {
@@ -587,10 +627,11 @@ export default function PlanScreen() {
           day: pickerCell.day,
           slot: pickerCell.slot,
           ...(pickedRecipe ? { recipeId: pickedRecipe.id } : { customTitle: pickedCustom! }),
-          personIds: pickedPersonIds,
+          personIds,
           guestCount: pickedGuests,
           assignedCook: pickedCook,
           position,
+          instructions: pickedNote,
         });
         await supabase.from('plan_entries').insert(payload);
       }
@@ -599,6 +640,42 @@ export default function PlanScreen() {
       await loadWeek(weekIso);
     } finally {
       setBusy(false);
+    }
+  };
+
+  /** AwaySheet toggle: optimistic, persisted per tap, reverted on error. */
+  const toggleAway = async (day: number, slot: MealSlot, personId: string, away: boolean) => {
+    const revert = () =>
+      setAbsences((prev) =>
+        away
+          ? prev.filter((a) => !(a.day === day && a.slot === slot && a.person_id === personId))
+          : [...prev, { day, slot, person_id: personId }]
+      );
+    setAbsences((prev) =>
+      away
+        ? [...prev, { day, slot, person_id: personId }]
+        : prev.filter((a) => !(a.day === day && a.slot === slot && a.person_id === personId))
+    );
+    try {
+      const mealPlanId = await ensurePlan();
+      if (away) {
+        const { error } = await supabase.from('plan_absences').upsert(
+          { meal_plan_id: mealPlanId, day, slot, person_id: personId },
+          { onConflict: 'meal_plan_id,day,slot,person_id', ignoreDuplicates: true }
+        );
+        if (error) revert();
+      } else {
+        const { error } = await supabase
+          .from('plan_absences')
+          .delete()
+          .eq('meal_plan_id', mealPlanId)
+          .eq('day', day)
+          .eq('slot', slot)
+          .eq('person_id', personId);
+        if (error) revert();
+      }
+    } catch {
+      revert();
     }
   };
 
@@ -831,6 +908,8 @@ export default function PlanScreen() {
             eaterIds={eaters.map((p) => p.id)}
             personById={personById}
             recipeById={recipeById}
+            absences={absences}
+            onEditAway={setAwayDay}
             onAddDish={openPicker}
             onEditEntry={openEditor}
             onRemoveEntry={(id) => void removeEntry(id)}
@@ -1129,9 +1208,7 @@ export default function PlanScreen() {
                             pathname: '/recipe/[id]',
                             params: {
                               id: pickedRecipe.id,
-                              planServings: String(
-                                entryServings(pickedPersonIds, pickedGuests, eaters.length)
-                              ),
+                              planServings: String(pickerServes),
                             },
                           });
                         }}
@@ -1147,7 +1224,10 @@ export default function PlanScreen() {
                   <Eyebrow>{d.plan.whoEats}</Eyebrow>
                   <Muted>{d.plan.nobodySelectedHint}</Muted>
                   <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
-                  {eaters.map((person) => (
+                  {/* People marked "eats away" for this meal are not offered. */}
+                  {eaters
+                    .filter((person) => !pickerAway.has(person.id))
+                    .map((person) => (
                     <PersonChip
                       key={person.id}
                       person={person}
@@ -1162,6 +1242,16 @@ export default function PlanScreen() {
                     />
                   ))}
                   </View>
+                  {pickerAway.size > 0 ? (
+                    <Muted>
+                      {fmt(d.plan.eatsAwayLine, {
+                        names: eaters
+                          .filter((p) => pickerAway.has(p.id))
+                          .map((p) => p.name)
+                          .join(', '),
+                      })}
+                    </Muted>
+                  ) : null}
                 </View>
 
                 <View style={{ gap: 10 }}>
@@ -1169,7 +1259,7 @@ export default function PlanScreen() {
                   <Muted>{d.plan.guestsHint}</Muted>
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                     <GuestStepper value={pickedGuests} onChange={setPickedGuests} />
-                    <Muted>{fmt(d.plan.serves, { n: entryServings(pickedPersonIds, pickedGuests, eaters.length) })}</Muted>
+                    <Muted>{fmt(d.plan.serves, { n: pickerServes })}</Muted>
                   </View>
                 </View>
 
@@ -1219,6 +1309,17 @@ export default function PlanScreen() {
                   </View>
                 </View>
 
+                <View style={{ gap: 10 }}>
+                  <Eyebrow>{d.plan.cookNote}</Eyebrow>
+                  <Field
+                    value={pickedNote}
+                    onChangeText={setPickedNote}
+                    placeholder={d.plan.cookNotePlaceholder}
+                    multiline
+                    style={{ minHeight: 64, textAlignVertical: 'top' }}
+                  />
+                </View>
+
                 <View style={{ flex: 1 }} />
                 <View style={{ gap: 8 }}>
                   <LinkButton
@@ -1253,6 +1354,16 @@ export default function PlanScreen() {
           </View>
         </View>
       </Modal>
+
+      <AwaySheet
+        visible={awayDay !== null}
+        day={awayDay ?? 0}
+        dayLabel={awayDay !== null ? d.common.days[awayDay] : ''}
+        eaters={eaters}
+        absences={absences}
+        onToggle={(day, slot, personId, away) => void toggleAway(day, slot, personId, away)}
+        onClose={() => setAwayDay(null)}
+      />
 
       {/* Choose-for-us intermediary: confirm + low-FODMAP toggle. */}
       <Modal

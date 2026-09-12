@@ -117,8 +117,8 @@ function currentWeekStart(): string {
 
 /** App theme tokens (lib/theme.ts) in CSS, light + dark. */
 const CSS = `
-:root{--bg:#FFFFFF;--card-pressed:#F5F5F4;--text:#121212;--muted:#72716D;--accent:#C7442E;--border:#E5E3DE}
-@media (prefers-color-scheme:dark){:root{--bg:#121212;--card-pressed:#262626;--text:#F5F5F4;--muted:#9C9A94;--accent:#E0604A;--border:#333230}}
+:root{--bg:#FFFFFF;--card-pressed:#F5F5F4;--text:#121212;--muted:#72716D;--accent:#C7442E;--border:#E5E3DE;--saffron:#B58A2A}
+@media (prefers-color-scheme:dark){:root{--bg:#121212;--card-pressed:#262626;--text:#F5F5F4;--muted:#9C9A94;--accent:#E0604A;--border:#333230;--saffron:#D9A441}}
 *{box-sizing:border-box}
 body{font-family:'Libre Franklin',system-ui,sans-serif;background:var(--bg);color:var(--text);max-width:640px;margin:0 auto;padding:24px 20px 64px;line-height:1.5}
 h1,h2,h3{font-family:'Bitter',Georgia,serif;letter-spacing:-.3px;margin:0}
@@ -141,6 +141,7 @@ ul.ingredients li{padding:9px 0;border-bottom:1px solid var(--border);font-size:
 .step p{margin:2px 0 0;font-size:16px}
 .source{margin:8px 0 0}
 .source a{color:var(--accent);font-weight:600;font-size:15px;word-break:break-all}
+.note{margin:6px 0 0;padding-left:10px;border-left:3px solid var(--saffron);font-style:italic;font-size:14px}
 `;
 
 function page(title: string, body: string, lang = 'en'): Response {
@@ -210,11 +211,12 @@ Deno.serve(async (req) => {
     slot: string;
     recipe_id: string | null;
     custom_title: string | null;
+    instructions: string | null;
   }[] = [];
   if (planList.length > 0) {
     const { data: entryRows } = await admin
       .from('plan_entries')
-      .select('meal_plan_id, day, slot, recipe_id, custom_title')
+      .select('meal_plan_id, day, slot, recipe_id, custom_title, instructions')
       .in('meal_plan_id', planList.map((p) => p.id))
       .eq('assigned_cook', 'employee');
     entries = entryRows ?? [];
@@ -294,6 +296,8 @@ Deno.serve(async (req) => {
     if (meta) body += `<p class="muted">${esc(meta)}</p>`;
     for (const occ of occurrences) {
       body += `<p class="eyebrow" style="margin-top:8px">${esc(slotLine(occ))}</p>`;
+      // The family's note for this meal ("veggies first").
+      if (occ.instructions) body += `<p class="note">${esc(occ.instructions)}</p>`;
     }
     // Original source link, same section as the app's recipe page.
     const { data: sourceRows } = await admin
@@ -343,7 +347,7 @@ Deno.serve(async (req) => {
       `${t.days[entry.day] ?? ''} · ${t.slots[entry.slot] ?? entry.slot}`
     )}</p><h3>${esc(recipe?.title ?? entry.custom_title ?? t.meal)}</h3>${
       recipe && metaLine(recipe) ? `<p class="muted">${esc(metaLine(recipe))}</p>` : ''
-    }</div>`;
+    }${entry.instructions ? `<p class="note">${esc(entry.instructions)}</p>` : ''}</div>`;
     body += recipe
       ? `<a class="card" href="?token=${esc(token)}&r=${esc(recipe.id)}">${inner}</a>`
       : `<div class="card">${inner}</div>`;
