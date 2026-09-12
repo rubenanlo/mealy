@@ -18,7 +18,8 @@ from typing import Any
 
 import anthropic
 
-from .models import CanonicalRecipe, Ingredient, Verbatim
+from .ingredients import parse_ingredient_line
+from .models import CanonicalRecipe, Verbatim
 
 MODEL = "claude-haiku-4-5"
 
@@ -144,9 +145,7 @@ def recipe_from_json_ld(json_ld: dict | None) -> CanonicalRecipe | None:
             else (str(json_ld["recipeCategory"]) if json_ld.get("recipeCategory") else None)
         ),
         tags=_tags(json_ld.get("keywords")),
-        ingredients=[
-            Ingredient(raw=str(line), name=str(line)) for line in raw_ingredients
-        ],
+        ingredients=[parse_ingredient_line(str(line)) for line in raw_ingredients],
         steps=steps,
         nutrition=nutrition if isinstance(nutrition, dict) else None,
         confidence=1.0,

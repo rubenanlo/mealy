@@ -20,8 +20,9 @@ import lxml.html
 from recipe_scrapers import scrape_html
 
 from ..images import pick_cover
+from ..ingredients import parse_ingredient_line
 from ..netguard import guarded_async_client
-from ..models import CanonicalRecipe, Ingredient, IngestResult, Verbatim
+from ..models import CanonicalRecipe, IngestResult, Verbatim
 from ..structure import recipe_from_json_ld, structure_text
 
 _UA = (
@@ -133,7 +134,7 @@ def _recipe_from_scraper(html: str, url: str) -> tuple[CanonicalRecipe | None, l
         cook_minutes=_first(scraper.cook_time),
         dish_type=_first(scraper.category),
         tags=[],
-        ingredients=[Ingredient(raw=str(l), name=str(l)) for l in raw_ingredients],
+        ingredients=[parse_ingredient_line(str(l)) for l in raw_ingredients],
         steps=steps,
         nutrition=None,
         confidence=1.0,
