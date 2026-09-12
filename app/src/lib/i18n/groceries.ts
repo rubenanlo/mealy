@@ -3,6 +3,7 @@
 const en = {
   title: 'Groceries and errands',
   weekOf: 'Week of {date}',
+  pickWeek: 'Show which week?',
   shareList: 'Share the shopping list',
   building: 'Building your list…',
   nothingToBuy: 'Nothing to buy this week.',
@@ -37,6 +38,7 @@ const en = {
 const es: typeof en = {
   title: 'Compra y recados',
   weekOf: 'Semana del {date}',
+  pickWeek: '¿Qué semana quieres ver?',
   shareList: 'Compartir la lista de la compra',
   building: 'Preparando tu lista…',
   nothingToBuy: 'Nada que comprar esta semana.',
@@ -70,6 +72,7 @@ const es: typeof en = {
 const fr: typeof en = {
   title: 'Courses et commissions',
   weekOf: 'Semaine du {date}',
+  pickWeek: 'Quelle semaine afficher ?',
   shareList: 'Partager la liste de courses',
   building: 'Préparation de votre liste…',
   nothingToBuy: 'Rien à acheter cette semaine.',
@@ -103,6 +106,7 @@ const fr: typeof en = {
 const it: typeof en = {
   title: 'Spesa e commissioni',
   weekOf: 'Settimana del {date}',
+  pickWeek: 'Quale settimana mostrare?',
   shareList: 'Condividi la lista della spesa',
   building: 'Preparazione della tua lista…',
   nothingToBuy: 'Niente da comprare questa settimana.',

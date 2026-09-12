@@ -29,7 +29,7 @@ import { consumeInvalidation } from '@/lib/list-refresh';
 import { fmt, useI18n } from '@/lib/i18n';
 import { resolveMatches } from '@/lib/matching';
 import { anchorFromEvent, pickOption } from '@/lib/options';
-import { dayDate, weekStart } from '@/lib/plan';
+import { addWeeks, dayDate, weekStart } from '@/lib/plan';
 import { resolveUnitOverrides } from '@/lib/units';
 import { collectWeekIngredients } from '@/lib/shopping';
 import { supabase } from '@/lib/supabase';
@@ -313,7 +313,9 @@ export default function GroceriesScreen() {
   const { session } = useAuth();
   const userId = session?.user.id ?? null;
 
-  const [weekIso] = useState(() => weekStart(new Date()));
+  const currentWeek = weekStart(new Date());
+  /** Week the list is built for — this week by default, switchable to next. */
+  const [weekIso, setWeekIso] = useState(currentWeek);
   const [loading, setLoading] = useState(true);
   const [hasEntries, setHasEntries] = useState(false);
   const [aisles, setAisles] = useState<AisleGroup[]>([]);
@@ -356,14 +358,15 @@ export default function GroceriesScreen() {
           (p) => !p.is_employee && normalizeDietProfile(p.diet_profile).fodmap.mode !== 'off'
         )
       );
-      // Custom items and checks exist even without a plan. The generated
-      // list resets each week by construction (checks are week-keyed), but
-      // user-added items carry over until removed — no week filter here.
+      // Custom items and checks exist even without a plan. Both are
+      // week-keyed: items added for an earlier planning stop showing once
+      // that week is over instead of carrying forward indefinitely.
       const [{ data: itemRows }, { data: checkRows }] = await Promise.all([
         supabase
           .from('grocery_items')
           .select('id, label, person_id')
           .eq('household_id', householdId)
+          .eq('week_start', weekIso)
           .order('created_at'),
         supabase
           .from('grocery_checks')
@@ -489,8 +492,13 @@ export default function GroceriesScreen() {
             id?: string;
             label?: string;
             person_id?: string | null;
+            week_start?: string;
           };
           if (!record?.id) return;
+          // Items are week-keyed; ignore echoes for other weeks (deletes only
+          // carry the id, and removing an absent id is a no-op).
+          if (payload.eventType !== 'DELETE' && record.week_start && record.week_start !== weekIso)
+            return;
           setCustomItems((prev) => {
             if (payload.eventType === 'DELETE') return prev.filter((i) => i.id !== record.id);
             const next = {
@@ -669,12 +677,39 @@ export default function GroceriesScreen() {
     }
   };
 
-  const weekLabel = fmt(d.groceries.weekOf, {
-    date: dayDate(weekIso, 0).toLocaleDateString(dateLocales[locale], {
+  const weekDate = (week: string) =>
+    dayDate(week, 0).toLocaleDateString(dateLocales[locale], {
       month: 'long',
       day: 'numeric',
-    }),
-  });
+    });
+  const weekLabel = fmt(d.groceries.weekOf, { date: weekDate(weekIso) });
+
+  const changeWeek = (week: string) => {
+    if (week === weekIso) return;
+    // Drop the old week's rows so the spinner shows instead of stale content.
+    setAisles([]);
+    setUnmatched([]);
+    setCustomItems([]);
+    setWeekIso(week);
+  };
+
+  /** Header week picker: this week's list or next week's. */
+  const pickWeek = (e?: GestureResponderEvent) => {
+    const weeks: [string, string][] = [
+      [currentWeek, d.plan.thisWeek],
+      [addWeeks(currentWeek, 1), d.plan.nextWeek],
+    ];
+    pickOption({
+      title: d.groceries.pickWeek,
+      cancelLabel: d.common.cancel,
+      anchor: anchorFromEvent(e),
+      options: weeks.map(([week, label]) => ({
+        label: `${label} — ${weekDate(week)}`,
+        checked: weekIso === week,
+        onPress: () => changeWeek(week),
+      })),
+    });
+  };
   const isEmpty = aisles.length === 0 && unmatched.length === 0;
   const shareEmpty = exportGroups.length === 0;
 
@@ -689,7 +724,24 @@ export default function GroceriesScreen() {
         }}
       >
         <View style={{ flex: 1, gap: 2 }}>
-          <Eyebrow>{weekLabel}</Eyebrow>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={d.groceries.pickWeek}
+            onPress={pickWeek}
+            hitSlop={8}
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 4,
+              alignSelf: 'flex-start',
+              opacity: pressed ? 0.6 : 1,
+            })}
+          >
+            <Eyebrow style={weekIso !== currentWeek ? { color: colors.saffron } : undefined}>
+              {weekLabel}
+            </Eyebrow>
+            <Ionicons name="chevron-down" size={12} color={colors.textMuted} />
+          </Pressable>
           <Title>{d.groceries.title}</Title>
         </View>
         <Pressable
