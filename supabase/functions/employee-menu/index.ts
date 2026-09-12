@@ -17,6 +17,7 @@ const L10N = {
     cook: 'cook',
     min: 'min',
     ingredients: 'Ingredients',
+    originalSource: 'Original source',
     steps: 'Steps',
     step: 'Step',
     mealsToCook: 'Meals to cook',
@@ -38,6 +39,7 @@ const L10N = {
     cook: 'cocción',
     min: 'min',
     ingredients: 'Ingredientes',
+    originalSource: 'Fuente original',
     steps: 'Pasos',
     step: 'Paso',
     mealsToCook: 'Comidas para cocinar',
@@ -59,6 +61,7 @@ const L10N = {
     cook: 'cuisson',
     min: 'min',
     ingredients: 'Ingrédients',
+    originalSource: 'Source originale',
     steps: 'Étapes',
     step: 'Étape',
     mealsToCook: 'Repas à cuisiner',
@@ -80,6 +83,7 @@ const L10N = {
     cook: 'cottura',
     min: 'min',
     ingredients: 'Ingredienti',
+    originalSource: 'Fonte originale',
     steps: 'Passaggi',
     step: 'Passaggio',
     mealsToCook: 'Pasti da cucinare',
@@ -135,6 +139,8 @@ ul.ingredients{list-style:none;margin:8px 0 0;padding:0}
 ul.ingredients li{padding:9px 0;border-bottom:1px solid var(--border);font-size:16px}
 .step{margin:18px 0}
 .step p{margin:2px 0 0;font-size:16px}
+.source{margin:8px 0 0}
+.source a{color:var(--accent);font-weight:600;font-size:15px;word-break:break-all}
 `;
 
 function page(title: string, body: string, lang = 'en'): Response {
@@ -288,6 +294,18 @@ Deno.serve(async (req) => {
     if (meta) body += `<p class="muted">${esc(meta)}</p>`;
     for (const occ of occurrences) {
       body += `<p class="eyebrow" style="margin-top:8px">${esc(slotLine(occ))}</p>`;
+    }
+    // Original source link, same section as the app's recipe page.
+    const { data: sourceRows } = await admin
+      .from('recipe_sources')
+      .select('url')
+      .eq('recipe_id', recipe.id)
+      .not('url', 'is', null)
+      .order('captured_at')
+      .limit(1);
+    const sourceUrl = sourceRows?.[0]?.url as string | undefined;
+    if (sourceUrl && /^https?:\/\//i.test(sourceUrl)) {
+      body += `<h2>${t.originalSource}</h2><p class="source"><a href="${esc(sourceUrl)}" target="_blank" rel="noopener">${esc(sourceUrl)}</a></p>`;
     }
     const ingredients = (recipe.ingredients ?? []).map((i) => i.raw || i.name || '').filter(Boolean);
     if (ingredients.length > 0) {

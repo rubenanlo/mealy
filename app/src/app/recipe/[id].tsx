@@ -1327,27 +1327,31 @@ export default function RecipeSheetScreen() {
                   {d.recipe.translating}
                 </Text>
               ) : null}
-              {usableTranslation ? (
+              {/* Icon-only original/translation toggle; hidden when the
+                  recipe is already in the app language (nothing to toggle). */}
+              {usableTranslation && recipe.language !== locale ? (
                 <Pressable
                   accessibilityRole="button"
                   accessibilityState={{ selected: showOriginal }}
+                  accessibilityLabel={showOriginal ? d.recipe.showTranslation : showOriginalLabel}
                   onPress={() => setShowOriginal((v) => !v)}
+                  hitSlop={8}
                   style={({ pressed }) => ({
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 4,
-                    minHeight: 28,
-                    paddingHorizontal: 10,
-                    borderRadius: 999,
+                    width: 28,
+                    height: 28,
+                    borderRadius: 14,
                     borderWidth: 1,
-                    borderColor: colors.border,
+                    borderColor: showOriginal ? colors.accent : colors.border,
+                    alignItems: 'center',
+                    justifyContent: 'center',
                     opacity: pressed ? 0.7 : 1,
                   })}
                 >
-                  <Ionicons name="language-outline" size={14} color={colors.textMuted} />
-                  <Text style={{ color: colors.textMuted, fontSize: fontSize.meta, fontFamily: fonts.uiSemi }}>
-                    {showOriginal ? d.recipe.showTranslation : showOriginalLabel}
-                  </Text>
+                  <Ionicons
+                    name="language-outline"
+                    size={14}
+                    color={showOriginal ? colors.accent : colors.textMuted}
+                  />
                 </Pressable>
               ) : null}
             </View>
