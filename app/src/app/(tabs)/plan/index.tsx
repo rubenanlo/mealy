@@ -10,7 +10,6 @@ import {
   Button,
   Eyebrow,
   Field,
-  Hairline,
   LinkButton,
   Loading,
   Muted,
@@ -18,6 +17,7 @@ import {
   Title,
 } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
+import { confirmDestructive, notify } from '@/lib/confirm';
 import { consumeInvalidation } from '@/lib/list-refresh';
 import { fmt, useI18n } from '@/lib/i18n';
 import { shareEmployeeLink } from '@/lib/employee-link';
@@ -181,6 +181,25 @@ export default function WeeksScreen() {
     );
   }, [plans, entries, recipesById, currentWeek, eaterCount, personNameById, d]);
 
+  /** Planned weeks after the current one, soonest first. */
+  const futureWeeks = useMemo(
+    () =>
+      plans
+        .filter((p) => p.week_start > currentWeek)
+        .sort((a, b) => (a.week_start < b.week_start ? -1 : 1))
+        .map((p) => ({
+          ...p,
+          meals: buildCells(
+            entries.filter((e) => e.meal_plan_id === p.id),
+            recipesById,
+            eaterCount,
+            d.plan.recipeFallback,
+            personNameById
+          ).length,
+        })),
+    [plans, entries, recipesById, currentWeek, eaterCount, personNameById, d]
+  );
+
   /** Past weeks with a plan, newest first. */
   const pastWeeks = useMemo(
     () =>
@@ -225,6 +244,26 @@ export default function WeeksScreen() {
       .filter(Boolean);
     setNotesOpen(false);
     void saveEmployeeNotes(items);
+  };
+
+  /** Long-press a past week's tile: delete the plan (entries cascade). */
+  const deletePastPlan = (planId: string, week: string) => {
+    confirmDestructive({
+      title: d.plan.deletePlanTitle,
+      message: fmt(d.plan.deletePlanBody, { week: weekLabel(week) }),
+      confirmLabel: d.common.delete,
+      cancelLabel: d.common.cancel,
+      onConfirm: () => {
+        void (async () => {
+          const { error } = await supabase.from('meal_plans').delete().eq('id', planId);
+          if (error) {
+            notify(d.plan.deletePlanFailTitle, d.common.genericError);
+            return;
+          }
+          void load();
+        })();
+      },
+    });
   };
 
   const newPlan = (e?: GestureResponderEvent) => {
@@ -382,6 +421,42 @@ export default function WeeksScreen() {
               <Muted>{d.plan.nothingPlanned}</Muted>
             </Pressable>
           )}
+
+          {/* Jump ahead: next week always, plus any further planned weeks. */}
+          {[
+            {
+              week: addWeeks(currentWeek, 1),
+              meals: futureWeeks.find((p) => p.week_start === addWeeks(currentWeek, 1))?.meals ?? 0,
+            },
+            ...futureWeeks
+              .filter((p) => p.week_start !== addWeeks(currentWeek, 1))
+              .map((p) => ({ week: p.week_start, meals: p.meals })),
+          ].map(({ week, meals }) => (
+            <Pressable
+              key={week}
+              accessibilityRole="button"
+              accessibilityLabel={fmt(d.plan.openWeek, { week: weekLabel(week) })}
+              onPress={() => openWeek(week)}
+              style={({ pressed }) => ({
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 10,
+                minHeight: minTapTarget,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <Ionicons name="calendar-outline" size={20} color={colors.text} />
+              <Body style={{ flex: 1 }}>
+                {week === addWeeks(currentWeek, 1) ? d.plan.nextWeek : weekLabel(week)}
+              </Body>
+              <Muted>
+                {meals > 0
+                  ? `${meals} ${meals === 1 ? d.plan.mealOne : d.plan.mealMany}`
+                  : weekDate(week)}
+              </Muted>
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            </Pressable>
+          ))}
         </View>
 
         {/* The employee's cooking list for this week (mirrors her web link). */}
@@ -556,7 +631,18 @@ export default function WeeksScreen() {
                   key={week.id}
                   accessibilityRole="button"
                   accessibilityLabel={fmt(d.plan.openWeek, { week: weekLabel(week.week_start) })}
+                  accessibilityActions={[
+                    {
+                      name: 'longpress',
+                      label: fmt(d.plan.deletePlanA11y, { week: weekLabel(week.week_start) }),
+                    },
+                  ]}
+                  onAccessibilityAction={(e) => {
+                    if (e.nativeEvent.actionName === 'longpress')
+                      deletePastPlan(week.id, week.week_start);
+                  }}
                   onPress={() => openWeek(week.week_start)}
+                  onLongPress={() => deletePastPlan(week.id, week.week_start)}
                   style={({ pressed }) => ({ width: '47.5%', opacity: pressed ? 0.7 : 1 })}
                 >
                   <View
