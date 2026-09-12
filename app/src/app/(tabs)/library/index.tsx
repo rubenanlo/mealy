@@ -1146,7 +1146,19 @@ function FolderMenuButton({
   );
 }
 
-/** NYT Recipe Box grid tile: gapped 2×2 collage, name + ⋯ row, count. */
+/**
+ * Collage tile size for a folder holding `count` recipes (capped at 4):
+ * 1 → full square, 2 → side-by-side halves, 3 → two on top + one wide
+ * below, 4 → the 2×2 grid.
+ */
+function collageTileStyle(count: number, index: number) {
+  if (count <= 1) return { width: "100%", height: "100%" } as const;
+  if (count === 2) return { width: "48.5%", height: "100%" } as const;
+  if (count === 3 && index === 2) return { width: "100%", height: "48.5%" } as const;
+  return { width: "48.5%", height: "48.5%" } as const;
+}
+
+/** NYT Recipe Box grid tile: gapped collage (up to 2×2), name + ⋯ row, count. */
 function FolderGridItem({
   folder,
   covers,
@@ -1185,7 +1197,7 @@ function FolderGridItem({
             <RecipeImage
               key={i}
               path={path}
-              style={{ width: "48.5%", height: "48.5%" }}
+              style={collageTileStyle(covers.length, i)}
               iconSize={20}
             />
           ))}

@@ -54,7 +54,7 @@ describe('groupByOwner', () => {
 });
 
 describe('collageCovers', () => {
-  it('returns the four newest covers, padding with null', () => {
+  it('returns one tile per recipe, newest first, without padding', () => {
     const summary = summarizeFolders(
       [folder('f1', 'me')],
       [
@@ -68,6 +68,21 @@ describe('collageCovers', () => {
       ['r2', null],
       ['r3', 'c.jpg'],
     ]);
-    expect(collageCovers(summary, covers)).toEqual(['a.jpg', null, 'c.jpg', null]);
+    expect(collageCovers(summary, covers)).toEqual(['a.jpg', null, 'c.jpg']);
+  });
+
+  it('caps at four tiles', () => {
+    const summary = summarizeFolders(
+      [folder('f1', 'me')],
+      ['r1', 'r2', 'r3', 'r4', 'r5'].map((id, i) =>
+        link('f1', id, `2026-08-0${9 - i}T00:00:00Z`)
+      )
+    )[0];
+    expect(collageCovers(summary, new Map()).length).toBe(4);
+  });
+
+  it('keeps a single placeholder tile for an empty folder', () => {
+    const summary = summarizeFolders([folder('f1', 'me')], [])[0];
+    expect(collageCovers(summary, new Map())).toEqual([null]);
   });
 });

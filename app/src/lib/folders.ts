@@ -66,12 +66,15 @@ export function groupByOwner(
   return { mine, others };
 }
 
-/** Four newest cover paths (null-padded) for the 2×2 collage. */
+/**
+ * Newest cover paths for the collage: one tile per recipe, capped at four —
+ * no padding, so a folder with two recipes renders two tiles. An empty
+ * folder keeps a single placeholder tile.
+ */
 export function collageCovers(
   folder: FolderSummary,
   coverByRecipe: Map<string, string | null>
 ): (string | null)[] {
   const covers = folder.recipeIds.slice(0, 4).map((id) => coverByRecipe.get(id) ?? null);
-  while (covers.length < 4) covers.push(null);
-  return covers;
+  return covers.length > 0 ? covers : [null];
 }
