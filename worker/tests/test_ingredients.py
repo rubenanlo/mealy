@@ -116,3 +116,17 @@ def test_bare_number_keeps_raw_as_name():
     ing = parse_ingredient_line("2")
     assert ing.quantity is None
     assert ing.name == "2"
+
+
+def test_unit_with_trailing_period():
+    ing = parse_ingredient_line("1 lb. steak")
+    assert ing.quantity == 1
+    assert ing.unit == "lb"
+    assert ing.name == "steak"
+
+
+def test_quitoque_cuillere_s_normalized():
+    ing = parse_ingredient_line("1 cuillère(s) à soupe Huile de sésame")
+    assert ing.quantity == 1
+    assert ing.unit == "cuillère à soupe"
+    assert ing.name == "Huile de sésame"

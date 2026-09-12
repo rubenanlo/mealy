@@ -36,6 +36,8 @@ _FRACTION_CHARS = "".join(_UNICODE_FRACTIONS)
 # tokens are kept verbatim (lowercased), so plural forms stay plural.
 # Multi-word units first: the alternation must try the longest match.
 _UNIT_WORDS = [
+    "cuillère(s) à soupe",
+    "cuillère(s) à café",
     "cuillères à soupe",
     "cuillère à soupe",
     "cuillères à café",
@@ -125,8 +127,9 @@ _QTY_RE = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 
+# Boundary allows "1 lb. steak" — the trailing period is consumed below.
 _UNIT_RE = re.compile(
-    r"^(?P<unit>" + "|".join(re.escape(u) for u in _UNIT_WORDS) + r")(?=[\s(]|$)",
+    r"^(?P<unit>" + "|".join(re.escape(u) for u in _UNIT_WORDS) + r")(?=[\s(.]|$)",
     re.IGNORECASE,
 )
 
@@ -168,8 +171,9 @@ def parse_ingredient_line(line: str) -> Ingredient:
     unit: str | None = None
     unit_match = _UNIT_RE.match(rest)
     if unit_match:
-        unit = unit_match.group("unit").lower()
-        rest = rest[unit_match.end() :].lstrip()
+        # "cuillère(s) à soupe" → the spelling the app's unit table knows.
+        unit = unit_match.group("unit").lower().replace("(s)", "")
+        rest = rest[unit_match.end() :].lstrip(". \t")
         # Alt-measure parenthetical after a unit: "1 pound (450 g) shrimp".
         rest = re.sub(r"^\([^)]*\)\s*", "", rest)
         rest = _OF_RE.sub("", rest)
