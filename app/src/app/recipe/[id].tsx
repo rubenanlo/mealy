@@ -1293,7 +1293,9 @@ export default function RecipeSheetScreen() {
                   <Muted>{d.recipe.addServingsTime}</Muted>
                 )}
               </Pressable>
-              {swappableRaws.length > 0 ? (
+              {/* Swap suggestions only make sense when the recipe isn't
+                  already low FODMAP (override or computed). */}
+              {swappableRaws.length > 0 && recipeTier !== 'low' ? (
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={d.recipe.suggestSwapsA11y}
