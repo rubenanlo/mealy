@@ -5,7 +5,7 @@ import { Pressable, ScrollView, Text, View, type GestureResponderEvent } from 'r
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RecipeImage } from '@/components/recipe-cards';
-import { UpcomingMealsStrip } from '@/components/upcoming-strip';
+import { UpcomingMealsStrip, type UpcomingCell } from '@/components/upcoming-strip';
 import {
   Body,
   Button,
@@ -148,26 +148,46 @@ export default function WeeksScreen() {
   const openWeek = (week: string) =>
     router.push({ pathname: '/plan/detail', params: { week } });
 
-  /** Current week's meals from today onward; the first one is "next". */
-  const upcoming = useMemo(() => {
-    const plan = plans.find((p) => p.week_start === currentWeek);
-    if (!plan) return [];
-    const cells = buildCells(
-      entries.filter((e) => e.meal_plan_id === plan.id),
-      recipesById,
-      eaterCount,
-      d.plan.recipeFallback,
-      personNameById
-    );
+  /**
+   * This week's meals from today onward, then every future planned week's
+   * meals in order — one continuous strip. The first cell is "next".
+   */
+  const upcoming = useMemo<UpcomingCell[]>(() => {
+    const cellsOf = (planId: string) =>
+      buildCells(
+        entries.filter((e) => e.meal_plan_id === planId),
+        recipesById,
+        eaterCount,
+        d.plan.recipeFallback,
+        personNameById
+      );
     const now = new Date();
     const todayIndex = Math.floor(
       (new Date(now).setHours(0, 0, 0, 0) - dayDate(currentWeek, 0).getTime()) / 86_400_000
     );
     const nowMinutes = now.getHours() * 60 + now.getMinutes();
-    return cells.filter((c) =>
-      isMealUpcoming(c.day, c.slot, todayIndex, nowMinutes, mealTimes)
-    );
-  }, [plans, entries, recipesById, currentWeek, mealTimes, eaterCount, personNameById, d]);
+    const plan = plans.find((p) => p.week_start === currentWeek);
+    const thisWeek = plan
+      ? cellsOf(plan.id)
+          .filter((c) => isMealUpcoming(c.day, c.slot, todayIndex, nowMinutes, mealTimes))
+          .map((c) => ({ ...c, weekIso: currentWeek }))
+      : [];
+    const future = plans
+      .filter((p) => p.week_start > currentWeek)
+      .sort((a, b) => (a.week_start < b.week_start ? -1 : 1))
+      .flatMap((p) =>
+        cellsOf(p.id).map((c) => ({
+          ...c,
+          weekIso: p.week_start,
+          // Future weeks repeat the weekday names, so date the eyebrow.
+          dayLabel: dayDate(p.week_start, c.day).toLocaleDateString(locale, {
+            weekday: 'long',
+            day: 'numeric',
+          }),
+        }))
+      );
+    return [...thisWeek, ...future];
+  }, [plans, entries, recipesById, currentWeek, mealTimes, eaterCount, personNameById, d, locale]);
 
   /** This week's meals the employee cooks (whole week, not just upcoming). */
   const employeeCells = useMemo(() => {
@@ -290,6 +310,11 @@ export default function WeeksScreen() {
     (new Date().setHours(0, 0, 0, 0) - dayDate(currentWeek, 0).getTime()) / 86_400_000
   );
 
+  // The employee cooks the week's batch on Wednesday; once it has passed,
+  // her list is history — shown, but disabled.
+  const EMPLOYEE_COOK_DAY = 2; // Wednesday
+  const employeeWeekDone = todayIndex > EMPLOYEE_COOK_DAY;
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
       <ScrollView
@@ -329,7 +354,9 @@ export default function WeeksScreen() {
                       pathname: '/recipe/[id]',
                       params: { id: cell.recipeIds[0], planServings: String(cell.servings[0]) },
                     })
-                  : router.push('/plan/upcoming')
+                  : cell.weekIso && cell.weekIso !== currentWeek
+                    ? openWeek(cell.weekIso)
+                    : router.push('/plan/upcoming')
               }
             />
           ) : (
@@ -425,6 +452,8 @@ export default function WeeksScreen() {
                 <Pressable
                   key={`emp-${cell.day}-${cell.slot}`}
                   accessibilityRole="button"
+                  accessibilityState={{ disabled: employeeWeekDone }}
+                  disabled={employeeWeekDone}
                   accessibilityLabel={`${d.common.days[cell.day]} ${slotLabel(cell.slot)}: ${cell.titles.join(', ')}`}
                   onPress={() =>
                     cell.recipeIds.length === 1
@@ -434,7 +463,10 @@ export default function WeeksScreen() {
                         })
                       : openWeek(currentWeek)
                   }
-                  style={({ pressed }) => ({ width: 150, opacity: pressed ? 0.7 : 1 })}
+                  style={({ pressed }) => ({
+                    width: 150,
+                    opacity: employeeWeekDone ? 0.4 : pressed ? 0.7 : 1,
+                  })}
                 >
                   <RecipeImage
                     path={cell.covers[0] ?? null}

@@ -7,19 +7,27 @@ import type { MealCell } from '@/lib/meal-cells';
 import type { MealSlot } from '@/lib/plan';
 import { fonts, fontSize, radius, screenPadding, useTheme } from '@/lib/theme';
 
+/** A meal cell in the strip, optionally tagged with the week it belongs to. */
+export type UpcomingCell = MealCell & {
+  /** Week the cell belongs to; lets tap handlers open the right week. */
+  weekIso?: string;
+  /** Eyebrow day text override (e.g. "Monday 21" for a future week). */
+  dayLabel?: string;
+};
+
 /**
- * Horizontal strip of this week's upcoming meal cells — the "This week"
- * section shared by the plan overview and the home feed. The first cell is
- * highlighted as the next meal.
+ * Horizontal strip of upcoming meal cells — the "This week" section shared
+ * by the plan overview and the home feed. Runs continuously into future
+ * planned weeks; the first cell is highlighted as the next meal.
  */
 export function UpcomingMealsStrip({
   cells,
   todayIndex,
   onPressCell,
 }: {
-  cells: MealCell[];
+  cells: UpcomingCell[];
   todayIndex: number;
-  onPressCell: (cell: MealCell) => void;
+  onPressCell: (cell: UpcomingCell) => void;
 }) {
   const { colors } = useTheme();
   const { d } = useI18n();
@@ -33,7 +41,7 @@ export function UpcomingMealsStrip({
     >
       {cells.map((cell, i) => (
         <Pressable
-          key={`${cell.day}-${cell.slot}`}
+          key={`${cell.weekIso ?? ''}-${cell.day}-${cell.slot}`}
           accessibilityRole="button"
           accessibilityLabel={`${d.common.days[cell.day]} ${slotLabel(cell.slot)}: ${cell.titles.join(', ')}`}
           onPress={() => onPressCell(cell)}
@@ -69,7 +77,7 @@ export function UpcomingMealsStrip({
           )}
           <View style={{ paddingTop: 8, gap: 2 }}>
             <Eyebrow style={i === 0 ? { color: colors.saffron } : undefined}>
-              {`${cell.day === todayIndex ? d.plan.today : d.common.days[cell.day]} · ${slotLabel(cell.slot)}`}
+              {`${cell.dayLabel ?? (cell.day === todayIndex ? d.plan.today : d.common.days[cell.day])} · ${slotLabel(cell.slot)}`}
               {i === 0 ? ` · ${d.plan.next}` : ''}
             </Eyebrow>
             <Text

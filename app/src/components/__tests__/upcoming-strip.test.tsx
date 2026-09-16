@@ -1,11 +1,10 @@
 import { fireEvent, render } from '@testing-library/react-native';
 
 import { ThemeProvider } from '@/lib/theme';
-import type { MealCell } from '@/lib/meal-cells';
 
-import { UpcomingMealsStrip } from '../upcoming-strip';
+import { UpcomingMealsStrip, type UpcomingCell } from '../upcoming-strip';
 
-function cell(over: Partial<MealCell>): MealCell {
+function cell(over: Partial<UpcomingCell>): UpcomingCell {
   return {
     day: 0,
     slot: 'lunch',
@@ -56,6 +55,30 @@ describe('UpcomingMealsStrip', () => {
     );
     expect(getByText('Soup · Salad')).toBeTruthy();
     expect(getByText('Ana · Whole household')).toBeTruthy();
+  });
+
+  it('a dayLabel override replaces the weekday for future-week cells', () => {
+    const { getByText, queryByText } = wrap(
+      <UpcomingMealsStrip
+        cells={[
+          cell({ day: 0, slot: 'lunch', titles: ['Soup'] }),
+          cell({
+            day: 0,
+            slot: 'lunch',
+            titles: ['Stew'],
+            recipeIds: ['r2'],
+            weekIso: '2026-09-21',
+            dayLabel: 'Monday 21',
+          }),
+        ]}
+        todayIndex={0}
+        onPressCell={() => {}}
+      />
+    );
+    // Same day+slot in two weeks: both render, future one with its date label.
+    expect(getByText('Today · Lunch · next')).toBeTruthy();
+    expect(getByText('Monday 21 · Lunch')).toBeTruthy();
+    expect(queryByText('Stew')).toBeTruthy();
   });
 
   it('shows servings for single-recipe cells and fires onPressCell', () => {

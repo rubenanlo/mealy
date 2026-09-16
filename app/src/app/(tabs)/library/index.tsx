@@ -33,7 +33,10 @@ import {
   RecipeRow,
   type RecipeListItem,
 } from "@/components/recipe-cards";
-import { UpcomingMealsStrip } from "@/components/upcoming-strip";
+import {
+  UpcomingMealsStrip,
+  type UpcomingCell,
+} from "@/components/upcoming-strip";
 import { SaveSheet } from "@/components/save-sheet";
 import {
   EmptyState,
@@ -114,6 +117,7 @@ export default function HomeScreen() {
   );
   const [plannedRecentIds, setPlannedRecentIds] = useState<Set<string>>(new Set());
   const [weekEntries, setWeekEntries] = useState<EntryRow[]>([]);
+  const [weekPlans, setWeekPlans] = useState<{ id: string; week_start: string }[]>([]);
   const [mealTimes, setMealTimes] = useState<MealTimes>(normalizeMealTimes(null));
   const [eaterCount, setEaterCount] = useState(0);
   const [personNameById, setPersonNameById] = useState<Map<string, string>>(new Map());
@@ -192,10 +196,10 @@ export default function HomeScreen() {
         .single(),
       supabase
         .from("meal_plans")
-        .select("id")
+        .select("id, week_start")
         .eq("household_id", householdId)
-        .eq("week_start", weekIso)
-        .maybeSingle(),
+        .gte("week_start", weekIso)
+        .order("week_start"),
       supabase
         .from("folders")
         .select("id, household_id, owner_id, name, created_at")
@@ -276,13 +280,18 @@ export default function HomeScreen() {
     }[]);
     setEaterCount(persons.filter((p) => !p.is_employee).length);
     setPersonNameById(new Map(persons.map((p) => [p.id, p.name])));
-    if (weekPlan) {
+    const plansFromNow = ((weekPlan ?? []) as { id: string; week_start: string }[]);
+    setWeekPlans(plansFromNow);
+    if (plansFromNow.length > 0) {
       const { data: weekRows } = await supabase
         .from("plan_entries")
         .select(
           "meal_plan_id, day, slot, recipe_id, custom_title, assigned_cook, person_ids, guest_count",
         )
-        .eq("meal_plan_id", weekPlan.id);
+        .in(
+          "meal_plan_id",
+          plansFromNow.map((p) => p.id),
+        );
       setWeekEntries((weekRows as EntryRow[]) ?? []);
     } else {
       setWeekEntries([]);
@@ -371,11 +380,14 @@ export default function HomeScreen() {
     });
   }, [recipes, activeFilters, filterInputs]);
 
-  /** Same strip as the plan overview: this week's meals from now onward. */
+  /**
+   * Same strip as the plan overview: this week's meals from now onward,
+   * then future planned weeks' meals — one continuous strip.
+   */
   const todayIndex = Math.floor(
     (new Date().setHours(0, 0, 0, 0) - dayDate(weekIso, 0).getTime()) / 86_400_000,
   );
-  const upcoming = useMemo(() => {
+  const upcoming = useMemo<UpcomingCell[]>(() => {
     if (weekEntries.length === 0) return [];
     const recipesById = new Map<string, RecipeLite>(
       householdRecipes.map((r) => [
@@ -383,19 +395,45 @@ export default function HomeScreen() {
         { id: r.id, title: r.title, cover_image_path: r.cover_image_path ?? null },
       ]),
     );
-    const cells = buildCells(
-      weekEntries,
-      recipesById,
-      eaterCount,
-      d.plan.recipeFallback,
-      personNameById,
-    );
     const now = new Date();
     const nowMinutes = now.getHours() * 60 + now.getMinutes();
-    return cells.filter((c) =>
-      isMealUpcoming(c.day, c.slot, todayIndex, nowMinutes, mealTimes),
-    );
-  }, [weekEntries, householdRecipes, eaterCount, personNameById, mealTimes, todayIndex, d]);
+    return weekPlans.flatMap((plan) => {
+      const cells = buildCells(
+        weekEntries.filter((e) => e.meal_plan_id === plan.id),
+        recipesById,
+        eaterCount,
+        d.plan.recipeFallback,
+        personNameById,
+      );
+      if (plan.week_start === weekIso) {
+        return cells
+          .filter((c) =>
+            isMealUpcoming(c.day, c.slot, todayIndex, nowMinutes, mealTimes),
+          )
+          .map((c) => ({ ...c, weekIso: plan.week_start }));
+      }
+      return cells.map((c) => ({
+        ...c,
+        weekIso: plan.week_start,
+        // Future weeks repeat the weekday names, so date the eyebrow.
+        dayLabel: dayDate(plan.week_start, c.day).toLocaleDateString(locale, {
+          weekday: "long",
+          day: "numeric",
+        }),
+      }));
+    });
+  }, [
+    weekEntries,
+    weekPlans,
+    weekIso,
+    householdRecipes,
+    eaterCount,
+    personNameById,
+    mealTimes,
+    todayIndex,
+    locale,
+    d,
+  ]);
 
   const openRecipe = (id: string) => router.push(`/recipe/${id}`);
 
@@ -716,7 +754,12 @@ export default function HomeScreen() {
                             planServings: String(cell.servings[0]),
                           },
                         })
-                      : router.push("/plan/upcoming")
+                      : cell.weekIso && cell.weekIso !== weekIso
+                        ? router.push({
+                            pathname: "/plan/detail",
+                            params: { week: cell.weekIso },
+                          })
+                        : router.push("/plan/upcoming")
                   }
                 />
                 <Hairline />
