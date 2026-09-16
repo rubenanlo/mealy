@@ -1,3 +1,5 @@
+import { coreProteins } from '@/lib/category';
+
 export interface QuotaTarget {
   category: string;
   min: number;
@@ -32,6 +34,7 @@ export function entryCoversPerson(entry: QuotaEntry, personId: string): boolean 
 /**
  * Per-person protein quota progress for one week's entries.
  * A recipe counts toward a category when its tags include that category.
+ * A 'fish & meat' recipe advances both the fish and the meat quota.
  * Only entries that cover the person are counted (spec §2 proteinQuotas).
  */
 export function quotaProgress(
@@ -40,16 +43,17 @@ export function quotaProgress(
   recipes: QuotaRecipe[],
   targets: QuotaTarget[]
 ): QuotaProgress[] {
-  const tagsById = new Map(recipes.map((r) => [r.id, r.tags]));
-  const catById = new Map(recipes.map((r) => [r.id, r.category ?? null]));
+  const categoriesById = new Map(
+    recipes.map((r) => {
+      const sources = [...(r.category ? [r.category] : []), ...r.tags];
+      return [r.id, new Set(sources.flatMap(coreProteins))];
+    })
+  );
   const eaten = entries.filter((e) => entryCoversPerson(e, personId));
   return targets.map((target) => ({
     category: target.category,
     planned: eaten.filter(
-      (e) =>
-        e.recipe_id !== null &&
-        (catById.get(e.recipe_id) === target.category ||
-          (tagsById.get(e.recipe_id) ?? []).includes(target.category))
+      (e) => e.recipe_id !== null && categoriesById.get(e.recipe_id)?.has(target.category)
     ).length,
     min: target.min,
     max: target.max,

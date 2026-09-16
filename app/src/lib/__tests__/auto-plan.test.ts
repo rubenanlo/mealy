@@ -21,6 +21,52 @@ describe('autoFillWeek', () => {
     expect(unfilled).toEqual([]);
   });
 
+  it('a fish & meat candidate is blocked when either half is at its max', () => {
+    const { assignments, unfilled } = autoFillWeek(
+      [cell(0)],
+      [cand('surf-turf', { category: 'fish & meat' })],
+      {
+        lowFodmapOnly: false,
+        quotas: [{ category: 'meat', min: 0, max: 1 }],
+        existingCounts: { meat: 1 },
+      }
+    );
+    expect(assignments).toEqual([]);
+    expect(unfilled).toEqual([cell(0)]);
+  });
+
+  it('a fish & meat candidate counts toward both halves once placed', () => {
+    // meat max 1: after surf-turf lands, the plain meat candidate is blocked.
+    const { assignments, unfilled } = autoFillWeek(
+      [cell(0), cell(3)],
+      [cand('surf-turf', { category: 'fish & meat' }), cand('steak', { category: 'meat' })],
+      { lowFodmapOnly: false, quotas: [{ category: 'meat', min: 0, max: 1 }] }
+    );
+    expect(assignments.map((a) => a.recipeId)).toEqual(['surf-turf']);
+    expect(unfilled).toEqual([cell(3)]);
+  });
+
+  it('a fish & meat candidate satisfies a fish deficit', () => {
+    const { assignments } = autoFillWeek(
+      [cell(0)],
+      [cand('veggie', { category: 'vegetarian' }), cand('surf-turf', { category: 'fish & meat' })],
+      { lowFodmapOnly: false, quotas: [{ category: 'fish', min: 1, max: null }] }
+    );
+    expect(assignments[0].recipeId).toBe('surf-turf');
+  });
+
+  it('spaces a fish & meat candidate away from adjacent meat meals', () => {
+    const { assignments } = autoFillWeek(
+      [cell(0, 'dinner')],
+      [cand('surf-turf', { category: 'fish & meat' }), cand('veggie', { category: 'vegetarian' })],
+      {
+        lowFodmapOnly: false,
+        existing: [{ day: 0, slot: 'lunch', category: 'meat' }],
+      }
+    );
+    expect(assignments[0].recipeId).toBe('veggie');
+  });
+
   it('avoids back-to-back same category when an alternative exists', () => {
     const { assignments } = autoFillWeek(
       [cell(0), cell(0, 'dinner'), cell(1)],

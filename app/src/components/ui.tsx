@@ -233,6 +233,26 @@ export function CategoryDot({
   style?: StyleProp<ViewStyle>;
 }) {
   const { colors } = useTheme();
+  if (category === 'fish & meat') {
+    // Split dot: fish tone on the left, meat tone on the right.
+    return (
+      <View
+        style={[
+          {
+            width: size,
+            height: size,
+            borderRadius: size / 2,
+            overflow: 'hidden',
+            flexDirection: 'row',
+          },
+          style,
+        ]}
+      >
+        <View style={{ flex: 1, backgroundColor: colors.spineFish }} />
+        <View style={{ flex: 1, backgroundColor: colors.spineMeat }} />
+      </View>
+    );
+  }
   return (
     <View
       style={[

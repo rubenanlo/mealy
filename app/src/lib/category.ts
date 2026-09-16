@@ -5,10 +5,11 @@ import { matchCanonical, normalizeRaw, type CanonicalIndex } from '@/lib/canonic
  * Protein category behind the signature "category spine" (design.md).
  * Derived from recipe.tags — same Phase 1 convention as quotaProgress.
  */
-export type ProteinCategory = 'fish' | 'meat' | 'vegan' | 'vegetarian' | 'legume';
+export type ProteinCategory = 'fish & meat' | 'fish' | 'meat' | 'vegan' | 'vegetarian' | 'legume';
 
 /** Priority order: the first tag present wins (vegan outranks vegetarian). */
 export const PROTEIN_CATEGORIES: readonly ProteinCategory[] = [
+  'fish & meat',
   'fish',
   'meat',
   'vegan',
@@ -17,12 +18,22 @@ export const PROTEIN_CATEGORIES: readonly ProteinCategory[] = [
 ] as const;
 
 export const CATEGORY_LABELS: Record<ProteinCategory, string> = {
+  'fish & meat': 'Fish & meat',
   fish: 'Fish',
   meat: 'Meat',
   vegan: 'Vegan',
   vegetarian: 'Vegetarian',
   legume: 'Legumes',
 };
+
+/**
+ * The core proteins a category stands for — 'fish & meat' is both at once,
+ * so quotas and the planner treat such a meal as fish AND meat. Accepts the
+ * plain strings quotas/auto-plan carry.
+ */
+export function coreProteins(category: string): string[] {
+  return category === 'fish & meat' ? ['fish', 'meat'] : [category];
+}
 
 /**
  * First matching category tag wins (fish > meat > vegetarian > legume);
@@ -51,6 +62,7 @@ export function looksLikeDessert(dishType: string | null | undefined, tags: read
 export function spineColor(category: ProteinCategory | null, colors: Palette): string {
   switch (category) {
     case 'fish':
+    case 'fish & meat': // single-color fallback; CategoryDot splits the two tones
       return colors.spineFish;
     case 'meat':
       return colors.spineMeat;
@@ -87,21 +99,27 @@ export function proteinCategoryFromIngredients(
     const category = match?.ingredient.category;
     if (category && PROTEIN_SET.has(category)) found.add(category);
   }
+  if (found.has('fish') && found.has('meat')) return 'fish & meat';
   for (const category of PROTEIN_CATEGORIES) {
     if (found.has(category)) return category;
   }
   return null;
 }
 
-/** Ingredient-derived category wins; tags are the fallback (nothing regresses). */
+/**
+ * An explicit category tag is a manual override and wins; ingredient
+ * derivation covers the untagged (Auto) case — matching the byline picker,
+ * where "Auto" removes the tag.
+ */
 export function resolveProteinCategory(
   tags: readonly string[],
   ingredients: readonly NamedIngredient[] | null | undefined,
   index: CanonicalIndex | null
 ): ProteinCategory | null {
+  const tagged = deriveCategory(tags);
+  if (tagged) return tagged;
   if (index && ingredients && ingredients.length > 0) {
-    const derived = proteinCategoryFromIngredients(ingredients, index);
-    if (derived) return derived;
+    return proteinCategoryFromIngredients(ingredients, index);
   }
-  return deriveCategory(tags);
+  return null;
 }

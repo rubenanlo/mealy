@@ -1,4 +1,4 @@
-import { deriveCategory, looksLikeDessert, spineColor, proteinCategoryFromIngredients, resolveProteinCategory } from '../category';
+import { coreProteins, deriveCategory, looksLikeDessert, spineColor, proteinCategoryFromIngredients, resolveProteinCategory } from '../category';
 import { palettes } from '../theme';
 import { buildCanonicalIndex, type CanonicalIngredient } from '../canonical';
 
@@ -19,6 +19,21 @@ describe('deriveCategory', () => {
     expect(deriveCategory(['legume', 'fish'])).toBe('fish');
     expect(deriveCategory(['vegetarian', 'meat'])).toBe('meat');
   });
+
+  it('fish & meat outranks its two halves', () => {
+    expect(deriveCategory(['fish & meat'])).toBe('fish & meat');
+    expect(deriveCategory(['fish', 'fish & meat', 'rapide'])).toBe('fish & meat');
+  });
+});
+
+describe('coreProteins', () => {
+  it('expands the combined category into its halves', () => {
+    expect(coreProteins('fish & meat')).toEqual(['fish', 'meat']);
+  });
+  it('is the identity for plain categories', () => {
+    expect(coreProteins('fish')).toEqual(['fish']);
+    expect(coreProteins('legume')).toEqual(['legume']);
+  });
 });
 
 describe('spineColor', () => {
@@ -28,6 +43,7 @@ describe('spineColor', () => {
     expect(spineColor('meat', colors)).toBe(colors.spineMeat);
     expect(spineColor('vegetarian', colors)).toBe(colors.spineVeg);
     expect(spineColor('legume', colors)).toBe(colors.spineLegume);
+    expect(spineColor('fish & meat', colors)).toBe(colors.spineFish);
   });
 
   it('is transparent for unknown categories — absence is information', () => {
@@ -55,12 +71,17 @@ describe('proteinCategoryFromIngredients', () => {
       proteinCategoryFromIngredients([{ raw: '400 g de boeuf haché', name: 'boeuf' }], INDEX)
     ).toBe('meat');
   });
-  it('fish outranks meat (priority order)', () => {
+  it('fish plus meat in the same recipe derives the combined category', () => {
     expect(
       proteinCategoryFromIngredients(
         [{ raw: '200 g de boeuf', name: 'boeuf' }, { raw: '1 pavé de saumon', name: 'saumon' }],
         INDEX
       )
+    ).toBe('fish & meat');
+  });
+  it('fish alone stays plain fish', () => {
+    expect(
+      proteinCategoryFromIngredients([{ raw: '1 pavé de saumon', name: 'saumon' }], INDEX)
     ).toBe('fish');
   });
   it('returns null when only non-protein ingredients match', () => {
@@ -72,8 +93,18 @@ describe('proteinCategoryFromIngredients', () => {
 });
 
 describe('resolveProteinCategory', () => {
-  it('ingredient-derived category wins over tags', () => {
-    expect(resolveProteinCategory(['vegetarian'], [{ raw: '1 saumon', name: 'saumon' }], INDEX)).toBe('fish');
+  it('an explicit category tag wins over ingredient derivation (manual override)', () => {
+    expect(resolveProteinCategory(['vegetarian'], [{ raw: '1 saumon', name: 'saumon' }], INDEX)).toBe('vegetarian');
+  });
+  it('derives from ingredients when no tag is set (Auto)', () => {
+    expect(resolveProteinCategory([], [{ raw: '1 saumon', name: 'saumon' }], INDEX)).toBe('fish');
+    expect(
+      resolveProteinCategory(
+        [],
+        [{ raw: '200 g de boeuf', name: 'boeuf' }, { raw: '1 saumon', name: 'saumon' }],
+        INDEX
+      )
+    ).toBe('fish & meat');
   });
   it('falls back to tags when no ingredient is a protein', () => {
     expect(resolveProteinCategory(['meat'], [{ raw: '2 carottes', name: 'carotte' }], INDEX)).toBe('meat');

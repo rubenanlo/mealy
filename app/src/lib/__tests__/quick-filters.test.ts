@@ -43,6 +43,14 @@ describe('matchesQuickFilters', () => {
   });
 });
 
+describe('fish & meat category', () => {
+  it('satisfies both the Fish chip and the Meat chip', () => {
+    expect(matchesQuickFilters({ ...base, category: 'fish & meat' }, set('fish'))).toBe(true);
+    expect(matchesQuickFilters({ ...base, category: 'fish & meat' }, set('meat'))).toBe(true);
+    expect(matchesQuickFilters({ ...base, category: 'fish & meat' }, set('vegetarian'))).toBe(false);
+  });
+});
+
 describe('vegan category', () => {
   it('satisfies the Vegetarian chip (vegan ⊂ vegetarian)', () => {
     expect(matchesQuickFilters({ ...base, category: 'vegan' }, set('vegetarian'))).toBe(true);

@@ -1,4 +1,4 @@
-import type { ProteinCategory } from '@/lib/category';
+import { coreProteins, type ProteinCategory } from '@/lib/category';
 
 /** Home-feed quick filters (spec Part 2). Stackable; protein chips OR
  *  within their group, everything else ANDs across groups. */
@@ -48,9 +48,13 @@ export function matchesQuickFilters(
   if (active.has('needsReview') && !input.needs_review) return false;
   const proteins = PROTEIN_FILTERS.filter((f) => active.has(f));
   if (proteins.length > 0) {
-    // Vegan recipes satisfy the Vegetarian chip (vegan ⊂ vegetarian).
-    const effective = input.category === 'vegan' ? 'vegetarian' : input.category;
-    if (!proteins.includes(effective as QuickFilter)) return false;
+    if (input.category === null) return false;
+    // Vegan recipes satisfy the Vegetarian chip (vegan ⊂ vegetarian);
+    // 'fish & meat' satisfies both the Fish and the Meat chip.
+    const effective = new Set(
+      input.category === 'vegan' ? ['vegetarian'] : coreProteins(input.category)
+    );
+    if (!proteins.some((f) => effective.has(f))) return false;
   }
   return true;
 }

@@ -1,4 +1,5 @@
 import type { FodmapTier } from '@/lib/canonical';
+import { coreProteins } from '@/lib/category';
 import type { MealSlot } from '@/lib/plan';
 
 /**
@@ -97,29 +98,35 @@ export function autoFillWeek(
 
   const quotas = options.quotas ?? [];
   const counts: Record<string, number> = { ...(options.existingCounts ?? {}) };
-  const atMax = (category: string | null) => {
-    if (category === null) return false;
-    const quota = quotas.find((q) => q.category === category);
-    return quota?.max != null && (counts[category] ?? 0) >= quota.max;
-  };
-  const inDeficit = (category: string | null) => {
-    if (category === null) return false;
-    const quota = quotas.find((q) => q.category === category);
-    return quota !== undefined && (counts[category] ?? 0) < quota.min;
-  };
+  // 'fish & meat' meals live in both core-protein buckets: they hit either
+  // max, satisfy either deficit, and space against both fish and meat.
+  const cores = (category: string | null) => (category === null ? [] : coreProteins(category));
+  const atMax = (category: string | null) =>
+    cores(category).some((core) => {
+      const quota = quotas.find((q) => q.category === core);
+      return quota?.max != null && (counts[core] ?? 0) >= quota.max;
+    });
+  const inDeficit = (category: string | null) =>
+    cores(category).some((core) => {
+      const quota = quotas.find((q) => q.category === core);
+      return quota !== undefined && (counts[core] ?? 0) < quota.min;
+    });
 
-  /** Slot indexes occupied per category — manual meals count from the start. */
+  /** Slot indexes occupied per core protein — manual meals count from the start. */
   const occupied = new Map<string, number[]>();
+  const occupy = (category: string | null, at: number) => {
+    for (const core of cores(category)) {
+      const list = occupied.get(core) ?? [];
+      list.push(at);
+      occupied.set(core, list);
+    }
+  };
   for (const meal of options.existing ?? []) {
-    if (meal.category === null) continue;
-    const list = occupied.get(meal.category) ?? [];
-    list.push(slotIndex(meal.day, meal.slot));
-    occupied.set(meal.category, list);
+    occupy(meal.category, slotIndex(meal.day, meal.slot));
   }
   const distanceToSame = (category: string | null, at: number): number => {
-    if (category === null) return MAX_DISTANCE;
-    const spots = occupied.get(category);
-    if (!spots || spots.length === 0) return MAX_DISTANCE;
+    const spots = cores(category).flatMap((core) => occupied.get(core) ?? []);
+    if (spots.length === 0) return MAX_DISTANCE;
     return Math.min(...spots.map((s) => Math.abs(s - at)));
   };
 
@@ -172,12 +179,10 @@ export function autoFillWeek(
       }
     }
     used.add(pick.id);
-    if (pick.category !== null) {
-      counts[pick.category] = (counts[pick.category] ?? 0) + 1;
-      const list = occupied.get(pick.category) ?? [];
-      list.push(slotIndex(cell.day, cell.slot));
-      occupied.set(pick.category, list);
+    for (const core of cores(pick.category)) {
+      counts[core] = (counts[core] ?? 0) + 1;
     }
+    occupy(pick.category, slotIndex(cell.day, cell.slot));
     assignments.push({ day: cell.day, slot: cell.slot, recipeId: pick.id });
   }
 

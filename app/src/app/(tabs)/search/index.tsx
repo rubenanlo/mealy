@@ -6,7 +6,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { RecipeRow, type RecipeListItem } from '@/components/recipe-cards';
 import { EmptyState, Field, Hairline, LinkButton, Loading, Muted, Title } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
-import { resolveProteinCategory, type ProteinCategory } from '@/lib/category';
+import { coreProteins, resolveProteinCategory, type ProteinCategory } from '@/lib/category';
 import { useI18n, type Dict } from '@/lib/i18n';
 import { supabase } from '@/lib/supabase';
 import { titleMatches } from '@/lib/search-text';
@@ -23,6 +23,7 @@ const FILTERS: { value: Filter; labelKey: keyof Dict['search'] }[] = [
   { value: 'all', labelKey: 'filterAll' },
   { value: 'fish', labelKey: 'filterFish' },
   { value: 'meat', labelKey: 'filterMeat' },
+  { value: 'fish & meat', labelKey: 'filterFishMeat' },
   { value: 'vegan', labelKey: 'filterVegan' },
   { value: 'vegetarian', labelKey: 'filterVegetarian' },
   { value: 'legume', labelKey: 'filterLegume' },
@@ -129,9 +130,11 @@ export default function SearchScreen() {
         return (recipe.meal_type ?? 'main') === filter;
       }
       const category = resolveProteinCategory(recipe.tags, recipe.ingredients, index);
+      if (category === null) return false;
       // Vegan recipes satisfy the Vegetarian chip (vegan ⊂ vegetarian).
       if (filter === 'vegetarian') return category === 'vegetarian' || category === 'vegan';
-      return category === filter;
+      // 'fish & meat' recipes satisfy the Fish and Meat chips too.
+      return category === filter || coreProteins(category).includes(filter);
     });
   }, [recipes, query, filter, index]);
 

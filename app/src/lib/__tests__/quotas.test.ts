@@ -72,4 +72,25 @@ describe('quotaProgress', () => {
     );
     expect(progress[0].planned).toBe(1);
   });
+
+  it('a fish & meat recipe advances both the fish and the meat quota', () => {
+    const both = [
+      { category: 'fish', min: 2, max: null },
+      { category: 'meat', min: 2, max: null },
+    ];
+    const byCategory = quotaProgress(
+      [{ recipe_id: 'r1', person_ids: [] }],
+      'p1',
+      [{ id: 'r1', tags: [], category: 'fish & meat' }],
+      both
+    );
+    expect(byCategory.map((r) => r.planned)).toEqual([1, 1]);
+    const byTag = quotaProgress(
+      [{ recipe_id: 'r1', person_ids: [] }],
+      'p1',
+      [{ id: 'r1', tags: ['fish & meat'], category: null }],
+      both
+    );
+    expect(byTag.map((r) => r.planned)).toEqual([1, 1]);
+  });
 });

@@ -56,6 +56,7 @@ export function MetaLine({
   const index = useCanonicalIndex();
   const category = resolveProteinCategory(recipe.tags, recipe.ingredients, index);
   const categoryLabels: Record<ProteinCategory, string> = {
+    'fish & meat': d.components.catFishMeat,
     fish: d.components.catFish,
     meat: d.components.catMeat,
     vegan: d.components.catVegan,
