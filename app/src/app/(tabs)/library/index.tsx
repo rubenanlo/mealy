@@ -19,11 +19,7 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 
-import {
-  AddToWeekSheet,
-  confirmRemoveFromWeek,
-  removeRecipeFromCurrentWeek,
-} from "@/components/add-to-week";
+import { AddToWeekSheet } from "@/components/add-to-week";
 import { QuickFilters } from "@/components/quick-filters";
 import {
   buildUploaderOptions,
@@ -35,10 +31,9 @@ import {
   Hero,
   RecipeImage,
   RecipeRow,
-  ThisWeekCard,
   type RecipeListItem,
-  type WeekStripItem,
 } from "@/components/recipe-cards";
+import { UpcomingMealsStrip } from "@/components/upcoming-strip";
 import { SaveSheet } from "@/components/save-sheet";
 import {
   EmptyState,
@@ -74,7 +69,13 @@ import {
   type FolderRow,
   type FolderSummary,
 } from "@/lib/folders";
-import { addWeeks, weekStart } from "@/lib/plan";
+import { buildCells, type EntryRow, type RecipeLite } from "@/lib/meal-cells";
+import {
+  isMealUpcoming,
+  normalizeMealTimes,
+  type MealTimes,
+} from "@/lib/meal-times";
+import { addWeeks, dayDate, weekStart } from "@/lib/plan";
 import { matchesQuickFilters, type QuickFilter } from "@/lib/quick-filters";
 import { supabase } from "@/lib/supabase";
 import { localizedTitle } from "@/lib/translations";
@@ -112,9 +113,10 @@ export default function HomeScreen() {
     [householdRecipes, uploaderFilter],
   );
   const [plannedRecentIds, setPlannedRecentIds] = useState<Set<string>>(new Set());
-  const [weekEntries, setWeekEntries] = useState<
-    { id: string; recipe_id: string | null; custom_title: string | null }[]
-  >([]);
+  const [weekEntries, setWeekEntries] = useState<EntryRow[]>([]);
+  const [mealTimes, setMealTimes] = useState<MealTimes>(normalizeMealTimes(null));
+  const [eaterCount, setEaterCount] = useState(0);
+  const [personNameById, setPersonNameById] = useState<Map<string, string>>(new Map());
   const [sheetRecipe, setSheetRecipe] = useState<RecipeListItem | null>(null);
   const [saveRecipe, setSaveRecipe] = useState<RecipeListItem | null>(null);
   const [folders, setFolders] = useState<FolderSummary[]>([]);
@@ -156,10 +158,11 @@ export default function HomeScreen() {
       return next;
     });
 
+  const weekIso = weekStart(new Date());
+
   const load = useCallback(async () => {
     // A deletion elsewhere invalidated this list: spinner instead of stale rows.
     if (consumeInvalidation("library")) setLoaded(false);
-    const weekIso = weekStart(new Date());
     const [
       { data: recipeRows },
       { data: entryRows },
@@ -184,7 +187,7 @@ export default function HomeScreen() {
         .eq("meal_plans.household_id", householdId),
       supabase
         .from("households")
-        .select("suggested_rest_weeks")
+        .select("suggested_rest_weeks, meal_times")
         .eq("id", householdId)
         .single(),
       supabase
@@ -204,7 +207,7 @@ export default function HomeScreen() {
         .eq("household_id", householdId),
       supabase
         .from("persons")
-        .select("id, name")
+        .select("id, name, is_employee")
         .eq("household_id", householdId),
       loadActiveCaptureJobs(householdId),
     ]);
@@ -265,23 +268,27 @@ export default function HomeScreen() {
         ),
       );
     }
+    if (hh) setMealTimes(normalizeMealTimes(hh.meal_times));
+    const persons = ((personRows ?? []) as {
+      id: string;
+      name: string;
+      is_employee: boolean;
+    }[]);
+    setEaterCount(persons.filter((p) => !p.is_employee).length);
+    setPersonNameById(new Map(persons.map((p) => [p.id, p.name])));
     if (weekPlan) {
       const { data: weekRows } = await supabase
         .from("plan_entries")
-        .select("id, recipe_id, custom_title")
+        .select(
+          "meal_plan_id, day, slot, recipe_id, custom_title, assigned_cook, person_ids, guest_count",
+        )
         .eq("meal_plan_id", weekPlan.id);
-      setWeekEntries(
-        (weekRows as {
-          id: string;
-          recipe_id: string | null;
-          custom_title: string | null;
-        }[]) ?? [],
-      );
+      setWeekEntries((weekRows as EntryRow[]) ?? []);
     } else {
       setWeekEntries([]);
     }
     setLoaded(true);
-  }, [householdId, locale, d.library.familyMember]);
+  }, [householdId, locale, weekIso, d.library.familyMember]);
 
   useFocusEffect(
     useCallback(() => {
@@ -364,44 +371,31 @@ export default function HomeScreen() {
     });
   }, [recipes, activeFilters, filterInputs]);
 
-  // Recipe entries dedupe by recipe; custom meals appear once per entry.
-  const thisWeek = useMemo<WeekStripItem[]>(() => {
-    const byId = new Map(recipes.map((r) => [r.id, r]));
-    const items: WeekStripItem[] = [];
-    const seen = new Set<string>();
-    for (const entry of weekEntries) {
-      if (entry.recipe_id) {
-        if (seen.has(entry.recipe_id)) continue;
-        seen.add(entry.recipe_id);
-        const recipe = byId.get(entry.recipe_id);
-        if (recipe) {
-          items.push({
-            key: `r-${recipe.id}`,
-            title: recipe.title,
-            path: recipe.cover_image_path,
-            recipeId: recipe.id,
-          });
-        }
-      } else if (entry.custom_title) {
-        items.push({
-          key: `c-${entry.id}`,
-          title: entry.custom_title,
-          path: null,
-          recipeId: null,
-        });
-      }
-    }
-    return items;
-  }, [recipes, weekEntries]);
-  const thisWeekSet = useMemo(
-    () =>
-      new Set(
-        weekEntries
-          .map((e) => e.recipe_id)
-          .filter((id): id is string => id !== null),
-      ),
-    [weekEntries],
+  /** Same strip as the plan overview: this week's meals from now onward. */
+  const todayIndex = Math.floor(
+    (new Date().setHours(0, 0, 0, 0) - dayDate(weekIso, 0).getTime()) / 86_400_000,
   );
+  const upcoming = useMemo(() => {
+    if (weekEntries.length === 0) return [];
+    const recipesById = new Map<string, RecipeLite>(
+      householdRecipes.map((r) => [
+        r.id,
+        { id: r.id, title: r.title, cover_image_path: r.cover_image_path ?? null },
+      ]),
+    );
+    const cells = buildCells(
+      weekEntries,
+      recipesById,
+      eaterCount,
+      d.plan.recipeFallback,
+      personNameById,
+    );
+    const now = new Date();
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    return cells.filter((c) =>
+      isMealUpcoming(c.day, c.slot, todayIndex, nowMinutes, mealTimes),
+    );
+  }, [weekEntries, householdRecipes, eaterCount, personNameById, mealTimes, todayIndex, d]);
 
   const openRecipe = (id: string) => router.push(`/recipe/${id}`);
 
@@ -491,18 +485,6 @@ export default function HomeScreen() {
       });
     } else {
       notify(d.library.newFolder, d.library.newFolderHint);
-    }
-  };
-
-  /** Calendar tap: plan it, or confirm-remove when already in this week (v3). */
-  const onPlan = (recipe: { id: string; title: string }) => {
-    if (thisWeekSet.has(recipe.id)) {
-      confirmRemoveFromWeek(recipe.title, () => {
-        void removeRecipeFromCurrentWeek(householdId, recipe.id).then(load);
-      });
-    } else {
-      const full = recipes.find((r) => r.id === recipe.id);
-      if (full) setSheetRecipe(full);
     }
   };
 
@@ -715,41 +697,28 @@ export default function HomeScreen() {
               </View>
             ) : null}
 
-            {thisWeek.length > 0 ? (
+            {upcoming.length > 0 ? (
               <View style={{ paddingTop: 16, gap: 12 }}>
                 <SectionHeader
                   title={d.library.thisWeek}
                   linkLabel={d.library.seeAll}
                   onLinkPress={() => router.navigate("/plan")}
                 />
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={carouselContent}
-                  style={carouselStyle}
-                >
-                  {thisWeek.map((item) => (
-                    <ThisWeekCard
-                      key={item.key}
-                      item={item}
-                      // v3.2: recipe entries open the sheet; custom meals open the week.
-                      onPress={() =>
-                        item.recipeId
-                          ? openRecipe(item.recipeId)
-                          : router.navigate("/plan")
-                      }
-                      onBookmark={
-                        item.recipeId
-                          ? () =>
-                              onPlan({
-                                id: item.recipeId!,
-                                title: item.title,
-                              })
-                          : undefined
-                      }
-                    />
-                  ))}
-                </ScrollView>
+                <UpcomingMealsStrip
+                  cells={upcoming}
+                  todayIndex={todayIndex}
+                  onPressCell={(cell) =>
+                    cell.recipeIds.length === 1
+                      ? router.push({
+                          pathname: "/recipe/[id]",
+                          params: {
+                            id: cell.recipeIds[0],
+                            planServings: String(cell.servings[0]),
+                          },
+                        })
+                      : router.push("/plan/upcoming")
+                  }
+                />
                 <Hairline />
               </View>
             ) : null}

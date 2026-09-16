@@ -2,7 +2,7 @@ import { fireEvent, render, within } from '@testing-library/react-native';
 
 import { ThemeProvider } from '@/lib/theme';
 
-import { CarouselCard, Hero, ThisWeekCard } from '../recipe-cards';
+import { CarouselCard, Hero } from '../recipe-cards';
 
 jest.mock('@/lib/use-canonical', () => ({ useCanonicalIndex: () => null }));
 
@@ -51,18 +51,4 @@ describe('recipe cards', () => {
     expect(getByLabelText('Save to a folder')).toBeTruthy();
   });
 
-  it('ThisWeekCard: the remove chip stays but as a sibling of the open pressable', () => {
-    const onBookmark = jest.fn();
-    const { getByLabelText } = wrap(
-      <ThisWeekCard
-        item={{ key: 'k', title: 'Soup', path: null, recipeId: 'r1' }}
-        onPress={() => {}}
-        onBookmark={onBookmark}
-      />
-    );
-    const card = getByLabelText('Open Soup');
-    expect(within(card).queryByLabelText('Remove Soup from this week')).toBeNull();
-    fireEvent.press(getByLabelText('Remove Soup from this week'));
-    expect(onBookmark).toHaveBeenCalledTimes(1);
-  });
 });

@@ -5,6 +5,7 @@ import { Pressable, ScrollView, Text, View, type GestureResponderEvent } from 'r
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RecipeImage } from '@/components/recipe-cards';
+import { UpcomingMealsStrip } from '@/components/upcoming-strip';
 import {
   Body,
   Button,
@@ -319,88 +320,18 @@ export default function WeeksScreen() {
             onLinkPress={() => openWeek(currentWeek)}
           />
           {upcoming.length > 0 ? (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={{ marginHorizontal: -screenPadding }}
-              contentContainerStyle={{ gap: 14, paddingHorizontal: screenPadding }}
-            >
-              {upcoming.map((cell, i) => (
-                <Pressable
-                  key={`${cell.day}-${cell.slot}`}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${d.common.days[cell.day]} ${slotLabel(cell.slot)}: ${cell.titles.join(', ')}`}
-                  onPress={() =>
-                    cell.recipeIds.length === 1
-                      ? router.push({
-                          pathname: '/recipe/[id]',
-                          params: { id: cell.recipeIds[0], planServings: String(cell.servings[0]) },
-                        })
-                      : router.push('/plan/upcoming')
-                  }
-                  style={({ pressed }) => ({ width: 150, opacity: pressed ? 0.7 : 1 })}
-                >
-                  {cell.covers.length > 1 ? (
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        flexWrap: 'wrap',
-                        justifyContent: 'space-between',
-                        alignContent: 'space-between',
-                        width: 150,
-                        height: 110,
-                        borderRadius: radius.card,
-                        overflow: 'hidden',
-                      }}
-                    >
-                      {[0, 1, 2, 3].map((n) => (
-                        <RecipeImage
-                          key={n}
-                          path={cell.covers[n] ?? null}
-                          style={{ width: '49%', height: '48.5%' }}
-                          iconSize={16}
-                        />
-                      ))}
-                    </View>
-                  ) : (
-                    <RecipeImage
-                      path={cell.covers[0] ?? null}
-                      style={{ width: 150, height: 110, borderRadius: radius.card }}
-                    />
-                  )}
-                  <View style={{ paddingTop: 8, gap: 2 }}>
-                    <Eyebrow style={i === 0 ? { color: colors.saffron } : undefined}>
-                      {`${cell.day === todayIndex ? d.plan.today : d.common.days[cell.day]} · ${slotLabel(cell.slot)}`}
-                      {i === 0 ? ` · ${d.plan.next}` : ''}
-                    </Eyebrow>
-                    <Text
-                      numberOfLines={2}
-                      style={{
-                        color: colors.text,
-                        fontSize: fontSize.cardTitle,
-                        lineHeight: 21,
-                        fontFamily: fonts.displaySemi,
-                      }}
-                    >
-                      {cell.titles.join(' · ')}
-                    </Text>
-                    {/* Who eats, per dish in title order; hidden when every dish is for everyone. */}
-                    {cell.eaters.some((names) => names.length > 0) ? (
-                      <Muted numberOfLines={1}>
-                        {cell.eaters
-                          .map((names) =>
-                            names.length > 0 ? names.join(', ') : d.plan.wholeHousehold
-                          )
-                          .join(' · ')}
-                      </Muted>
-                    ) : null}
-                    {cell.recipeIds.length === 1 ? (
-                      <Muted>{fmt(d.plan.serves, { n: cell.servings[0] })}</Muted>
-                    ) : null}
-                  </View>
-                </Pressable>
-              ))}
-            </ScrollView>
+            <UpcomingMealsStrip
+              cells={upcoming}
+              todayIndex={todayIndex}
+              onPressCell={(cell) =>
+                cell.recipeIds.length === 1
+                  ? router.push({
+                      pathname: '/recipe/[id]',
+                      params: { id: cell.recipeIds[0], planServings: String(cell.servings[0]) },
+                    })
+                  : router.push('/plan/upcoming')
+              }
+            />
           ) : (
             <Pressable
               accessibilityRole="button"

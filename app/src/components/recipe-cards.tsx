@@ -3,7 +3,7 @@ import { Image } from 'expo-image';
 import { useMemo } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
-import { BookmarkChip, CalendarChip, CategoryDot, Hairline, Muted } from '@/components/ui';
+import { BookmarkChip, CategoryDot, Hairline, Muted } from '@/components/ui';
 import { matchCanonical, normalizeRaw } from '@/lib/canonical';
 import { resolveProteinCategory, type ProteinCategory } from '@/lib/category';
 import { computeRecipeFodmap, recipeFodmapTier } from '@/lib/fodmap';
@@ -265,66 +265,6 @@ export function CarouselCard({
         accessibilityLabel={saved ? d.components.savedToFolders : d.components.saveToFolder}
         style={{ top: 6, right: 6 }}
       />
-    </View>
-  );
-}
-
-/** One "This week" strip item: a recipe or a free-text meal. */
-export interface WeekStripItem {
-  key: string;
-  title: string;
-  path: string | null;
-  /** Recipe id when this is a recipe entry (enables the bookmark chip). */
-  recipeId: string | null;
-}
-
-export function ThisWeekCard({
-  item,
-  onPress,
-  onBookmark,
-}: {
-  item: WeekStripItem;
-  onPress: () => void;
-  /** Present only for recipe entries. */
-  onBookmark?: () => void;
-}) {
-  const { colors } = useTheme();
-  const { d } = useI18n();
-  // Chip as a sibling of the pressable — see the Hero note.
-  return (
-    <View style={{ width: 110 }}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={fmt(d.components.open, { title: item.title })}
-        onPress={onPress}
-        style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
-      >
-        <RecipeImage
-          path={item.path}
-          style={{ width: 110, height: 82, borderRadius: radius.card }}
-          iconSize={22}
-        />
-        <Text
-          numberOfLines={2}
-          style={{
-            color: colors.text,
-            fontSize: fontSize.small,
-            lineHeight: 19,
-            fontFamily: fonts.uiMedium,
-            paddingTop: 6,
-          }}
-        >
-          {item.title}
-        </Text>
-      </Pressable>
-      {onBookmark ? (
-        <CalendarChip
-          planned
-          onPress={onBookmark}
-          accessibilityLabel={fmt(d.components.removeFromWeek, { title: item.title })}
-          style={{ top: 4, right: 4 }}
-        />
-      ) : null}
     </View>
   );
 }
