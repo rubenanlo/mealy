@@ -1170,7 +1170,13 @@ export default function PlanScreen() {
                 />
               </>
             ) : (
-              <View style={{ flex: 1, gap: 20 }}>
+              <View style={{ flex: 1 }}>
+                {/* The form scrolls; the actions below stay pinned, so the
+                    close button is reachable however tall the content gets. */}
+                <ScrollView
+                  contentContainerStyle={{ gap: 20, paddingBottom: 20 }}
+                  keyboardShouldPersistTaps="handled"
+                >
                 {/* The picked meal, presented like everywhere else in the app. */}
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
                   {pickedRecipe ? (
@@ -1320,7 +1326,7 @@ export default function PlanScreen() {
                   />
                 </View>
 
-                <View style={{ flex: 1 }} />
+                </ScrollView>
                 <View style={{ gap: 8 }}>
                   <LinkButton
                     label={d.plan.pickSomethingElse}
