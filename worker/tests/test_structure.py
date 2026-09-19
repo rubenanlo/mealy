@@ -150,3 +150,37 @@ async def test_structure_images_returns_canonical_and_ocr_text(monkeypatch):
     assert len(image_blocks) == 2
     assert image_blocks[0]["source"]["media_type"] == "image/png"
     assert image_blocks[1]["source"]["media_type"] == "image/jpeg"
+
+
+SPOKEN = (
+    "Crea una receta para hacer cordero a la plancha con pimientos del "
+    "padrón. Al cordero se le pone romero seco, le pones sal, le pones "
+    "pimienta negra. Luego pones una sartén a fuego fuerte, esperas a que "
+    "esté caliente, le pones el aceite y luego el cordero. Stick to what i "
+    "say do not add anything else"
+)
+
+
+def test_prompt_covers_spoken_descriptions_without_licensing_invention():
+    """A dictated description must still structure — but not get padded out."""
+    prompt = structure.SYSTEM_PROMPT.lower()
+    assert "never invent" in prompt
+    # Prose/dictation is an explicitly handled shape, not just formatted recipes.
+    assert "dictation" in prompt or "transcript" in prompt
+    # Missing amounts/times stay missing rather than being filled with typicals.
+    assert "null when no amount" in prompt
+    # Asides addressed to the extractor are framing, never steps.
+    assert "never emit an aside as a step" in prompt
+
+
+async def test_spoken_description_reaches_the_model_verbatim(monkeypatch):
+    fake = make_fake(monkeypatch, TOOL_REPLY)
+    await structure.structure_text(Verbatim(kind="paste", pasted=SPOKEN))
+    call = fake.calls[0]
+    user_text = "".join(
+        block["text"]
+        for msg in call["messages"]
+        for block in msg["content"]
+        if block.get("type") == "text"
+    )
+    assert SPOKEN in user_text, "dictated text must reach the model unmodified"
