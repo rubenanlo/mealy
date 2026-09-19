@@ -189,18 +189,39 @@ export default function WeeksScreen() {
     return [...thisWeek, ...future];
   }, [plans, entries, recipesById, currentWeek, mealTimes, eaterCount, personNameById, d, locale]);
 
-  /** This week's meals the employee cooks (whole week, not just upcoming). */
-  const employeeCells = useMemo(() => {
+  /**
+   * The employee's meals: this week in full (not just upcoming), then every
+   * future planned week in order, so assignments made ahead stay visible.
+   */
+  const employeeCells = useMemo<UpcomingCell[]>(() => {
+    const cellsOf = (planId: string) =>
+      buildCells(
+        entries.filter((e) => e.meal_plan_id === planId && e.assigned_cook === 'employee'),
+        recipesById,
+        eaterCount,
+        d.plan.recipeFallback,
+        personNameById
+      );
     const plan = plans.find((p) => p.week_start === currentWeek);
-    if (!plan) return [];
-    return buildCells(
-      entries.filter((e) => e.meal_plan_id === plan.id && e.assigned_cook === 'employee'),
-      recipesById,
-      eaterCount,
-      d.plan.recipeFallback,
-      personNameById
-    );
-  }, [plans, entries, recipesById, currentWeek, eaterCount, personNameById, d]);
+    const thisWeek = plan
+      ? cellsOf(plan.id).map((c) => ({ ...c, weekIso: currentWeek }))
+      : [];
+    const future = plans
+      .filter((p) => p.week_start > currentWeek)
+      .sort((a, b) => (a.week_start < b.week_start ? -1 : 1))
+      .flatMap((p) =>
+        cellsOf(p.id).map((c) => ({
+          ...c,
+          weekIso: p.week_start,
+          // Future weeks repeat the weekday names, so date the eyebrow.
+          dayLabel: dayDate(p.week_start, c.day).toLocaleDateString(locale, {
+            weekday: 'long',
+            day: 'numeric',
+          }),
+        }))
+      );
+    return [...thisWeek, ...future];
+  }, [plans, entries, recipesById, currentWeek, eaterCount, personNameById, d, locale]);
 
   /** Planned weeks after the current one, soonest first. */
   const futureWeeks = useMemo(
@@ -417,7 +438,7 @@ export default function WeeksScreen() {
           ))}
         </View>
 
-        {/* The employee's cooking list for this week (mirrors her web link). */}
+        {/* The employee's cooking list; her web link shows this week only. */}
         {employeeNames.length > 0 && employeeCells.length > 0 ? (
           <View style={{ gap: 12, paddingTop: 8 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -448,24 +469,28 @@ export default function WeeksScreen() {
               style={{ marginHorizontal: -screenPadding }}
               contentContainerStyle={{ gap: 14, paddingHorizontal: screenPadding }}
             >
-              {employeeCells.map((cell) => (
+              {employeeCells.map((cell) => {
+                // Only this week's list goes stale after the cooking day;
+                // future weeks stay live.
+                const done = employeeWeekDone && cell.weekIso === currentWeek;
+                return (
                 <Pressable
-                  key={`emp-${cell.day}-${cell.slot}`}
+                  key={`emp-${cell.weekIso}-${cell.day}-${cell.slot}`}
                   accessibilityRole="button"
-                  accessibilityState={{ disabled: employeeWeekDone }}
-                  disabled={employeeWeekDone}
-                  accessibilityLabel={`${d.common.days[cell.day]} ${slotLabel(cell.slot)}: ${cell.titles.join(', ')}`}
+                  accessibilityState={{ disabled: done }}
+                  disabled={done}
+                  accessibilityLabel={`${cell.dayLabel ?? d.common.days[cell.day]} ${slotLabel(cell.slot)}: ${cell.titles.join(', ')}`}
                   onPress={() =>
                     cell.recipeIds.length === 1
                       ? router.push({
                           pathname: '/recipe/[id]',
                           params: { id: cell.recipeIds[0], planServings: String(cell.servings[0]) },
                         })
-                      : openWeek(currentWeek)
+                      : openWeek(cell.weekIso ?? currentWeek)
                   }
                   style={({ pressed }) => ({
                     width: 150,
-                    opacity: employeeWeekDone ? 0.4 : pressed ? 0.7 : 1,
+                    opacity: done ? 0.4 : pressed ? 0.7 : 1,
                   })}
                 >
                   <RecipeImage
@@ -474,7 +499,7 @@ export default function WeeksScreen() {
                   />
                   <View style={{ paddingTop: 8, gap: 2 }}>
                     <Eyebrow>
-                      {`${cell.day === todayIndex ? d.plan.today : d.common.days[cell.day]} · ${slotLabel(cell.slot)}`}
+                      {`${cell.dayLabel ?? (cell.day === todayIndex ? d.plan.today : d.common.days[cell.day])} · ${slotLabel(cell.slot)}`}
                     </Eyebrow>
                     <Text
                       numberOfLines={2}
@@ -489,7 +514,8 @@ export default function WeeksScreen() {
                     </Text>
                   </View>
                 </Pressable>
-              ))}
+                );
+              })}
             </ScrollView>
 
             {/* Extra checklist for the employee, mirrored on her web link. */}
