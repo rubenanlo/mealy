@@ -1108,6 +1108,9 @@ export default function RecipeSheetScreen() {
   };
   const showPinnedBar = pinnedVisible;
   const actionBottom = (Platform.OS === 'ios' ? insets.bottom : insets.bottom) + 16;
+  // While a list is in edit mode the floating action covers the editor's own
+  // Add/Save controls — and "add to this week" is the wrong verb mid-edit.
+  const editingLists = ingredientsDraft !== null || stepsDraft !== null;
 
   return (
     <RecipeSheet onDismiss={dismiss}>
@@ -1770,6 +1773,7 @@ export default function RecipeSheetScreen() {
         ) : null}
 
         {/* v3.2: primary action floats inside the sheet, above its bottom edge */}
+        {editingLists ? null : (
         <View
           pointerEvents="box-none"
           style={{
@@ -1808,6 +1812,7 @@ export default function RecipeSheetScreen() {
             />
           )}
         </View>
+        )}
       </View>
 
       <AddToWeekSheet
