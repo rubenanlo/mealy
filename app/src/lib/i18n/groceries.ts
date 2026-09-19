@@ -33,6 +33,8 @@ const en = {
   assignA11y: 'Assign {name} to someone',
   assignTitle: 'Who will get this?',
   nobody: 'Nobody',
+  collapseSection: 'Collapse {name}',
+  expandSection: 'Expand {name}',
 };
 
 const es: typeof en = {
@@ -67,6 +69,8 @@ const es: typeof en = {
   assignA11y: 'Asignar {name} a alguien',
   assignTitle: '¿Quién se encarga?',
   nobody: 'Nadie',
+  collapseSection: 'Contraer {name}',
+  expandSection: 'Desplegar {name}',
 };
 
 const fr: typeof en = {
@@ -101,6 +105,8 @@ const fr: typeof en = {
   assignA11y: 'Assigner {name} à quelqu’un',
   assignTitle: 'Qui s’en charge ?',
   nobody: 'Personne',
+  collapseSection: 'Replier {name}',
+  expandSection: 'Déplier {name}',
 };
 
 const it: typeof en = {
@@ -135,6 +141,8 @@ const it: typeof en = {
   assignA11y: 'Assegna {name} a qualcuno',
   assignTitle: 'Chi se ne occupa?',
   nobody: 'Nessuno',
+  collapseSection: 'Comprimi {name}',
+  expandSection: 'Espandi {name}',
 };
 
 export const groceries = { en, es, fr, it };

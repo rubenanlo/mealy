@@ -71,6 +71,73 @@ function capitalize(s: string): string {
 /** BCP 47 tags for date formatting per app locale. */
 const dateLocales = { en: 'en-US', es: 'es-ES', fr: 'fr-FR', it: 'it-IT' } as const;
 
+/** Section keys for the two non-aisle sections (aisles key off their DB name). */
+const UNMATCHED_SECTION = '__unmatched__';
+const OTHER_SECTION = '__other__';
+
+/**
+ * Foldable section header. Aisles render as display-font headings, the
+ * "Unmatched"/"Other" sections as eyebrows — both get the same chevron and
+ * an item count while folded, so a closed section still says how much is in it.
+ */
+function SectionHeader({
+  title,
+  eyebrow,
+  count,
+  collapsed,
+  onToggle,
+}: {
+  title: string;
+  eyebrow?: boolean;
+  count: number;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
+  const { colors } = useTheme();
+  const { d } = useI18n();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ expanded: !collapsed }}
+      accessibilityLabel={fmt(
+        collapsed ? d.groceries.expandSection : d.groceries.collapseSection,
+        { name: title }
+      )}
+      onPress={onToggle}
+      hitSlop={{ top: 6, bottom: 6 }}
+      style={({ pressed }) => ({
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        minHeight: 38,
+        opacity: pressed ? 0.6 : 1,
+      })}
+    >
+      {eyebrow ? (
+        <Eyebrow>{title}</Eyebrow>
+      ) : (
+        <Text
+          style={{
+            color: colors.text,
+            fontSize: fontSize.dayName,
+            letterSpacing: -0.2,
+            fontFamily: fonts.displaySemi,
+          }}
+        >
+          {title}
+        </Text>
+      )}
+      {collapsed && count > 0 ? <Muted>{count}</Muted> : null}
+      <View style={{ flex: 1 }} />
+      <Ionicons
+        name={collapsed ? 'chevron-down' : 'chevron-up'}
+        size={16}
+        color={colors.textMuted}
+      />
+    </Pressable>
+  );
+}
+
 /** Small round checkbox row shared by matched + unmatched items. */
 function CheckRow({
   label,
@@ -325,8 +392,22 @@ export default function GroceriesScreen() {
   const [persons, setPersons] = useState<PersonLike[]>([]);
   const [newItem, setNewItem] = useState('');
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
+  /**
+   * Unfolded sections (aisle name, or the two __section__ sentinels). The
+   * list opens as a folded table of contents — an empty set is every section
+   * closed — so a long week is one screen of headings rather than a scroll.
+   */
+  const [openSections, setOpenSections] = useState<Set<string>>(new Set());
   const [covers, setCovers] = useState<Map<string, string | null>>(new Map());
   const [fodmapDots, setFodmapDots] = useState(false);
+
+  const toggleSection = (key: string) =>
+    setOpenSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   const load = useCallback(async () => {
     // A recipe/meal elsewhere changed this list: drop the stale rows so the
@@ -358,15 +439,17 @@ export default function GroceriesScreen() {
           (p) => !p.is_employee && normalizeDietProfile(p.diet_profile).fodmap.mode !== 'off'
         )
       );
-      // Custom items and checks exist even without a plan. Both are
-      // week-keyed: items added for an earlier planning stop showing once
-      // that week is over instead of carrying forward indefinitely.
+      // Custom items and checks exist even without a plan. Errands carry
+      // forward: an item stays on this week and every later week until
+      // someone removes it (checks stay week-keyed, so it comes back
+      // unticked next week). Items created for a future week don't leak
+      // backwards, hence lte rather than no filter at all.
       const [{ data: itemRows }, { data: checkRows }] = await Promise.all([
         supabase
           .from('grocery_items')
           .select('id, label, person_id')
           .eq('household_id', householdId)
-          .eq('week_start', weekIso)
+          .lte('week_start', weekIso)
           .order('created_at'),
         supabase
           .from('grocery_checks')
@@ -495,9 +578,10 @@ export default function GroceriesScreen() {
             week_start?: string;
           };
           if (!record?.id) return;
-          // Items are week-keyed; ignore echoes for other weeks (deletes only
-          // carry the id, and removing an absent id is a no-op).
-          if (payload.eventType !== 'DELETE' && record.week_start && record.week_start !== weekIso)
+          // Errands carry forward, so only a *later* week's item is out of
+          // scope here (deletes only carry the id, and removing an absent id
+          // is a no-op).
+          if (payload.eventType !== 'DELETE' && record.week_start && record.week_start > weekIso)
             return;
           setCustomItems((prev) => {
             if (payload.eventType === 'DELETE') return prev.filter((i) => i.id !== record.id);
@@ -782,19 +866,14 @@ export default function GroceriesScreen() {
           ) : null}
 
           {aisles.map((group, groupIndex) => (
-            <View key={group.aisle} style={{ paddingTop: groupIndex === 0 ? 4 : 20 }}>
-              <Text
-                style={{
-                  color: colors.text,
-                  fontSize: fontSize.dayName,
-                  letterSpacing: -0.2,
-                  fontFamily: fonts.displaySemi,
-                  paddingBottom: 6,
-                }}
-              >
-                {d.groceries.aisles[group.aisle] ?? group.aisle}
-              </Text>
-              {group.items.map((item, itemIndex) => (
+            <View key={group.aisle} style={{ paddingTop: groupIndex === 0 ? 0 : 12 }}>
+              <SectionHeader
+                title={d.groceries.aisles[group.aisle] ?? group.aisle}
+                count={group.items.length}
+                collapsed={!openSections.has(group.aisle)}
+                onToggle={() => toggleSection(group.aisle)}
+              />
+              {!openSections.has(group.aisle) ? null : group.items.map((item, itemIndex) => (
                 <View key={item.key}>
                   {itemIndex > 0 ? <Hairline /> : null}
                   <CheckRow
@@ -823,9 +902,15 @@ export default function GroceriesScreen() {
           ))}
 
           {unmatched.length > 0 ? (
-            <View style={{ paddingTop: 24 }}>
-              <Eyebrow style={{ paddingBottom: 6 }}>{d.groceries.unmatched}</Eyebrow>
-              {unmatched.map((item, itemIndex) => (
+            <View style={{ paddingTop: 16 }}>
+              <SectionHeader
+                title={d.groceries.unmatched}
+                eyebrow
+                count={unmatched.length}
+                collapsed={!openSections.has(UNMATCHED_SECTION)}
+                onToggle={() => toggleSection(UNMATCHED_SECTION)}
+              />
+              {!openSections.has(UNMATCHED_SECTION) ? null : unmatched.map((item, itemIndex) => (
                 <View key={item.key}>
                   {itemIndex > 0 ? <Hairline /> : null}
                   <CheckRow
@@ -857,8 +942,16 @@ export default function GroceriesScreen() {
           ) : null}
 
           {/* User-added items — enter adds and keeps the keyboard for the next one. */}
-          <View style={{ paddingTop: 24 }}>
-            <Eyebrow style={{ paddingBottom: 6 }}>{d.groceries.other}</Eyebrow>
+          <View style={{ paddingTop: 16 }}>
+            <SectionHeader
+              title={d.groceries.other}
+              eyebrow
+              count={customItems.length}
+              collapsed={!openSections.has(OTHER_SECTION)}
+              onToggle={() => toggleSection(OTHER_SECTION)}
+            />
+            {!openSections.has(OTHER_SECTION) ? null : (
+              <>
             {customItems.map((item, itemIndex) => (
               <View key={item.id}>
                 {itemIndex > 0 ? <Hairline /> : null}
@@ -887,6 +980,8 @@ export default function GroceriesScreen() {
               returnKeyType="done"
               style={{ marginTop: 10 }}
             />
+              </>
+            )}
           </View>
         </ScrollView>
       )}

@@ -6,7 +6,7 @@
  * Scenario B models "a week passed": the plan row exists only for LAST week,
  * exactly what the screen sees after the rollover.
  */
-import { render, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ThemeProvider } from '@/lib/theme';
@@ -14,10 +14,11 @@ import { addWeeks, weekStart } from '@/lib/plan';
 
 import GroceriesScreen from '../(tabs)/groceries/index';
 
-// week → plan row; reconfigured per test. Custom items are NOT week-keyed.
+// week → plan row; reconfigured per test. Custom items carry the week they
+// were added on and roll forward from there.
 const mockDb: {
   plans: Record<string, { id: string }>;
-  items: { id: string; label: string }[];
+  items: { id: string; label: string; week_start: string }[];
 } = { plans: {}, items: [] };
 
 jest.mock('@/lib/supabase', () => {
@@ -25,8 +26,11 @@ jest.mock('@/lib/supabase', () => {
     switch (table) {
       case 'meal_plans':
         return mockDb.plans[String(filters.week_start)] ?? null;
-      case 'grocery_items':
-        return mockDb.items;
+      case 'grocery_items': {
+        // Errands roll forward: visible on their own week and every later one.
+        const upto = filters.week_start_lte;
+        return mockDb.items.filter((i) => !upto || i.week_start <= String(upto));
+      }
       case 'persons':
         return [
           { id: 'p1', name: 'Ana', avatar_color: null, is_employee: false, diet_profile: {} },
@@ -69,6 +73,10 @@ jest.mock('@/lib/supabase', () => {
     }
     builder.eq = (column: string, value: unknown) => {
       filters[column] = value;
+      return builder;
+    };
+    builder.lte = (column: string, value: unknown) => {
+      filters[`${column}_lte`] = value;
       return builder;
     };
     builder.maybeSingle = resolve;
@@ -146,6 +154,13 @@ const metrics = {
   frame: { x: 0, y: 0, width: 390, height: 844 },
 };
 
+/**
+ * The list opens fully folded, so every content assertion below has to open
+ * its section first — same tap the user makes.
+ */
+const openSection = (getByLabelText: (t: string) => unknown, name: string) =>
+  fireEvent.press(getByLabelText(`Expand ${name}`) as Parameters<typeof fireEvent.press>[0]);
+
 const renderScreen = () =>
   render(
     <SafeAreaProvider initialMetrics={metrics}>
@@ -159,25 +174,57 @@ describe('groceries weekly rollover', () => {
   const thisWeek = weekStart(new Date());
 
   beforeEach(() => {
-    mockDb.items = [{ id: 'g1', label: 'Palmolive' }];
+    mockDb.items = [{ id: 'g1', label: 'Palmolive', week_start: addWeeks(thisWeek, -1) }];
   });
 
   it('shows the generated list plus custom items during the planned week', async () => {
     mockDb.plans = { [thisWeek]: { id: 'plan-1' } };
-    const { getByText } = renderScreen();
-    await waitFor(() => expect(getByText('Carrot')).toBeTruthy());
-    expect(getByText('Produce')).toBeTruthy(); // localized aisle
+    const { getByText, getByLabelText } = renderScreen();
+    await waitFor(() => expect(getByText('Produce')).toBeTruthy()); // localized aisle
+    openSection(getByLabelText, 'Produce');
+    expect(getByText('Carrot')).toBeTruthy();
     expect(getByText('250 g')).toBeTruthy(); // 2 × 125 g
+    openSection(getByLabelText, 'Other / errands');
     expect(getByText('Palmolive')).toBeTruthy();
+  });
+
+  it('opens with every section folded, and unfolds one on tap', async () => {
+    mockDb.plans = { [thisWeek]: { id: 'plan-1' } };
+    const { getByText, getAllByText, queryByText, getByLabelText } = renderScreen();
+    await waitFor(() => expect(getByText('Produce')).toBeTruthy());
+    // Headings and their counts only — no rows from any section. Produce and
+    // Other/errands hold one line each, so a folded "1" shows on both.
+    expect(getAllByText('1')).toHaveLength(2);
+    expect(queryByText('Carrot')).toBeNull();
+    expect(queryByText('Palmolive')).toBeNull();
+    openSection(getByLabelText, 'Produce');
+    expect(getByText('Carrot')).toBeTruthy();
+    // Opening one section leaves the others alone.
+    expect(queryByText('Palmolive')).toBeNull();
+  });
+
+  it('carries an errand added on an earlier week into the current one', async () => {
+    mockDb.plans = { [thisWeek]: { id: 'plan-1' } };
+    mockDb.items = [
+      { id: 'g1', label: 'Seda dental', week_start: addWeeks(thisWeek, -3) },
+      // Added while viewing next week — must not leak backwards into this one.
+      { id: 'g2', label: 'Picard', week_start: addWeeks(thisWeek, 1) },
+    ];
+    const { getByText, queryByText, getByLabelText } = renderScreen();
+    await waitFor(() => expect(getByText('Other / errands')).toBeTruthy());
+    openSection(getByLabelText, 'Other / errands');
+    expect(getByText('Seda dental')).toBeTruthy();
+    expect(queryByText('Picard')).toBeNull();
   });
 
   it('empties the generated list a week later but keeps the Other items', async () => {
     // The plan exists only for LAST week — what the screen sees post-rollover.
     mockDb.plans = { [addWeeks(thisWeek, -1)]: { id: 'plan-1' } };
-    const { getByText, queryByText } = renderScreen();
-    await waitFor(() => expect(getByText('Palmolive')).toBeTruthy());
-    expect(queryByText('Carrot')).toBeNull();
+    const { getByText, queryByText, getByLabelText } = renderScreen();
+    await waitFor(() => expect(getByText('No meals planned this week.')).toBeTruthy());
     expect(queryByText('Produce')).toBeNull();
-    expect(getByText('No meals planned this week.')).toBeTruthy();
+    openSection(getByLabelText, 'Other / errands');
+    expect(getByText('Palmolive')).toBeTruthy();
+    expect(queryByText('Carrot')).toBeNull();
   });
 });
