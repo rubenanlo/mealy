@@ -144,14 +144,32 @@ ul.ingredients li{padding:9px 0;border-bottom:1px solid var(--border);font-size:
 .note{margin:6px 0 0;padding-left:10px;border-left:3px solid var(--saffron);font-style:italic;font-size:14px}
 `;
 
-function page(title: string, body: string, lang = 'en'): Response {
+// Keeps the phone's screen on while a recipe is open (she cooks from it).
+// The browser drops the lock whenever the page is hidden, so re-acquire on
+// the way back. Unsupported or refused (old iOS, low battery) = no-op.
+const WAKE_LOCK_SCRIPT = `<script>
+(function(){
+if(!('wakeLock' in navigator))return;
+var lock=null;
+function acquire(){
+if(document.visibilityState!=='visible')return;
+navigator.wakeLock.request('screen').then(function(l){
+lock=l;l.addEventListener('release',function(){lock=null;});
+}).catch(function(){});
+}
+acquire();
+document.addEventListener('visibilitychange',function(){if(!lock)acquire();});
+})();
+</script>`;
+
+function page(title: string, body: string, lang = 'en', keepAwake = false): Response {
   const html = `<!doctype html><html lang="${lang}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>${esc(title)}</title>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bitter:wght@600;700&family=Libre+Franklin:wght@400;500;600&display=swap" rel="stylesheet">
-<style>${CSS}</style></head><body>${body}</body></html>`;
+<style>${CSS}</style></head><body>${body}${keepAwake ? WAKE_LOCK_SCRIPT : ''}</body></html>`;
   const headers = new Headers();
   headers.set('Content-Type', 'text/html; charset=utf-8');
   headers.set('Cache-Control', 'no-store');
@@ -326,7 +344,7 @@ Deno.serve(async (req) => {
         )
         .join('');
     }
-    return page(recipe.title, body, lang);
+    return page(recipe.title, body, lang, true);
   }
 
   // ---- Index: one card per assigned meal --------------------------------
