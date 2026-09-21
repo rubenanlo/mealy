@@ -50,6 +50,7 @@ import { confirmDestructive, notify } from "@/lib/confirm";
 import { anchorFromEvent, pickOption } from "@/lib/options";
 import { useAuth, useHousehold } from "@/lib/auth";
 import { consumeInvalidation } from "@/lib/list-refresh";
+import { pickHeroIndex } from "@/lib/hero-rotation";
 import { matchCanonical, normalizeRaw } from "@/lib/canonical";
 import {
   dismissCaptureJob,
@@ -316,13 +317,15 @@ export default function HomeScreen() {
     return () => clearInterval(timer);
   }, [captureJobs, load]);
 
-  // Recipes not planned within the rest window, newest first, max 6; hero = first.
+  // Recipes not planned within the rest window, newest first, max 6;
+  // the hero rotates through the pool every 3 days.
   const suggestions = useMemo(
     () => recipes.filter((r) => !plannedRecentIds.has(r.id)).slice(0, 6),
     [recipes, plannedRecentIds],
   );
-  const hero = suggestions[0];
-  const carousel = suggestions.slice(1);
+  const heroIndex = pickHeroIndex(suggestions.length);
+  const hero = suggestions[heroIndex];
+  const carousel = suggestions.filter((_, i) => i !== heroIndex);
 
   /** Recipes from the last two weeks, newest first, max 10 (hides as it ages). */
   const recentlyAdded = useMemo(() => {
