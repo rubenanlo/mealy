@@ -115,6 +115,17 @@ function currentWeekStart(): string {
   return monday.toISOString().slice(0, 10);
 }
 
+/** "Semana del 28 de septiembre" — the one week this page covers. */
+function weekLabel(weekIso: string, lang: LinkLocale, t: (typeof L10N)[LinkLocale]): string {
+  const [y, m, d] = weekIso.split('-').map(Number);
+  const date = new Date(Date.UTC(y, (m ?? 1) - 1, d ?? 1)).toLocaleDateString(lang, {
+    day: 'numeric',
+    month: 'long',
+    timeZone: 'UTC',
+  });
+  return `${t.weekOf} ${date}`;
+}
+
 /** App theme tokens (lib/theme.ts) in CSS, light + dark. */
 const CSS = `
 :root{--bg:#FFFFFF;--card-pressed:#F5F5F4;--text:#121212;--muted:#72716D;--accent:#C7442E;--border:#E5E3DE;--saffron:#B58A2A}
@@ -221,7 +232,7 @@ Deno.serve(async (req) => {
     .eq('week_start', currentWeekStart())
     .order('week_start');
   const planList = plans ?? [];
-  const weekById = new Map(planList.map((p) => [p.id, p.week_start]));
+  const week = planList[0]?.week_start ?? currentWeekStart();
 
   let entries: {
     meal_plan_id: string;
@@ -239,13 +250,9 @@ Deno.serve(async (req) => {
       .eq('assigned_cook', 'employee');
     entries = entryRows ?? [];
   }
-  entries.sort((a, b) => {
-    const wa = weekById.get(a.meal_plan_id) ?? '';
-    const wb = weekById.get(b.meal_plan_id) ?? '';
-    return (
-      wa.localeCompare(wb) || a.day - b.day || (a.slot === b.slot ? 0 : a.slot === 'lunch' ? -1 : 1)
-    );
-  });
+  entries.sort(
+    (a, b) => a.day - b.day || (a.slot === b.slot ? 0 : a.slot === 'lunch' ? -1 : 1)
+  );
 
   const recipeIds = [...new Set(entries.map((e) => e.recipe_id).filter((id): id is string => !!id))];
   const recipesById = new Map<string, RecipeRow>();
@@ -284,8 +291,8 @@ Deno.serve(async (req) => {
     }
   }
 
-  const slotLine = (entry: { meal_plan_id: string; day: number; slot: string }) =>
-    `${t.days[entry.day] ?? ''} · ${t.slots[entry.slot] ?? entry.slot} · ${t.weekOf} ${weekById.get(entry.meal_plan_id) ?? ''}`;
+  const slotLine = (entry: { day: number; slot: string }) =>
+    `${t.days[entry.day] ?? ''} · ${t.slots[entry.slot] ?? entry.slot}`;
   const metaLine = (r: RecipeRow) =>
     [
       r.servings ? `${r.servings} ${t.servings}` : null,
@@ -348,18 +355,14 @@ Deno.serve(async (req) => {
   }
 
   // ---- Index: one card per assigned meal --------------------------------
-  let body = `<h1>${t.mealsToCook}</h1><p class="muted">${t.forName} ${esc(person.name)}</p>`;
+  let body = `<h1>${t.mealsToCook}</h1><p class="muted">${t.forName} ${esc(
+    person.name
+  )} · ${esc(weekLabel(week, lang, t))}</p>`;
   if (entries.length === 0) {
     body += `<hr class="hairline"><p>${t.noMeals}</p>`;
   }
 
-  let lastWeek = '';
   for (const entry of entries) {
-    const week = weekById.get(entry.meal_plan_id) ?? '';
-    if (week !== lastWeek) {
-      body += `<h2>${t.weekOf} ${esc(week)}</h2>`;
-      lastWeek = week;
-    }
     const recipe = entry.recipe_id ? recipesById.get(entry.recipe_id) : undefined;
     const inner = `${thumb(recipe)}<div><p class="eyebrow">${esc(
       `${t.days[entry.day] ?? ''} · ${t.slots[entry.slot] ?? entry.slot}`
