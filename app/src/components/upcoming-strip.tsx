@@ -16,7 +16,7 @@ export type UpcomingCell = MealCell & {
 };
 
 /**
- * Horizontal strip of upcoming meal cells — the "This week" section shared
+ * Horizontal strip of upcoming meal cells — the "Upcoming meals" section shared
  * by the plan overview and the home feed. Runs continuously into future
  * planned weeks; the first cell is highlighted as the next meal.
  */

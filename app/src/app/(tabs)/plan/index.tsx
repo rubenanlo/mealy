@@ -356,12 +356,12 @@ export default function WeeksScreen() {
 
         {!loaded ? <Loading /> : null}
 
-        {/* This week: next meal first, then the rest of the upcoming meals. */}
+        {/* Upcoming meals: next meal first, then the rest of the week. */}
         {loaded ? (
         <>
         <View style={{ gap: 12 }}>
           <SectionHeader
-            title={d.plan.thisWeek}
+            title={d.plan.upcomingMeals}
             linkLabel={d.plan.open}
             onLinkPress={() => openWeek(currentWeek)}
           />

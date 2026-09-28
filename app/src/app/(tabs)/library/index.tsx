@@ -715,33 +715,10 @@ export default function HomeScreen() {
               />
             ) : null}
 
-            {carousel.length > 0 ? (
-              <View style={{ paddingTop: 16, gap: 12 }}>
-                <SectionHeader title={d.library.suggestedForYou} />
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={carouselContent}
-                  style={carouselStyle}
-                >
-                  {carousel.map((recipe) => (
-                    <CarouselCard
-                      key={recipe.id}
-                      recipe={recipe}
-                      saved={savedSet.has(recipe.id)}
-                      onPress={() => openRecipe(recipe.id)}
-                      onSave={() => setSaveRecipe(recipe)}
-                    />
-                  ))}
-                </ScrollView>
-                <Hairline />
-              </View>
-            ) : null}
-
             {upcoming.length > 0 ? (
               <View style={{ paddingTop: 16, gap: 12 }}>
                 <SectionHeader
-                  title={d.library.thisWeek}
+                  title={d.library.upcomingMeals}
                   linkLabel={d.library.seeAll}
                   onLinkPress={() => router.navigate("/plan")}
                 />
@@ -765,6 +742,29 @@ export default function HomeScreen() {
                         : router.push("/plan/upcoming")
                   }
                 />
+                <Hairline />
+              </View>
+            ) : null}
+
+            {carousel.length > 0 ? (
+              <View style={{ paddingTop: 16, gap: 12 }}>
+                <SectionHeader title={d.library.suggestedForYou} />
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={carouselContent}
+                  style={carouselStyle}
+                >
+                  {carousel.map((recipe) => (
+                    <CarouselCard
+                      key={recipe.id}
+                      recipe={recipe}
+                      saved={savedSet.has(recipe.id)}
+                      onPress={() => openRecipe(recipe.id)}
+                      onSave={() => setSaveRecipe(recipe)}
+                    />
+                  ))}
+                </ScrollView>
                 <Hairline />
               </View>
             ) : null}
