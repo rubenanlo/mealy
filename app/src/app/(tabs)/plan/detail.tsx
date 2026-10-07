@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { FlatList, Modal, Platform, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -554,6 +554,29 @@ export default function PlanScreen() {
     setPickerCell(null);
     setEditingEntryId(null);
   };
+
+  // "View recipe" has to hide the picker before opening the recipe (see the
+  // button), which used to drop the user back on the bare week with their
+  // selection gone. Park the open meal here and reopen the picker, with its
+  // picks untouched, once the recipe is closed and this screen is back.
+  const parkedPickerRef = useRef<{
+    cell: { day: number; slot: MealSlot };
+    editingEntryId: string | null;
+  } | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      const parked = parkedPickerRef.current;
+      if (!parked) return;
+      parkedPickerRef.current = null;
+      // Let the recipe sheet finish dismissing: iOS can't present the picker
+      // Modal while another modal is still animating out.
+      const timer = setTimeout(() => {
+        setEditingEntryId(parked.editingEntryId);
+        setPickerCell(parked.cell);
+      }, 350);
+      return () => clearTimeout(timer);
+    }, [])
+  );
 
   const pickCustom = () => {
     const title = customDraft.trim();
@@ -1207,9 +1230,13 @@ export default function PlanScreen() {
                       <LinkButton
                         label={d.plan.viewRecipe}
                         onPress={() => {
-                          // Close the native modal first: a route pushed while
-                          // it's open mounts underneath and stays hidden.
-                          closePicker();
+                          // Hide the native modal first: a route pushed while
+                          // it's open mounts underneath and stays hidden. The
+                          // picks stay in state and the picker reopens on return.
+                          if (pickerCell) {
+                            parkedPickerRef.current = { cell: pickerCell, editingEntryId };
+                          }
+                          setPickerCell(null);
                           router.push({
                             pathname: '/recipe/[id]',
                             params: {
