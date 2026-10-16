@@ -1,12 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import { Pressable, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Body, Eyebrow, SettingsGroup, SettingsRow, Title } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
+import { confirmDestructive, notify } from '@/lib/confirm';
 import { useI18n } from '@/lib/i18n';
 import { backOr } from '@/lib/nav';
+import { supabase } from '@/lib/supabase';
 import { fonts, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
 
 export default function SettingsScreen() {
@@ -14,6 +17,18 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { session, signOut } = useAuth();
   const { d } = useI18n();
+
+  // Personal key for the "Add to Mealy" iOS Shortcut (share-capture edge
+  // function): the Shortcut's only credential, so it can be rotated here.
+  const copyShareKey = async (rpc: 'my_share_capture_key' | 'rotate_share_capture_key') => {
+    const { data, error } = await supabase.rpc(rpc);
+    if (error || typeof data !== 'string') {
+      notify(d.settings.shareKeyFailedTitle, error?.message);
+      return;
+    }
+    await Clipboard.setStringAsync(data);
+    notify(d.settings.shareKeyCopiedTitle, d.settings.shareKeyCopiedBody);
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bgGrouped }} edges={['top']}>
@@ -55,6 +70,28 @@ export default function SettingsScreen() {
           <SettingsRow
             label={d.settings.appearance}
             onPress={() => router.push('/settings/appearance')}
+          />
+        </SettingsGroup>
+
+        <Eyebrow style={{ marginTop: 16 }}>{d.settings.shareSheet}</Eyebrow>
+        <SettingsGroup>
+          <SettingsRow
+            label={d.settings.copyShareKey}
+            chevron={false}
+            onPress={() => void copyShareKey('my_share_capture_key')}
+          />
+          <SettingsRow
+            label={d.settings.resetShareKey}
+            chevron={false}
+            onPress={() =>
+              confirmDestructive({
+                title: d.settings.resetShareKeyTitle,
+                message: d.settings.resetShareKeyBody,
+                confirmLabel: d.settings.reset,
+                cancelLabel: d.common.cancel,
+                onConfirm: () => void copyShareKey('rotate_share_capture_key'),
+              })
+            }
           />
         </SettingsGroup>
       </ScrollView>
