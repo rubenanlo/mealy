@@ -68,6 +68,16 @@ const en = {
   deleteAccountBody:
     'This permanently deletes your account. If you are the last member, all household data (recipes, plans, groceries) is deleted too. This cannot be undone.',
   deleteAccountFailedTitle: 'Could not delete account',
+  shareSheet: 'Share from iPhone',
+  copyShareKey: 'Copy share key',
+  shareKeyCopiedTitle: 'Share key copied',
+  shareKeyCopiedBody:
+    'Paste it into the "Add to Mealy" Shortcut. Anyone with this key can add recipes to your family, so keep it private.',
+  resetShareKey: 'Reset share key',
+  resetShareKeyTitle: 'Reset the share key?',
+  resetShareKeyBody: 'The old key stops working. Paste the new one into your Shortcut.',
+  reset: 'Reset',
+  shareKeyFailedTitle: 'Could not get the share key',
 };
 
 const es: typeof en = {
@@ -138,6 +148,16 @@ const es: typeof en = {
   deleteAccountBody:
     'Esto elimina tu cuenta de forma permanente. Si eres el último miembro, también se eliminan todos los datos del hogar (recetas, planes, compras). No se puede deshacer.',
   deleteAccountFailedTitle: 'No se pudo eliminar la cuenta',
+  shareSheet: 'Compartir desde el iPhone',
+  copyShareKey: 'Copiar clave para compartir',
+  shareKeyCopiedTitle: 'Clave copiada',
+  shareKeyCopiedBody:
+    'Pégala en el atajo "Añadir a Mealy". Quien tenga esta clave puede añadir recetas a tu familia, así que guárdala en privado.',
+  resetShareKey: 'Restablecer clave',
+  resetShareKeyTitle: '¿Restablecer la clave?',
+  resetShareKeyBody: 'La clave antigua deja de funcionar. Pega la nueva en tu atajo.',
+  reset: 'Restablecer',
+  shareKeyFailedTitle: 'No se pudo obtener la clave',
 };
 
 const fr: typeof en = {
@@ -208,6 +228,16 @@ const fr: typeof en = {
   deleteAccountBody:
     'Votre compte sera supprimé définitivement. Si vous êtes le dernier membre, toutes les données du foyer (recettes, plans, courses) seront aussi supprimées. Irréversible.',
   deleteAccountFailedTitle: 'Impossible de supprimer le compte',
+  shareSheet: "Partager depuis l'iPhone",
+  copyShareKey: 'Copier la clé de partage',
+  shareKeyCopiedTitle: 'Clé copiée',
+  shareKeyCopiedBody:
+    'Collez-la dans le raccourci « Ajouter à Mealy ». Quiconque a cette clé peut ajouter des recettes à votre famille : gardez-la privée.',
+  resetShareKey: 'Réinitialiser la clé',
+  resetShareKeyTitle: 'Réinitialiser la clé ?',
+  resetShareKeyBody: "L'ancienne clé ne fonctionnera plus. Collez la nouvelle dans votre raccourci.",
+  reset: 'Réinitialiser',
+  shareKeyFailedTitle: "Impossible d'obtenir la clé",
 };
 
 const it: typeof en = {
@@ -278,6 +308,16 @@ const it: typeof en = {
   deleteAccountBody:
     "L'account verrà eliminato definitivamente. Se sei l'ultimo membro, verranno eliminati anche tutti i dati della famiglia (ricette, piani, spesa). Non si può annullare.",
   deleteAccountFailedTitle: "Impossibile eliminare l'account",
+  shareSheet: "Condividi dall'iPhone",
+  copyShareKey: 'Copia la chiave di condivisione',
+  shareKeyCopiedTitle: 'Chiave copiata',
+  shareKeyCopiedBody:
+    'Incollala nella scorciatoia "Aggiungi a Mealy". Chiunque abbia questa chiave può aggiungere ricette alla tua famiglia, quindi tienila privata.',
+  resetShareKey: 'Reimposta la chiave',
+  resetShareKeyTitle: 'Reimpostare la chiave?',
+  resetShareKeyBody: 'La vecchia chiave smette di funzionare. Incolla quella nuova nella scorciatoia.',
+  reset: 'Reimposta',
+  shareKeyFailedTitle: 'Impossibile ottenere la chiave',
 };
 
 export const settings = { en, es, fr, it };
