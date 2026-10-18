@@ -9,8 +9,9 @@ import { useHousehold } from '@/lib/auth';
 import { coreProteins, resolveProteinCategory, type ProteinCategory } from '@/lib/category';
 import { useI18n, type Dict } from '@/lib/i18n';
 import { supabase } from '@/lib/supabase';
-import { titleMatches } from '@/lib/search-text';
+import { searchTerms, titleMatches } from '@/lib/search-text';
 import { localizedTitle } from '@/lib/translations';
+import type { IngredientRow as IngredientData } from '@/lib/worker';
 import { fonts, fontSize, minTapTarget, radius, screenPadding, tabBarClearance, useTheme } from '@/lib/theme';
 import { useCanonicalIndex } from '@/lib/use-canonical';
 
@@ -91,24 +92,30 @@ export default function SearchScreen() {
       supabase
         .from('recipes')
         .select(
-          'id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes, ingredients, fodmap_override, meal_type, recipe_translations(locale, title)'
+          'id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes, ingredients, fodmap_override, meal_type, recipe_translations(locale, title, ingredients)'
         )
         .eq('household_id', householdId)
         .order('created_at', { ascending: false })
         .then(({ data }) => {
           if (cancelled) return;
           if (data) {
-            // Localize the display title at the fetch boundary, but keep every
-            // language variant around so the query matches any of them.
+            // Localize the display title at the fetch boundary, but keep the
+            // title and ingredient names of every language variant around so
+            // the query matches any of them.
             setRecipes(
               (
                 data as (RecipeListItem & {
-                  recipe_translations?: { locale: string; title: string }[] | null;
+                  recipe_translations?:
+                    | { locale: string; title: string; ingredients: IngredientData[] }[]
+                    | null;
                 })[]
               ).map(({ recipe_translations, ...r }) => ({
                 ...r,
                 title: localizedTitle({ title: r.title, recipe_translations }, locale),
-                searchTitles: [r.title, ...(recipe_translations ?? []).map((t) => t.title)],
+                searchTitles: searchTerms([
+                  { title: r.title, ingredients: r.ingredients },
+                  ...(recipe_translations ?? []),
+                ]),
               }))
             );
           }
