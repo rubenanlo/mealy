@@ -17,10 +17,17 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const text = (status: number, body: string) =>
   new Response(body, { status, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
 
-/** Mirrors extractCaptureUrl/detectCaptureKind in app/src/lib/worker.ts. */
+// Browsers share "Page title - https://…" (Chrome always does), and recipe
+// titles easily run past the app's 24-character paste allowance. A share
+// with a link is the link unless the rest reads like a real recipe text.
+const SHARE_TITLE_ALLOWANCE = 200;
+
+/** Like extractCaptureUrl/detectCaptureKind in app/src/lib/worker.ts, but
+ * tolerant of the page title a share sheet puts in front of the URL. */
 function payload(input: string): { kind: 'url' | 'social' | 'text'; input: string } | null {
   const match = input.match(/https?:\/\/\S+/i);
-  if (match && input.replace(match[0], '').trim().length <= 24) {
+  const rest = match ? input.replace(match[0], '').trim() : '';
+  if (match && rest.length <= SHARE_TITLE_ALLOWANCE && !rest.includes('\n')) {
     try {
       const host = new URL(match[0]).hostname.toLowerCase();
       const social = SOCIAL_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
