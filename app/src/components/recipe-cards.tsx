@@ -308,3 +308,80 @@ export function RecipeRow({ recipe, onPress }: { recipe: RecipeListItem; onPress
     </Pressable>
   );
 }
+
+/**
+ * NYT "Recently viewed" header: small all-caps Bitter with a trailing
+ * chevron; the whole label is the link.
+ */
+export function RecentlyViewedHeader({ title, onPress }: { title: string; onPress: () => void }) {
+  const { colors } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      hitSlop={8}
+      style={({ pressed }) => ({
+        flexDirection: 'row',
+        alignItems: 'center',
+        alignSelf: 'flex-start',
+        gap: 4,
+        opacity: pressed ? 0.6 : 1,
+      })}
+    >
+      <Text
+        accessibilityRole="header"
+        style={{
+          color: colors.text,
+          fontSize: fontSize.small,
+          letterSpacing: 1,
+          textTransform: 'uppercase',
+          fontFamily: fonts.display,
+        }}
+      >
+        {title}
+      </Text>
+      <Ionicons name="chevron-forward" size={16} color={colors.text} />
+    </Pressable>
+  );
+}
+
+/** NYT "Recently viewed" tile: square cover, two-line title, no chip. */
+export function RecentlyViewedCard({
+  recipe,
+  onPress,
+}: {
+  recipe: RecipeListItem;
+  onPress: () => void;
+}) {
+  const { colors } = useTheme();
+  const { d } = useI18n();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={fmt(d.components.openRecipe, { title: recipe.title })}
+      onPress={onPress}
+      style={({ pressed }) => ({ width: RECENTLY_VIEWED_CARD, opacity: pressed ? 0.7 : 1 })}
+    >
+      <RecipeImage
+        path={recipe.cover_image_path}
+        style={{ width: RECENTLY_VIEWED_CARD, aspectRatio: 1, borderRadius: 4 }}
+        iconSize={24}
+      />
+      <Text
+        numberOfLines={2}
+        style={{
+          paddingTop: 8,
+          color: colors.text,
+          fontSize: fontSize.small,
+          lineHeight: 19,
+          fontFamily: fonts.uiMedium,
+        }}
+      >
+        {recipe.title}
+      </Text>
+    </Pressable>
+  );
+}
+
+/** ≈3⅓ tiles across a 390pt phone, like the NYT row. */
+export const RECENTLY_VIEWED_CARD = 106;
