@@ -62,6 +62,7 @@ function RootStack() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="settings" />
         <Stack.Screen name="folder/[id]" />
+        <Stack.Screen name="recently-viewed" />
         <Stack.Screen name="capture" options={{ presentation: 'modal' }} />
         {/* v3.2 bottom-sheet recipe page. iOS: native pageSheet (peek +
             rounded top + swipe-down). Android/web: transparent modal — the

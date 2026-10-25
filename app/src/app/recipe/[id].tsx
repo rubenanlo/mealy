@@ -48,6 +48,7 @@ import type { CanonicalIngredient, FodmapTier } from '@/lib/canonical';
 import { confirmDestructive, notify } from '@/lib/confirm';
 import { invalidateLists } from '@/lib/list-refresh';
 import { backOr } from '@/lib/nav';
+import { recordRecentlyViewed } from '@/lib/recently-viewed';
 import { anchorFromEvent, pickOption } from '@/lib/options';
 import {
   CATEGORY_LABELS,
@@ -527,6 +528,11 @@ export default function RecipeSheetScreen() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Feeds Home's "Recently viewed" row; blank drafts don't count as views.
+  useEffect(() => {
+    if (recipe?.id && !isNew) void recordRecentlyViewed(userId, recipe.id);
+  }, [recipe?.id, isNew, userId]);
 
   useEffect(() => {
     recipeRef.current = recipe;

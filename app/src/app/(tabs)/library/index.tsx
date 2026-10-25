@@ -29,6 +29,8 @@ import {
 import {
   CarouselCard,
   Hero,
+  RecentlyViewedCard,
+  RecentlyViewedHeader,
   RecipeImage,
   RecipeRow,
   type RecipeListItem,
@@ -51,6 +53,7 @@ import { anchorFromEvent, pickOption } from "@/lib/options";
 import { useAuth, useHousehold } from "@/lib/auth";
 import { consumeInvalidation } from "@/lib/list-refresh";
 import { pickHeroIndex } from "@/lib/hero-rotation";
+import { loadRecentlyViewed, resolveRecentlyViewed } from "@/lib/recently-viewed";
 import { matchCanonical, normalizeRaw } from "@/lib/canonical";
 import {
   dismissCaptureJob,
@@ -130,6 +133,7 @@ export default function HomeScreen() {
   );
   const [folderView, setFolderView] = useState<FolderView>("grid");
   const [captureJobs, setCaptureJobs] = useState<CaptureJobRow[]>([]);
+  const [viewedIds, setViewedIds] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -217,6 +221,7 @@ export default function HomeScreen() {
       loadActiveCaptureJobs(householdId),
     ]);
     setCaptureJobs(jobRows);
+    setViewedIds(await loadRecentlyViewed(userId));
     // Heal lost pings (app closed too fast / worker was down); the worker
     // claims jobs atomically so duplicates are harmless.
     retriggerStaleJobs(jobRows);
@@ -298,7 +303,7 @@ export default function HomeScreen() {
       setWeekEntries([]);
     }
     setLoaded(true);
-  }, [householdId, locale, weekIso, d.library.familyMember]);
+  }, [householdId, userId, locale, weekIso, d.library.familyMember]);
 
   useFocusEffect(
     useCallback(() => {
@@ -334,6 +339,12 @@ export default function HomeScreen() {
       .filter((r) => r.created_at && new Date(r.created_at).getTime() >= cutoff)
       .slice(0, 10);
   }, [recipes]);
+
+  /** NYT "Recently viewed": recipes this user opened, newest first, max 10. */
+  const recentlyViewed = useMemo(
+    () => resolveRecentlyViewed(viewedIds, recipes).slice(0, 10),
+    [viewedIds, recipes],
+  );
 
   /** Browse-everything entry point; Search stays the actual full list. */
   const allRecipes = useMemo(() => recipes.slice(0, 10), [recipes]);
@@ -707,6 +718,29 @@ export default function HomeScreen() {
           </View>
         ) : (
           <View>
+            {recentlyViewed.length > 0 ? (
+              <View style={{ gap: 12, marginBottom: 24 }}>
+                <RecentlyViewedHeader
+                  title={d.library.recentlyViewed}
+                  onPress={() => router.push("/recently-viewed")}
+                />
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ gap: 8, paddingHorizontal: screenPadding }}
+                  style={carouselStyle}
+                >
+                  {recentlyViewed.map((recipe) => (
+                    <RecentlyViewedCard
+                      key={recipe.id}
+                      recipe={recipe}
+                      onPress={() => openRecipe(recipe.id)}
+                    />
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null}
+
             {hero ? (
               <Hero
                 recipe={hero}
