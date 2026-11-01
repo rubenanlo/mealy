@@ -24,6 +24,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AddToWeekSheet } from '@/components/add-to-week';
+import { AiActionsSheet, AiButton, FodmapChatSheet, VersionToggle } from '@/components/ai-sheet';
 import { CoverRepositionModal } from '@/components/cover-editor';
 import { EditRowControls, SectionTitle } from '@/components/editable-list';
 import { FixMatchSheet } from '@/components/fix-match';
@@ -71,6 +72,12 @@ import { useImageUrl } from '@/lib/media';
 import { useReducedMotion } from '@/lib/motion';
 import { type MealSlot, weekStart } from '@/lib/plan';
 import { assignRecipeToSlot, isRecipeUntouched } from '@/lib/recipes';
+import {
+  applySwapSelection,
+  loadVariantFamily,
+  saveLowFodmapVariant,
+  type VariantFamily,
+} from '@/lib/recipe-variants';
 import { entryServings, rescaleIngredients, servingsFactor } from '@/lib/servings';
 import { convertIngredients, convertStepText, type UnitSystem } from '@/lib/unit-convert';
 import { supabase } from '@/lib/supabase';
@@ -96,6 +103,7 @@ import {
 
 interface RecipeDetail {
   id: string;
+  household_id: string;
   title: string;
   language: string;
   servings: number | null;
@@ -114,6 +122,9 @@ interface RecipeDetail {
   meal_type: 'main' | 'breakfast' | 'dessert' | 'side' | null;
   /** Bumped on every edit — used to ignore not-yet-regenerated translations. */
   updated_at: string | null;
+  /** Set on an AI-adapted version: the original it was derived from (0033). */
+  variant_of: string | null;
+  variant_kind: 'low_fodmap' | null;
 }
 
 interface SourceRow {
@@ -150,6 +161,7 @@ function Hero({
   onPress,
   focal = null,
   onEdit,
+  onAi,
 }: {
   path: string | null;
   saved: boolean;
@@ -157,6 +169,8 @@ function Hero({
   onPress?: () => void;
   focal?: { x: number; y: number } | null;
   onEdit?: () => void;
+  /** Opens the Mealy AI sheet; the ✦ chip sits top-left, clear of the bookmark. */
+  onAi?: () => void;
 }) {
   const { colors } = useTheme();
   const { d } = useI18n();
@@ -213,6 +227,7 @@ function Hero({
           style={{ top: 12, right: 12 }}
         />
       ) : null}
+      {onAi ? <AiButton onPress={onAi} style={{ position: 'absolute', top: 12, left: 12 }} /> : null}
       {/* Edit chip sits bottom-right, clear of the top-right bookmark chip. */}
       {path && onEdit ? (
         <View style={{ position: 'absolute', bottom: 12, right: 12 }}>
@@ -455,6 +470,12 @@ export default function RecipeSheetScreen() {
   // failure message) is distinguishable from "sheet closed" (both null).
   const [swapsFailed, setSwapsFailed] = useState(false);
   const [swapsOpen, setSwapsOpen] = useState(false);
+  // Mealy AI sheet + low-FODMAP versions (migration 0033).
+  const [aiOpen, setAiOpen] = useState(false);
+  const [family, setFamily] = useState<VariantFamily | null>(null);
+  const [savingVariant, setSavingVariant] = useState(false);
+  const [variantSaveError, setVariantSaveError] = useState(false);
+  const [savedToast, setSavedToast] = useState(false);
   // v3.2 pinned-ingredients state
   const [stepsY, setStepsY] = useState<number | null>(null);
   const [pinnedVisible, setPinnedVisible] = useState(false);
@@ -484,8 +505,23 @@ export default function RecipeSheetScreen() {
       supabase.from('folder_recipes').select('folder_id').eq('recipe_id', id),
     ]);
     if (r.data) setRecipe(r.data as RecipeDetail);
-    if (s.data) setSources(s.data as SourceRow[]);
-    if (i.data) setImages(i.data as ImageRow[]);
+    // A version has no capture of its own: show its original's source + gallery.
+    const originalId = (r.data as RecipeDetail | null)?.variant_of ?? null;
+    if (originalId) {
+      const [os, oi] = await Promise.all([
+        supabase.from('recipe_sources').select('*').eq('recipe_id', originalId).order('captured_at'),
+        supabase
+          .from('recipe_images')
+          .select('id, storage_path, position')
+          .eq('recipe_id', originalId)
+          .order('position'),
+      ]);
+      setSources((os.data as SourceRow[]) ?? []);
+      setImages((oi.data as ImageRow[]) ?? []);
+    } else {
+      if (s.data) setSources(s.data as SourceRow[]);
+      if (i.data) setImages(i.data as ImageRow[]);
+    }
     const mine = new Set(
       (((myFolders.data ?? []) as { id: string }[])).map((f) => f.id)
     );
@@ -537,6 +573,26 @@ export default function RecipeSheetScreen() {
   useEffect(() => {
     recipeRef.current = recipe;
   }, [recipe]);
+
+  // Original ↔ low-FODMAP version ids for the toggle under the title.
+  const familyKey = recipe ? `${recipe.id}:${recipe.variant_of ?? ''}` : '';
+  useEffect(() => {
+    if (!recipe || isNew) return;
+    let cancelled = false;
+    void loadVariantFamily(recipe).then((f) => {
+      if (!cancelled) setFamily(f);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [familyKey, isNew]);
+
+  useEffect(() => {
+    if (!savedToast) return;
+    const timer = setTimeout(() => setSavedToast(false), 3500);
+    return () => clearTimeout(timer);
+  }, [savedToast]);
 
   // A blank manual recipe the user opened but never filled in is deleted when
   // they leave, so abandoned blanks don't pile up in the library.
@@ -908,6 +964,10 @@ export default function RecipeSheetScreen() {
     if (!recipe || swappableRaws.length === 0 || swapsLoadingRef.current) return;
     swapsLoadingRef.current = true;
     setSwapsLoading(true);
+    setSwapsFailed(false);
+    setSwapsResult(null);
+    setVariantSaveError(false);
+    setSwapsOpen(true);
     try {
       const response = await fodmapSwaps({
         title: recipe.title,
@@ -916,10 +976,10 @@ export default function RecipeSheetScreen() {
         ingredients: recipe.ingredients,
         steps: recipe.steps,
         flagged: swappableRaws,
+        hints: swapHints(swappableRaws),
       });
-      setSwapsResult(response); // null → sheet shows the failure message
+      setSwapsResult(response); // null → the chat shows the failure + retry
       setSwapsFailed(response === null);
-      setSwapsOpen(true);
     } finally {
       swapsLoadingRef.current = false;
       setSwapsLoading(false);
@@ -932,24 +992,89 @@ export default function RecipeSheetScreen() {
     setSwapsFailed(false);
   };
 
-  const applySwaps = async () => {
+  /** Table alternates per flagged line: grounds the model's swap choices. */
+  const swapHints = (raws: string[]): Record<string, string[]> =>
+    Object.fromEntries(
+      raws
+        .map((raw) => [raw, flagByRaw.get(raw)?.swaps ?? []] as const)
+        .filter(([, alts]) => alts.length > 0)
+    );
+
+  /** Opens the low-FODMAP chat; swaps are fetched only when something is flagged. */
+  const openFodmapChat = () => {
+    setAiOpen(false);
+    if (swappableRaws.length === 0) {
+      setSwapsResult(null);
+      setSwapsFailed(false);
+      setSwapsOpen(true);
+      return;
+    }
+    void runSwaps();
+  };
+
+  /**
+   * Save the accepted swaps as the low-FODMAP version — never over the
+   * original. A partial selection re-asks the worker so the reworded steps
+   * only mention the swaps actually kept.
+   */
+  const saveVariant = async (accepted: Set<string>) => {
     const r = swapsResult;
-    if (!recipe || !r) return;
-    const byRaw = new Map(r.swaps.map((s) => [s.raw, s.replacement]));
-    const ingredients = recipe.ingredients.map((ing) => {
-      const key = ing.raw || ing.name;
-      const rep = byRaw.get(key);
-      // Rebase `raw` onto the replacement's name so the FODMAP engine
-      // (which keys off `raw`) matches the swapped ingredient going
-      // forward instead of re-flagging the original line forever.
-      return rep ? { ...rep, raw: rep.name } : ing;
-    });
-    setSwapsOpen(false);
-    setSwapsResult(null);
-    // External write: invalidate any open drafts that mirror these fields.
-    setIngredientsDraft(null);
-    setStepsDraft(null);
-    await saveRecipe({ ingredients, steps: r.steps });
+    if (!recipe || !r || savingVariant || accepted.size === 0) return;
+    setSavingVariant(true);
+    setVariantSaveError(false);
+    try {
+      let result = r;
+      if (accepted.size < r.swaps.length) {
+        const partial = await fodmapSwaps({
+          title: recipe.title,
+          language: recipe.language,
+          servings: recipe.servings,
+          ingredients: recipe.ingredients,
+          steps: recipe.steps,
+          flagged: [...accepted],
+          hints: swapHints([...accepted]),
+        });
+        if (!partial) throw new Error('swaps');
+        result = partial;
+      }
+      const ingredients = applySwapSelection(
+        recipe.ingredients,
+        result.swaps,
+        new Set(result.swaps.map((s) => s.raw).filter((raw) => accepted.has(raw)))
+      );
+      const variantId = await saveLowFodmapVariant({
+        // Running the check on a version refreshes that same version.
+        original: { ...recipe, id: recipe.variant_of ?? recipe.id },
+        ingredients,
+        steps: result.steps,
+        userId: userId || null,
+      });
+      queueRecipeTranslation(variantId, {
+        title: recipe.title,
+        language: recipe.language,
+        ingredients,
+        steps: result.steps,
+      });
+      setSwapsOpen(false);
+      setSwapsResult(null);
+      setIngredientsDraft(null);
+      setStepsDraft(null);
+      setSavedToast(true);
+      if (variantId === recipe.id) void load();
+      else router.replace({ pathname: '/recipe/[id]', params: { id: variantId } });
+    } catch {
+      setVariantSaveError(true);
+    } finally {
+      setSavingVariant(false);
+    }
+  };
+
+  const switchVersion = (which: 'original' | 'low_fodmap') => {
+    if (!family) return;
+    const target = which === 'original' ? family.originalId : family.lowFodmapId;
+    if (target && target !== recipe?.id) {
+      router.replace({ pathname: '/recipe/[id]', params: { id: target } });
+    }
   };
 
   /** Bookmark chip: save into my folders — same sheet as the library cards. */
@@ -1095,9 +1220,10 @@ export default function RecipeSheetScreen() {
       onConfirm: () => {
         void (async () => {
           // Best-effort storage cleanup; the row delete is what matters.
-          const paths = Array.from(
-            new Set([heroPath, ...galleryPaths].filter((p): p is string => p !== null))
-          );
+          // A version shares its original's media: never remove those files.
+          const paths = recipe.variant_of
+            ? []
+            : Array.from(new Set([heroPath, ...galleryPaths].filter((p): p is string => p !== null)));
           if (paths.length > 0) {
             await supabase.storage.from('recipe-media').remove(paths);
           }
@@ -1143,6 +1269,7 @@ export default function RecipeSheetScreen() {
             onBookmark={onBookmark}
             focal={recipe.cover_focal}
             onEdit={() => setCoverMenuOpen(true)}
+            onAi={isNew ? undefined : () => setAiOpen(true)}
             onPress={
               heroPath
                 ? // The cover enlarges alone; the Original source gallery below
@@ -1196,6 +1323,13 @@ export default function RecipeSheetScreen() {
                 </Pressable>
               </View>
             )}
+
+            {family?.lowFodmapId && titleDraft === null ? (
+              <VersionToggle
+                active={recipe.variant_of ? 'low_fodmap' : 'original'}
+                onSelect={switchVersion}
+              />
+            ) : null}
 
             {/* Byline-style meta */}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
@@ -1308,7 +1442,7 @@ export default function RecipeSheetScreen() {
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={d.recipe.suggestSwapsA11y}
-                  onPress={() => void runSwaps()}
+                  onPress={openFodmapChat}
                   style={({ pressed }) => ({
                     flexDirection: 'row',
                     alignItems: 'center',
@@ -2137,44 +2271,54 @@ export default function RecipeSheetScreen() {
         </View>
       </Modal>
 
-      <Modal visible={swapsOpen} transparent animationType="fade" onRequestClose={closeSwapsSheet}>
-        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }} onPress={closeSwapsSheet} />
+      <AiActionsSheet
+        visible={aiOpen}
+        onClose={() => setAiOpen(false)}
+        onLowFodmap={openFodmapChat}
+        hasFodmapWork={swappableRaws.length > 0}
+      />
+
+      <FodmapChatSheet
+        visible={swapsOpen}
+        recipeTitle={displayTitle}
+        checkedCount={recipe.ingredients.length}
+        servings={recipe.servings}
+        flags={(fodmap?.flags ?? []).filter((f) => f.tier === 'high' || f.tier === 'moderate')}
+        loading={swapsLoading}
+        failed={swapsFailed}
+        result={swapsResult}
+        saving={savingVariant}
+        saveError={variantSaveError}
+        updatesExisting={!!recipe.variant_of || !!family?.lowFodmapId}
+        onRetry={() => void runSwaps()}
+        onSave={(accepted) => void saveVariant(accepted)}
+        onClose={closeSwapsSheet}
+      />
+
+      {savedToast ? (
         <View
+          pointerEvents="none"
+          accessibilityLiveRegion="polite"
           style={{
-            backgroundColor: colors.bg,
-            padding: screenPadding,
-            paddingBottom: insets.bottom + 16,
-            gap: 12,
-            borderTopLeftRadius: 16,
-            borderTopRightRadius: 16,
+            position: 'absolute',
+            left: 16,
+            right: 16,
+            bottom: insets.bottom + 24,
+            backgroundColor: colors.text,
+            borderRadius: 10,
+            paddingHorizontal: 16,
+            paddingVertical: 14,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 10,
           }}
         >
-          <Eyebrow>{d.recipe.lowFodmapSwaps}</Eyebrow>
-          {swapsFailed ? (
-            <>
-              <Body>{d.recipe.swapsFailedMsg}</Body>
-              <Button label={d.common.close} kind="secondary" onPress={closeSwapsSheet} />
-            </>
-          ) : swapsResult ? (
-            <>
-              <ScrollView style={{ maxHeight: 320 }} contentContainerStyle={{ gap: 12 }}>
-                {swapsResult.swaps.map((swap) => {
-                  const flag = flagByRaw.get(swap.raw);
-                  return (
-                    <View key={swap.raw} style={{ gap: 2 }}>
-                      <Body>{`${flag?.name ?? swap.raw} → ${swap.replacement.name}`}</Body>
-                      <Muted>{swap.note}</Muted>
-                    </View>
-                  );
-                })}
-                {swapsResult.swaps.length === 0 ? <Muted>{d.recipe.noSwaps}</Muted> : null}
-              </ScrollView>
-              <Button label={d.recipe.applyAll} onPress={() => void applySwaps()} />
-              <Button label={d.common.cancel} kind="secondary" onPress={closeSwapsSheet} />
-            </>
-          ) : null}
+          <Ionicons name="checkmark" size={18} color={colors.bg} />
+          <Text style={{ color: colors.bg, fontSize: fontSize.small, fontFamily: fonts.uiMedium }}>
+            {d.ai.savedToast}
+          </Text>
         </View>
-      </Modal>
+      ) : null}
 
       {heroPath && repositionOpen ? (
         <CoverRepositionModal

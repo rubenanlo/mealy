@@ -381,6 +381,8 @@ export interface FodmapSwapRequest {
   steps: string[];
   /** raw ingredient lines flagged high/moderate FODMAP */
   flagged: string[];
+  /** flagged raw line → low-FODMAP alternates from the cited table (grounding) */
+  hints?: Record<string, string[]>;
 }
 
 export interface FodmapSwapResult {

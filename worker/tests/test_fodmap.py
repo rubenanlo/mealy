@@ -45,3 +45,24 @@ async def test_swaps_reach_the_model_and_validate(monkeypatch):
     assert fake.calls[0]["model"] == "claude-haiku-4-5"
     assert response.swaps[0].replacement.name == "vert de poireau"
     assert "1 oignon" in fake.calls[0]["messages"][0]["content"][0]["text"]
+
+
+async def test_table_hints_ground_the_prompt(monkeypatch):
+    fake = FakeClient(SWAP_REPLY)
+    monkeypatch.setattr(structure, "get_anthropic_client", lambda: fake)
+    request = fodmap.SwapRequest(
+        title="Soupe",
+        servings=4,
+        ingredients=[Ingredient(raw="1 oignon", name="oignon"), Ingredient(raw="2 carottes", name="carotte")],
+        steps=["Émincer l'oignon.", "Cuire 30 min."],
+        flagged=["1 oignon"],
+        hints={"1 oignon": ["oignon nouveau", "ciboulette"]},
+    )
+    await fodmap.suggest_swaps(request)
+    text = fake.calls[0]["messages"][0]["content"][0]["text"]
+    assert "- 1 oignon (preferred substitutes: oignon nouveau, ciboulette)" in text
+
+
+def test_hints_are_optional():
+    request = fodmap.SwapRequest(title="Soupe", ingredients=[], steps=[], flagged=[])
+    assert request.hints == {}

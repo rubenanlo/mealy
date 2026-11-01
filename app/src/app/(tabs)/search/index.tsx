@@ -94,6 +94,8 @@ export default function SearchScreen() {
           'id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes, ingredients, fodmap_override, meal_type, recipe_translations(locale, title)'
         )
         .eq('household_id', householdId)
+        // Low-FODMAP versions live under their original (toggle on the recipe page).
+        .is('variant_of', null)
         .order('created_at', { ascending: false })
         .then(({ data }) => {
           if (cancelled) return;

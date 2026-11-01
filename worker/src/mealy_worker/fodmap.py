@@ -20,7 +20,9 @@ SWAP_SYSTEM = (
     "the steps that mention a swapped ingredient so they reference the "
     "replacement; copy every other step verbatim. Never drop a step, never "
     "invent new ingredients beyond the replacements, and keep each "
-    "replacement's `raw` equal to the original flagged line."
+    "replacement's `raw` equal to the original flagged line. When a flagged "
+    "line lists preferred substitutes from the household's FODMAP table, pick "
+    "one of those unless none fits the dish."
 )
 
 
@@ -31,6 +33,10 @@ class SwapRequest(BaseModel):
     ingredients: list[Ingredient]
     steps: list[str]
     flagged: list[str] = Field(description="raw ingredient lines flagged high/moderate FODMAP")
+    hints: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description="flagged raw line -> low-FODMAP alternates from Mealy's cited table",
+    )
 
 
 class IngredientSwap(BaseModel):
@@ -58,7 +64,9 @@ def _request_text(request: SwapRequest) -> str:
     lines.append("Steps:")
     lines.extend(f"{i + 1}. {step}" for i, step in enumerate(request.steps))
     lines.append("Flagged (high/moderate FODMAP) lines to swap:")
-    lines.extend(f"- {raw}" for raw in request.flagged)
+    for raw in request.flagged:
+        preferred = request.hints.get(raw) or []
+        lines.append(f"- {raw}" + (f" (preferred substitutes: {', '.join(preferred)})" if preferred else ""))
     return "\n".join(lines)
 
 

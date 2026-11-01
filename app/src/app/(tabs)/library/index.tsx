@@ -189,6 +189,8 @@ export default function HomeScreen() {
           "id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes, created_at, created_by, ingredients, fodmap_override, recipe_translations(locale, title)",
         )
         .eq("household_id", householdId)
+        // Low-FODMAP versions live under their original (toggle on the recipe page).
+        .is("variant_of", null)
         .order("created_at", { ascending: false }),
       supabase
         .from("plan_entries")
