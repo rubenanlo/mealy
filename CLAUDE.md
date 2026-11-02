@@ -14,7 +14,7 @@ page for the household's employee. Authoritative product/tech spec: `docs/spec.m
 - `supabase/` — Postgres schema (migrations, RLS), plus Deno **edge functions**.
 - `workers/employee-menu-proxy/` — Cloudflare Worker that fronts the `employee-menu` edge function.
 
-There is **no CI** (`.github` absent) and no CMS. Deploys are all manual (see below).
+There is no CMS. **Deploys run from GitHub Actions on every push to `main`** (`.github/workflows/deploy.yml`): each target (web app, Fly worker, edge functions, the two Cloudflare workers) deploys only when its folder changed, or all of them via *Run workflow* → `deploy_all`. **Database migrations are not automated**: apply them (MCP `apply_migration` / `supabase db push`) before merging code that needs them. The manual commands below still work.
 
 ## Commands (canonical package manager for `app/` is pnpm)
 
