@@ -1,0 +1,179 @@
+# Deploy on merge to main. Each target deploys only when its files changed
+# (or always, from the Actions tab via "Run workflow" with deploy_all).
+# Database migrations are NOT applied here: they stay a deliberate manual
+# step (Supabase MCP apply_migration / `supabase db push`) and must land
+# before the app code that needs them is merged.
+#
+# Secrets (Settings → Secrets and variables → Actions → Secrets):
+#   CLOUDFLARE_API_TOKEN    Workers Scripts:Edit + Workers Routes/Custom Domains on rawdev.link
+#   FLY_API_TOKEN           `fly tokens create deploy -a mealy-worker`
+#   SUPABASE_ACCESS_TOKEN   supabase.com → Account → Access Tokens
+# Variables (same page → Variables), baked into the web bundle at build time:
+#   EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID, EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
+#   (without them the web build hides "Continue with Google").
+#   EXPO_PUBLIC_SUPABASE_URL / _ANON_KEY default to the public values in
+#   app/.env.example and only need a variable to override them.
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy_all:
+        description: Deploy every target, not just the changed ones
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  SUPABASE_PROJECT_REF: fcqtywqwhddlyirhwbzq
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      web: ${{ steps.filter.outputs.web == 'true' || inputs.deploy_all == true }}
+      worker: ${{ steps.filter.outputs.worker == 'true' || inputs.deploy_all == true }}
+      functions: ${{ steps.filter.outputs.functions == 'true' || inputs.deploy_all == true }}
+      menu_proxy: ${{ steps.filter.outputs.menu_proxy == 'true' || inputs.deploy_all == true }}
+      site: ${{ steps.filter.outputs.site == 'true' || inputs.deploy_all == true }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            web:
+              - 'app/**'
+              - 'workers/mealy-app/**'
+            worker:
+              - 'worker/**'
+            functions:
+              - 'supabase/functions/**'
+            menu_proxy:
+              - 'workers/employee-menu-proxy/**'
+            site:
+              - 'workers/mealy-site/**'
+
+  web:
+    name: Web app (app.rawdev.link)
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Tests
+        run: pnpm test --ci
+      - name: Export web build
+        env:
+          EXPO_PUBLIC_WORKER_URL: https://mealy-worker.fly.dev
+          EXPO_PUBLIC_SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL || 'https://fcqtywqwhddlyirhwbzq.supabase.co' }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_N1ty1ZTJw43zw-eqXTfQvA_t2k2aFCO' }}
+          EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ vars.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID }}
+          EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: ${{ vars.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID }}
+        run: |
+          if [ -z "$EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID" ]; then
+            echo "::warning::EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID is not set: Google sign-in will be hidden on the web app"
+          fi
+          rm -rf dist
+          pnpm exec expo export --platform web
+          node ../workers/mealy-app/inject-head.mjs dist/index.html
+      - name: Deploy to Cloudflare
+        working-directory: workers/mealy-app
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4 deploy
+
+  worker:
+    name: Python worker (Fly)
+    needs: changes
+    if: needs.changes.outputs.worker == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy to Fly
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl deploy --remote-only
+
+  functions:
+    name: Supabase edge functions
+    needs: changes
+    if: needs.changes.outputs.functions == 'true'
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Deploy functions
+        run: |
+          # The share token / capture key is the credential for these two:
+          # they must stay verify_jwt=false.
+          NO_JWT="employee-menu share-capture"
+          for dir in supabase/functions/*/; do
+            fn=$(basename "$dir")
+            case "$fn" in _*) continue ;; esac
+            flags=""
+            case " $NO_JWT " in *" $fn "*) flags="--no-verify-jwt" ;; esac
+            echo "Deploying $fn $flags"
+            supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF" $flags
+          done
+
+  menu_proxy:
+    name: Employee menu proxy (Cloudflare)
+    needs: changes
+    if: needs.changes.outputs.menu_proxy == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - working-directory: workers/employee-menu-proxy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: f8e4646011eea2771f852f9310392ccb
+        run: npx --yes wrangler@4 deploy
+
+  site:
+    name: Mealy site (Cloudflare)
+    needs: changes
+    if: needs.changes.outputs.site == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - working-directory: workers/mealy-site
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: f8e4646011eea2771f852f9310392ccb
+        run: npx --yes wrangler@4 deploy
