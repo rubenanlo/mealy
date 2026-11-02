@@ -3639,7 +3639,12 @@
     "aliases": [
       "farine de sarrasin",
       "blé noir",
-      "kasha"
+      "kasha",
+      "galette",
+      "galette de sarrasin",
+      "galette blé noir",
+      "galette bretonne",
+      "crêpe de sarrasin"
     ],
     "category": "grain",
     "aisle": "Épicerie salée",
@@ -4814,6 +4819,37 @@
     "density_g_per_ml": 0.99,
     "source_url": "https://www.ibsdiets.org/fodmap-diet/fodmap-food-list/",
     "source_note": "IBS Diets published FODMAP list: wine low, limited to one drink. Weight/density: Ciqual food composition table (ANSES), ciqual.anses.fr.",
+    "verified": false,
+    "fodmap_swaps": []
+  },
+  {
+    "slug": "eau",
+    "name_en": "water",
+    "name_fr": "eau",
+    "name_es": "agua",
+    "aliases": [
+      "eau tiède",
+      "eau froide",
+      "eau chaude",
+      "eau bouillante",
+      "water",
+      "boiling water",
+      "cold water",
+      "warm water",
+      "aigua",
+      "aigua freda"
+    ],
+    "category": "pantry",
+    "aisle": null,
+    "season": null,
+    "fodmap_tier": "low",
+    "fodmap_groups": [],
+    "low_serving_g": null,
+    "high_serving_g": null,
+    "avg_unit_weight_g": null,
+    "density_g_per_ml": 1,
+    "source_url": "https://fdc.nal.usda.gov/food-details/173647/nutrients",
+    "source_note": "Water contains no carbohydrate, so no FODMAPs (USDA FoodData Central).",
     "verified": false,
     "fodmap_swaps": []
   }
