@@ -2284,6 +2284,9 @@ export default function RecipeSheetScreen() {
         checkedCount={recipe.ingredients.length}
         servings={recipe.servings}
         flags={(fodmap?.flags ?? []).filter((f) => f.tier === 'high' || f.tier === 'moderate')}
+        unknown={(fodmap?.flags ?? []).filter((f) => f.tier === 'check')}
+        tableReady={fodmap !== null}
+        manualTier={recipe.fodmap_override}
         loading={swapsLoading}
         failed={swapsFailed}
         result={swapsResult}
