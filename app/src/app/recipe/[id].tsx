@@ -50,6 +50,7 @@ import { confirmDestructive, notify } from '@/lib/confirm';
 import { invalidateLists } from '@/lib/list-refresh';
 import { backOr } from '@/lib/nav';
 import { recordRecentlyViewed } from '@/lib/recently-viewed';
+import { shareRecipe } from '@/lib/recipe-share';
 import { anchorFromEvent, pickOption } from '@/lib/options';
 import {
   CATEGORY_LABELS,
@@ -1238,6 +1239,25 @@ export default function RecipeSheetScreen() {
       },
     });
   };
+  // Share the recipe as it reads on screen (active translation), at its own
+  // base yield: plan scaling and unit toggles are personal, not the recipe.
+  const onShare = () => {
+    void shareRecipe(
+      {
+        id: recipe.id,
+        title: displayTitle,
+        meta: [
+          recipe.servings ? fmt(d.recipe.servingsCount, { n: recipe.servings }) : null,
+          recipe.prep_minutes ? fmt(d.recipe.prepMin, { n: recipe.prep_minutes }) : null,
+          recipe.cook_minutes ? fmt(d.recipe.cookMin, { n: recipe.cook_minutes }) : null,
+        ].filter((p): p is string => p !== null),
+        ingredients: localized.ingredients,
+        steps: localized.steps,
+      },
+      { ingredients: d.recipe.ingredients, steps: d.recipe.steps, openInMealy: d.recipe.openInMealy },
+      d.recipe.recipeCopied
+    );
+  };
   const showPinnedBar = pinnedVisible;
   const actionBottom = (Platform.OS === 'ios' ? insets.bottom : insets.bottom) + 16;
   // While a list is in edit mode the floating action covers the editor's own
@@ -1305,6 +1325,22 @@ export default function RecipeSheetScreen() {
                 >
                   {displayTitle}
                 </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={d.recipe.shareRecipeA11y}
+                  onPress={onShare}
+                  hitSlop={8}
+                  style={({ pressed }) => ({
+                    width: minTapTarget - 8,
+                    height: minTapTarget - 8,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: (minTapTarget - 8) / 2,
+                    backgroundColor: pressed ? colors.cardPressed : 'transparent',
+                  })}
+                >
+                  <Ionicons name="share-outline" size={20} color={colors.textMuted} />
+                </Pressable>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={d.recipe.editTitleA11y}
