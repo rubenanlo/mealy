@@ -52,15 +52,20 @@ jobs:
         with:
           filters: |
             web:
+              - '.github/workflows/deploy.yml'
               - 'app/**'
               - 'workers/mealy-app/**'
             worker:
+              - '.github/workflows/deploy.yml'
               - 'worker/**'
             functions:
+              - '.github/workflows/deploy.yml'
               - 'supabase/functions/**'
             menu_proxy:
+              - '.github/workflows/deploy.yml'
               - 'workers/employee-menu-proxy/**'
             site:
+              - '.github/workflows/deploy.yml'
               - 'workers/mealy-site/**'
 
   web:
