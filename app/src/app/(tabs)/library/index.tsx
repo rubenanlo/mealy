@@ -720,8 +720,16 @@ export default function HomeScreen() {
           </View>
         ) : (
           <View>
+            {hero ? (
+              <Hero
+                recipe={hero}
+                saved={savedSet.has(hero.id)}
+                onPress={() => openRecipe(hero.id)}                onSave={() => setSaveRecipe(hero)}
+              />
+            ) : null}
+
             {recentlyViewed.length > 0 ? (
-              <View style={{ gap: 12, marginBottom: 24 }}>
+              <View style={{ paddingTop: 16, gap: 12 }}>
                 <RecentlyViewedHeader
                   title={d.library.recentlyViewed}
                   onPress={() => router.push("/recently-viewed")}
@@ -740,15 +748,8 @@ export default function HomeScreen() {
                     />
                   ))}
                 </ScrollView>
+                <Hairline />
               </View>
-            ) : null}
-
-            {hero ? (
-              <Hero
-                recipe={hero}
-                saved={savedSet.has(hero.id)}
-                onPress={() => openRecipe(hero.id)}                onSave={() => setSaveRecipe(hero)}
-              />
             ) : null}
 
             {upcoming.length > 0 ? (
