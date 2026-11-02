@@ -91,8 +91,32 @@ describe('FodmapChatSheet', () => {
 
   it('says there is nothing to change when nothing is flagged', () => {
     const screen = wrap(<FodmapChatSheet {...baseChat} flags={[]} result={null} onSave={jest.fn()} />);
-    expect(screen.getByText(/found nothing high-FODMAP/)).toBeTruthy();
+    expect(screen.getByText(/found nothing high or moderate FODMAP/)).toBeTruthy();
     expect(screen.queryByText(/Save version/)).toBeNull();
+  });
+
+  it('lists lines the table cannot judge and explains a hand-set tier', () => {
+    const screen = wrap(
+      <FodmapChatSheet
+        {...baseChat}
+        flags={[]}
+        result={null}
+        unknown={[{ ...flag('4 pièces Galettes', 'high', []), tier: 'check' }]}
+        manualTier="moderate"
+        onSave={jest.fn()}
+      />
+    );
+    expect(screen.getByText(/couldn’t verify 1/)).toBeTruthy();
+    expect(screen.getByText('• 4 pièces Galettes')).toBeTruthy();
+    expect(screen.getByText(/set by hand to “moderate”/)).toBeTruthy();
+  });
+
+  it('says so when the FODMAP table could not be loaded', () => {
+    const screen = wrap(
+      <FodmapChatSheet {...baseChat} flags={[]} result={null} tableReady={false} onSave={jest.fn()} />
+    );
+    expect(screen.getByText(/couldn’t load Mealy’s FODMAP table/)).toBeTruthy();
+    expect(screen.queryByText(/found nothing/)).toBeNull();
   });
 });
 

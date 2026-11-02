@@ -227,6 +227,12 @@ export interface FodmapChatProps {
   servings: number | null;
   /** High/moderate flags from the deterministic table. */
   flags: FodmapFlag[];
+  /** Lines the table has no data for ('check'): shown so silence isn't read as "low". */
+  unknown?: FodmapFlag[];
+  /** False when the table/matches could not be loaded: nothing was checked. */
+  tableReady?: boolean;
+  /** A hand-set recipe tier (fodmap_override), explained when it disagrees. */
+  manualTier?: 'low' | 'moderate' | 'high' | null;
   loading: boolean;
   failed: boolean;
   result: FodmapSwapResult | null;
@@ -265,8 +271,21 @@ export function FodmapChatSheet(props: FodmapChatProps) {
       return next;
     });
 
-  const intro =
-    flags.length === 0
+  const unknown = props.unknown ?? [];
+  const tableReady = props.tableReady ?? true;
+  const manualWord =
+    props.manualTier === 'high'
+      ? d.ai.tierWordHigh
+      : props.manualTier === 'moderate'
+        ? d.ai.tierWordModerate
+        : props.manualTier === 'low'
+          ? d.ai.tierWordLow
+          : null;
+  // Only worth explaining when the hand-set badge claims more than we found.
+  const showManual = tableReady && flags.length === 0 && (props.manualTier === 'moderate' || props.manualTier === 'high');
+  const intro = !tableReady
+    ? d.ai.tableUnavailable
+    : flags.length === 0
       ? fmt(d.ai.noneFound, { n: props.checkedCount })
       : props.servings
         ? fmt(d.ai.checked, { n: props.checkedCount, high: flags.length, servings: props.servings })
@@ -348,6 +367,23 @@ export function FodmapChatSheet(props: FodmapChatProps) {
               </View>
             ))}
           </Bubble>
+
+          {tableReady && unknown.length > 0 ? (
+            <Bubble>
+              <BubbleText>{fmt(d.ai.unknownIntro, { n: unknown.length })}</BubbleText>
+              {unknown.map((u) => (
+                <Text key={u.raw} style={{ color: colors.text, fontSize: fontSize.small, fontFamily: fonts.ui }}>
+                  {`• ${u.raw}`}
+                </Text>
+              ))}
+            </Bubble>
+          ) : null}
+
+          {showManual && manualWord ? (
+            <Bubble>
+              <BubbleText>{fmt(d.ai.manualTier, { tier: manualWord })}</BubbleText>
+            </Bubble>
+          ) : null}
 
           {flags.length > 0 && loading ? (
             <Bubble>
