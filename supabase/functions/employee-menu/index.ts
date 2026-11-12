@@ -194,8 +194,36 @@ interface RecipeRow {
   prep_minutes: number | null;
   cook_minutes: number | null;
   cover_image_path: string | null;
+  updated_at: string | null;
   ingredients: { raw?: string; name?: string }[];
   steps: string[];
+}
+
+interface TranslationRow {
+  recipe_id: string;
+  title: string;
+  ingredients: RecipeRow['ingredients'];
+  steps: string[];
+  translated_at: string | null;
+}
+
+/**
+ * Same guard as the app's recipe page: a translation only replaces the
+ * original when it was made after the last content edit and still has the
+ * same number of lines. Edits regenerate translations in the background, so
+ * until the new one lands (or if it failed) the page shows the fresh original
+ * instead of the stale translated ingredients.
+ */
+function usableTranslation(recipe: RecipeRow, tr: TranslationRow): boolean {
+  const fresh =
+    !tr.translated_at ||
+    !recipe.updated_at ||
+    Date.parse(tr.translated_at) >= Date.parse(recipe.updated_at);
+  return (
+    fresh &&
+    (tr.ingredients ?? []).length === (recipe.ingredients ?? []).length &&
+    (tr.steps ?? []).length === (recipe.steps ?? []).length
+  );
 }
 
 Deno.serve(async (req) => {
@@ -259,22 +287,22 @@ Deno.serve(async (req) => {
   if (recipeIds.length > 0) {
     const { data: recipeRows } = await admin
       .from('recipes')
-      .select('id, title, servings, prep_minutes, cook_minutes, cover_image_path, ingredients, steps')
+      .select('id, title, servings, prep_minutes, cook_minutes, cover_image_path, updated_at, ingredients, steps')
       .in('id', recipeIds);
     for (const r of (recipeRows ?? []) as RecipeRow[]) recipesById.set(r.id, r);
 
     // Overlay the link language's translation (fallback: original content).
     const { data: translationRows } = await admin
       .from('recipe_translations')
-      .select('recipe_id, title, ingredients, steps')
+      .select('recipe_id, title, ingredients, steps, translated_at')
       .in('recipe_id', recipeIds)
       .eq('locale', lang);
-    for (const tr of translationRows ?? []) {
-      const r = recipesById.get(tr.recipe_id as string);
-      if (r) {
-        r.title = tr.title as string;
-        r.ingredients = tr.ingredients as RecipeRow['ingredients'];
-        r.steps = tr.steps as string[];
+    for (const tr of (translationRows ?? []) as TranslationRow[]) {
+      const r = recipesById.get(tr.recipe_id);
+      if (r && usableTranslation(r, tr)) {
+        r.title = tr.title;
+        r.ingredients = tr.ingredients;
+        r.steps = tr.steps;
       }
     }
   }
