@@ -60,6 +60,16 @@ export function flagIngredient(
   if (!canonical) {
     return { tier: 'check', explanation: 'Not in the ingredient table yet — check manually.' };
   }
+  if (canonical.personal) {
+    // The household's own call beats the reference table and its thresholds.
+    const { rating, safe_portion, checked } = canonical.personal;
+    const portion = safe_portion ? ` Safe portion: ${safe_portion}.` : '';
+    const who = checked ? 'your list, checked' : 'your list, not checked yet';
+    return {
+      tier: rating,
+      explanation: `${capitalize(rating)} per ${who}.${portion}`,
+    };
+  }
   if (canonical.fodmap_tier === 'check') {
     return { tier: 'check', explanation: 'No published FODMAP data for this ingredient — check manually.' };
   }

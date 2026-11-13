@@ -9,6 +9,7 @@ import { components } from '@/lib/i18n/components';
 import { groceries } from '@/lib/i18n/groceries';
 import { library } from '@/lib/i18n/library';
 import { mealPrefs } from '@/lib/i18n/mealPrefs';
+import { myFodmap } from '@/lib/i18n/myFodmap';
 import { onboarding } from '@/lib/i18n/onboarding';
 import { person } from '@/lib/i18n/person';
 import { plan } from '@/lib/i18n/plan';
@@ -46,6 +47,7 @@ export const dictionaries = {
     mealPrefs: mealPrefs.en,
     components: components.en,
     ai: ai.en,
+    myFodmap: myFodmap.en,
   },
   es: {
     common: common.es,
@@ -62,6 +64,7 @@ export const dictionaries = {
     mealPrefs: mealPrefs.es,
     components: components.es,
     ai: ai.es,
+    myFodmap: myFodmap.es,
   },
   fr: {
     common: common.fr,
@@ -78,6 +81,7 @@ export const dictionaries = {
     mealPrefs: mealPrefs.fr,
     components: components.fr,
     ai: ai.fr,
+    myFodmap: myFodmap.fr,
   },
   it: {
     common: common.it,
@@ -94,6 +98,7 @@ export const dictionaries = {
     mealPrefs: mealPrefs.it,
     components: components.it,
     ai: ai.it,
+    myFodmap: myFodmap.it,
   },
 } as const;
 

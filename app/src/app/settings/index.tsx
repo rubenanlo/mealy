@@ -68,6 +68,10 @@ export default function SettingsScreen() {
             onPress={() => router.push('/settings/meal-preferences')}
           />
           <SettingsRow
+            label={d.settings.myFodmapList}
+            onPress={() => router.push('/settings/my-fodmap')}
+          />
+          <SettingsRow
             label={d.settings.appearance}
             onPress={() => router.push('/settings/appearance')}
           />
