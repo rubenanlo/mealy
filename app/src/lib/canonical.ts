@@ -27,6 +27,11 @@ export interface CanonicalIngredient {
   avg_unit_weight_g: number | null;
   density_g_per_ml: number | null;
   verified: boolean;
+  /**
+   * The household's own rating (my_fodmap_ingredients, migration 0035),
+   * attached client-side by loadCanonicalIngredients. Wins over fodmap_tier.
+   */
+  personal?: { rating: 'low' | 'moderate' | 'high'; safe_portion: string | null; checked: boolean };
 }
 
 export type MatchedBy = 'exact' | 'alias' | 'llm' | 'user';

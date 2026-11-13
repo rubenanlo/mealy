@@ -4,6 +4,7 @@ import {
   normalizeRaw,
   type CanonicalIngredient,
 } from '@/lib/canonical';
+import { applyPersonalRatings, type PersonalFodmapEntry } from '@/lib/my-fodmap';
 import { supabase } from '@/lib/supabase';
 import { matchIngredients } from '@/lib/worker';
 
@@ -30,10 +31,22 @@ export function loadCanonicalIngredients(): Promise<CanonicalIngredient[]> {
         tablePromise = null; // allow retry next call
         throw new Error(error?.message ?? 'Could not load the ingredient table.');
       }
-      return data as CanonicalIngredient[];
+      // The household's own ratings ride along on linked rows. Failure here
+      // (e.g. migration 0035 not applied yet) must not break matching.
+      const personal = await supabase
+        .from('my_fodmap_ingredients')
+        .select('canonical_id, rating, safe_portion, checked')
+        .not('canonical_id', 'is', null);
+      const entries = personal.error ? [] : ((personal.data ?? []) as PersonalFodmapEntry[]);
+      return applyPersonalRatings(data as CanonicalIngredient[], entries);
     })();
   }
   return tablePromise;
+}
+
+/** Drop the session cache so the next load picks up personal-list edits. */
+export function invalidateCanonicalIngredients(): void {
+  tablePromise = null;
 }
 
 export interface ResolvedMatch {
