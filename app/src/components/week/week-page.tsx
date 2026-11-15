@@ -62,6 +62,7 @@ import {
 } from '@/lib/theme';
 import { localizedTitle } from '@/lib/translations';
 import { useCanonicalIndex } from '@/lib/use-canonical';
+import { parseRoutine } from '@/lib/plan-routine';
 import { addSuggestions, chipWeeks, openMeals, splitSlot, weekProgress } from '@/lib/week-page';
 import type { IngredientRow as IngredientData } from '@/lib/worker';
 
@@ -662,7 +663,30 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
     });
 
   const loadPlannerContext = async (): Promise<PlannerContext> => {
-    const { data: hh } = await supabase.from('households').select('suggested_rest_weeks').eq('id', householdId).single();
+    const [{ data: hh }, { data: prevPlan }] = await Promise.all([
+      supabase.from('households').select('suggested_rest_weeks, plan_routine').eq('id', householdId).single(),
+      supabase
+        .from('meal_plans')
+        .select('id')
+        .eq('household_id', householdId)
+        .eq('week_start', addWeeks(weekIso, -1))
+        .maybeSingle(),
+    ]);
+    // Last week's Sunday dinner can feed Monday's leftovers.
+    let prevSundayDinner: PlannerContext['prevSundayDinner'] = null;
+    if (prevPlan) {
+      const { data: rows } = await supabase
+        .from('plan_entries')
+        .select('id, recipe_id, custom_title, position, leftover_of')
+        .eq('meal_plan_id', prevPlan.id)
+        .eq('day', 6)
+        .eq('slot', 'dinner')
+        .is('leftover_of', null)
+        .order('position')
+        .limit(1);
+      const row = rows?.[0];
+      if (row) prevSundayDinner = { id: row.id, recipeId: row.recipe_id, customTitle: row.custom_title };
+    }
     const candidates: AutoCandidate[] = mains.map((r) => {
       const lines = (r.ingredients ?? []).map((ing) => ({
         raw: ing.raw || ing.name,
@@ -702,6 +726,8 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
       candidates,
       quotas: [...quotaMap.entries()].map(([category, q]) => ({ category, ...q })),
       restWeeks: hh?.suggested_rest_weeks ?? 3,
+      routine: parseRoutine(hh?.plan_routine),
+      prevSundayDinner,
     };
   };
 

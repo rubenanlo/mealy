@@ -12,10 +12,13 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 
+import { ChangeMealPanel, PlannerPanel, type PanelIdea, type PanelPick, type PanelRecipe } from '@/components/change-meal-panel';
 import { initials } from '@/components/person-chip';
 import { Button, CategoryDot, Muted } from '@/components/ui';
 import {
+  FAVOURITE_KIND,
   SLOTS,
   absencesFrom,
   awayMapFrom,
@@ -26,7 +29,7 @@ import {
   presetPicks,
   proposeWeek,
   sideSuggestions,
-  swapMeal,
+  suggestForCell,
   tally,
   toggleAway,
   toggleGoingOut,
@@ -38,6 +41,7 @@ import {
   type ProposalInput,
   type ProposedMeal,
   type ProposedSide,
+  type RoutineScoring,
 } from '@/lib/ai-week';
 import { useHousehold } from '@/lib/auth';
 import type { AutoCandidate, EmptyCell, PlannedMeal, QuotaConstraint } from '@/lib/auto-plan';
@@ -55,6 +59,18 @@ import {
   type PlanEntry,
 } from '@/lib/plan';
 import { isPastDay, type PlanIdea } from '@/lib/plan-ideas';
+import {
+  PREV_SUNDAY,
+  durationLabel,
+  favouriteSets,
+  leftoverLinks,
+  portionsFor,
+  routineLines,
+  rulesToCheck,
+  scoringRules,
+  type PlanRoutine,
+  type RoutineRecipe,
+} from '@/lib/plan-routine';
 import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, minTapTarget, radius, screenPadding, useTheme } from '@/lib/theme';
 import { aiAskRecipe, aiChangePlan, type AiChatTurn, type IngredientRow } from '@/lib/worker';
@@ -81,7 +97,13 @@ export interface PlannerContext {
   candidates: AutoCandidate[];
   quotas: QuotaConstraint[];
   restWeeks: number;
+  /** The household's weekly routine (migration 0039). */
+  routine?: PlanRoutine;
+  /** Last week's Sunday dinner: Monday's leftovers come from it. */
+  prevSundayDinner?: { id: string; recipeId: string | null; customTitle: string | null } | null;
 }
+
+type RoutinePart = 'quick' | 'favourites' | 'leftovers' | 'weekend' | `rule:${string}`;
 
 type Step = 1 | 2 | 3 | 4;
 
@@ -97,7 +119,7 @@ interface EmployeeRow {
   cook_part: boolean;
 }
 
-const ENTRY_COLUMNS = 'id, day, slot, recipe_id, custom_title, position, assigned_cook, instructions, cook_part';
+const ENTRY_COLUMNS = 'id, day, slot, recipe_id, custom_title, position, assigned_cook, instructions, cook_part, leftover_of';
 
 const sparkle = (color: string, size = 18) => <Ionicons name="sparkles-outline" size={size} color={color} />;
 
@@ -120,6 +142,7 @@ export function AiWeekPlanner(props: {
   const { colors } = useTheme();
   const { d, locale } = useI18n();
   const t = d.aiPlan;
+  const rt = d.routine;
   const { householdId } = useHousehold();
   const insets = useSafeAreaInsets();
   const index = useCanonicalIndex();
@@ -154,6 +177,16 @@ export function AiWeekPlanner(props: {
   const [parts, setParts] = useState<Map<string, boolean>>(new Map());
   const [notes, setNotes] = useState<Map<string, string>>(new Map());
   const [suggesting, setSuggesting] = useState<string | null>(null);
+  /** Routine parts switched off for this week only. */
+  const [weekOff, setWeekOff] = useState<Set<RoutinePart>>(new Set());
+  /** Nights the leftovers person eats with the others this week. */
+  const [chainOff, setChainOff] = useState<Set<number>>(new Set());
+  const [changeFor, setChangeFor] = useState<EmptyCell | null>(null);
+  const [chainAsk, setChainAsk] = useState<{ target: EmptyCell; pick: PanelPick; day: number; oldTitle: string } | null>(null);
+  const [chainChoice, setChainChoice] = useState<'new' | 'off'>('new');
+  const [usedIdeaIds, setUsedIdeaIds] = useState<Set<string>>(new Set());
+  const [laterIdeas, setLaterIdeas] = useState<PlanIdea[] | null>(null);
+  const router = useRouter();
 
   // Fresh start every time the sheet opens.
   useEffect(() => {
@@ -172,6 +205,12 @@ export function AiWeekPlanner(props: {
     setChangeText('');
     setRows([]);
     setCtx(null);
+    setWeekOff(new Set());
+    setChainOff(new Set());
+    setChangeFor(null);
+    setChainAsk(null);
+    setUsedIdeaIds(new Set());
+    setLaterIdeas(null);
     let cancelled = false;
     void props.loadContext().then((loaded) => {
       if (cancelled) return;
@@ -194,6 +233,49 @@ export function AiWeekPlanner(props: {
   );
   const lockedKeys = useMemo(() => new Set(entries.map((e) => cellKey(e.day, e.slot))), [entries]);
 
+  // ---- The household routine (migration 0039), minus what's off this week ----
+  const routine = ctx?.routine ?? null;
+  const effective = useMemo<PlanRoutine | null>(
+    () =>
+      routine
+        ? {
+            ...routine,
+            quick: { ...routine.quick, on: routine.quick.on && !weekOff.has('quick') },
+            favourites: weekOff.has('favourites') ? [] : routine.favourites,
+            favouritesMin: weekOff.has('favourites') ? 0 : routine.favouritesMin,
+            leftovers: { ...routine.leftovers, on: routine.leftovers.on && !weekOff.has('leftovers') },
+            weekendLunch: { ...routine.weekendLunch, on: routine.weekendLunch.on && !weekOff.has('weekend') },
+            rules: routine.rules.filter((r) => !weekOff.has(`rule:${r.id}`)),
+          }
+        : null,
+    [routine, weekOff]
+  );
+  const leftoverPerson = effective?.leftovers.on
+    ? (eaters.find((p) => p.id === effective.leftovers.personId) ?? null)
+    : null;
+  const leftoverId = leftoverPerson?.id ?? null;
+  /** The leftovers person eats at home that night and the dinner isn't planned by hand. */
+  const leftoverHome = (day: number) =>
+    !!leftoverId && !away.get(cellKey(day, 'dinner'))?.has(leftoverId) && !lockedKeys.has(cellKey(day, 'dinner'));
+  const othersHome = (day: number, slot: MealSlot) =>
+    eaters.filter((p) => p.id !== leftoverId && !away.get(cellKey(day, slot))?.has(p.id)).length;
+  const preLinkDays = useMemo(() => {
+    if (!effective) return new Set<number>();
+    const links = leftoverLinks({
+      routine: effective,
+      days: futureDays,
+      personHome: leftoverHome,
+      hasDinner: (fd) =>
+        fd === PREV_SUNDAY
+          ? !!ctx?.prevSundayDinner
+          : lockedKeys.has(cellKey(fd, 'dinner')) ||
+            (futureDays.includes(fd) && !isGoingOut(away.get(cellKey(fd, 'dinner')), eaterIds)),
+      off: chainOff,
+    });
+    return new Set(links.map((l) => l.day));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effective, futureDays, away, lockedKeys, chainOff, ctx, eaterIds, leftoverId]);
+
   /** Meals the AI fills: future, nothing planned yet, and someone eats at home. */
   const openCells = useMemo(() => {
     const cells: EmptyCell[] = [];
@@ -201,19 +283,60 @@ export function AiWeekPlanner(props: {
       for (const slot of SLOTS) {
         const key = cellKey(day, slot);
         if (lockedKeys.has(key) || isGoingOut(away.get(key), eaterIds)) continue;
+        // Only the leftovers person is home and they eat last night's dinner.
+        if (slot === 'dinner' && preLinkDays.has(day) && othersHome(day, slot) === 0) continue;
         cells.push({ day, slot });
       }
     }
     return cells;
-  }, [futureDays, lockedKeys, away, eaterIds]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [futureDays, lockedKeys, away, eaterIds, preLinkDays, leftoverId]);
+
+  const recipeRoutine = useMemo<RoutineRecipe[]>(
+    () =>
+      recipes.map((r) => ({
+        id: r.id,
+        title: r.title,
+        isSalad: isSalad(r),
+        ingredients: (r.ingredients ?? []).map((i) => i.name).filter(Boolean),
+        category: resolveProteinCategory(r.tags, r.ingredients, index),
+      })),
+    [recipes, index]
+  );
+  const favs = useMemo(
+    () =>
+      effective
+        ? favouriteSets(effective, recipeRoutine)
+        : { favouriteIds: new Set<string>(), dayBeforeIds: new Set<string>() },
+    [effective, recipeRoutine]
+  );
+  const scoring = useMemo<RoutineScoring | undefined>(
+    () =>
+      effective
+        ? {
+            quickMax: effective.quick.on ? effective.quick.maxMinutes : null,
+            weekendMax: effective.weekendLunch.on ? effective.weekendLunch.maxMinutes : null,
+            favouriteIds: favs.favouriteIds,
+            dayBeforeIds: favs.dayBeforeIds,
+            favouritesMin: effective.favouritesMin,
+            rules: scoringRules(effective, recipeRoutine),
+          }
+        : undefined,
+    [effective, favs, recipeRoutine]
+  );
+  const kindsFor = (id: string, salad: boolean) => [
+    ...(salad ? ['salad'] : []),
+    ...(favs.favouriteIds.has(id) ? [FAVOURITE_KIND] : []),
+  ];
 
   const candidates = useMemo<AutoCandidate[]>(
     () =>
       (ctx?.candidates ?? []).map((c) => {
         const r = recipeById.get(c.id);
-        return { ...c, kinds: r && isSalad(r) ? ['salad'] : [] };
+        return { ...c, kinds: kindsFor(c.id, !!r && isSalad(r)) };
       }),
-    [ctx, recipeById]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ctx, recipeById, favs]
   );
   const candidateById = useMemo(() => new Map(candidates.map((c) => [c.id, c])), [candidates]);
 
@@ -233,11 +356,33 @@ export function AiWeekPlanner(props: {
             day: e.day,
             slot: e.slot,
             category: r ? resolveProteinCategory(r.tags, r.ingredients, index) : null,
-            kinds: r && isSalad(r) ? ['salad'] : [],
+            kinds: e.recipe_id ? kindsFor(e.recipe_id, !!r && isSalad(r)) : [],
           };
         }),
-    [entries, recipeById, index]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [entries, recipeById, index, favs]
   );
+
+  /** The dinner a leftovers night comes from: this plan, a hand-planned entry, or last Sunday. */
+  const dinnerSource = (fd: number): { id: string | null; recipeId: string | null; customTitle: string | null } | null => {
+    if (fd === PREV_SUNDAY) return ctx?.prevSundayDinner ?? null;
+    const meal = meals.find((m) => m.day === fd && m.slot === 'dinner');
+    if (meal && (meal.recipeId || meal.customTitle)) return { id: null, recipeId: meal.recipeId, customTitle: meal.customTitle };
+    const entry = entries
+      .filter((e) => e.day === fd && e.slot === 'dinner' && !e.leftover_of)
+      .sort((a, b) => a.position - b.position)[0];
+    return entry ? { id: entry.id, recipeId: entry.recipe_id, customTitle: entry.custom_title } : null;
+  };
+  const links = effective
+    ? leftoverLinks({
+        routine: effective,
+        days: futureDays,
+        personHome: leftoverHome,
+        hasDinner: (fd) => !!dinnerSource(fd),
+        off: chainOff,
+      })
+    : [];
+  const linkOn = new Map(links.map((l) => [l.day, l]));
 
   const recipeIdeas = ideas.filter((i) => i.recipe_id);
   const preferIds = recipeIdeas
@@ -256,6 +401,7 @@ export function AiWeekPlanner(props: {
     restWeeks: ctx?.restWeeks ?? 3,
     avoidIds,
     preferIds,
+    routine: scoring,
   });
 
   const dayName = (day: number) => d.common.days[day] ?? '';
@@ -292,8 +438,15 @@ export function AiWeekPlanner(props: {
     const result = proposeWeek(proposalInput(avoid));
     setMeals(result.meals);
     setUnfilled(result.unfilled);
+    setChat([]);
     setStep(3);
     scrollRef.current?.scrollTo({ y: 0, animated: false });
+    // Rules the planner can't follow by itself: Mealy AI checks the plan.
+    const toCheck = effective ? rulesToCheck(effective) : [];
+    if (toCheck.length > 0) {
+      const request = `${rt.rulesCheckRequest}\n${toCheck.map((rule) => `- ${rule.text || rule.title}`).join('\n')}`;
+      void runChange(request, { baseMeals: result.meals, userText: null, history: [], lead: [{ role: 'assistant', text: rt.checkingRules }] });
+    }
   };
 
   const tryDifferent = () => {
@@ -301,14 +454,66 @@ export function AiWeekPlanner(props: {
     setSides(new Map());
   };
 
-  const swap = (meal: ProposedMeal) => {
-    const next = swapMeal(proposalInput(), meals, { day: meal.day, slot: meal.slot });
-    if (!next) return;
-    setMeals((prev) =>
-      prev.map((m) =>
-        m.day === meal.day && m.slot === meal.slot ? { day: m.day, slot: m.slot, recipeId: next, customTitle: null } : m
-      )
-    );
+  // ---- Change one meal (ideas, search, routine picks) ------------------------
+  const openChange = (cell: EmptyCell) => {
+    setChangeFor(cell);
+    if (laterIdeas === null) {
+      void supabase
+        .from('plan_ideas')
+        .select('*')
+        .eq('household_id', householdId)
+        .gt('week_start', weekIso)
+        .order('week_start')
+        .limit(30)
+        .then(({ data }) => setLaterIdeas((data as PlanIdea[]) ?? []));
+    }
+  };
+
+  const commitPick = (target: EmptyCell, pick: PanelPick) => {
+    setMeals((prev) => {
+      const rest = prev.filter((m) => !(m.day === target.day && m.slot === target.slot));
+      const next = [...rest, { day: target.day, slot: target.slot, recipeId: pick.recipeId, customTitle: pick.recipeId ? null : pick.customTitle }];
+      return next.sort((a, b) => a.day - b.day || (a.slot === b.slot ? 0 : a.slot === 'lunch' ? -1 : 1));
+    });
+    const ideaId = pick.ideaId;
+    if (ideaId) setUsedIdeaIds((prev) => new Set(prev).add(ideaId));
+  };
+
+  const pickMeal = (pick: PanelPick) => {
+    const target = changeFor;
+    if (!target) return;
+    setChangeFor(null);
+    // This dinner also feeds the leftovers person the next night: ask what they eat.
+    const feeds = target.slot === 'dinner' && leftoverPerson ? links.find((l) => l.fromDay === target.day) : undefined;
+    const current = meals.find((m) => m.day === target.day && m.slot === target.slot);
+    if (feeds && current) {
+      setChainChoice('new');
+      setChainAsk({ target, pick, day: feeds.day, oldTitle: titleOf(current.recipeId, current.customTitle) });
+      return;
+    }
+    commitPick(target, pick);
+  };
+
+  const answerChain = () => {
+    if (!chainAsk) return;
+    commitPick(chainAsk.target, chainAsk.pick);
+    if (chainChoice === 'off') setChainOff((prev) => new Set(prev).add(chainAsk.day));
+    setChainAsk(null);
+  };
+
+  const leaveEmpty = () => {
+    const target = changeFor;
+    if (!target) return;
+    setMeals((prev) => prev.filter((m) => !(m.day === target.day && m.slot === target.slot)));
+    setChangeFor(null);
+  };
+
+  const eatOut = () => {
+    const target = changeFor;
+    if (!target) return;
+    setAway((m) => toggleGoingOut(m, cellKey(target.day, target.slot), eaterIds));
+    setMeals((prev) => prev.filter((m) => !(m.day === target.day && m.slot === target.slot)));
+    setChangeFor(null);
   };
 
   const addSide = (key: string, side: Omit<ProposedSide, 'key'>) => {
@@ -333,11 +538,20 @@ export function AiWeekPlanner(props: {
   const askChange = async () => {
     const request = changeText.trim();
     if (!request || aiBusy) return;
-    setAiBusy(true);
     setChangeText('');
-    const history = [...chat, { role: 'user' as const, text: request }];
+    await runChange(request, { userText: request });
+  };
+
+  const runChange = async (
+    request: string,
+    opts: { baseMeals?: ProposedMeal[]; userText: string | null; history?: AiChatTurn[]; lead?: AiChatTurn[] }
+  ) => {
+    setAiBusy(true);
+    const base = opts.baseMeals ?? meals;
+    const prior = opts.history ?? chat;
+    const history = [...(opts.lead ?? []), ...prior, ...(opts.userText ? [{ role: 'user' as const, text: opts.userText }] : [])];
     setChat(history);
-    const mealAt = new Map(meals.map((m) => [cellKey(m.day, m.slot), m]));
+    const mealAt = new Map(base.map((m) => [cellKey(m.day, m.slot), m]));
     const cells = futureDays.flatMap((day) =>
       SLOTS.map((slot) => {
         const key = cellKey(day, slot);
@@ -370,7 +584,13 @@ export function AiWeekPlanner(props: {
         minutes: c.totalMinutes,
         weeks_since: c.weeksSincePlanned,
       })),
-      history: chat,
+      history: prior,
+      rules: effective
+        ? routineLines(effective, {
+            leftoverPerson: leftoverPerson?.name ?? null,
+            favourites: effective.favourites.map((f) => f.label),
+          })
+        : [],
     });
     setAiBusy(false);
     if (!reply) {
@@ -379,7 +599,7 @@ export function AiWeekPlanner(props: {
     }
     setChat([...history, { role: 'assistant', text: reply.message }]);
     if (reply.changes.length === 0) return;
-    let nextMeals = [...meals];
+    let nextMeals = [...base];
     let nextAway = away;
     for (const change of reply.changes) {
       const key = cellKey(change.day, change.slot);
@@ -411,7 +631,12 @@ export function AiWeekPlanner(props: {
     }
     const payloads = meals.flatMap((meal) => {
       const key = cellKey(meal.day, meal.slot);
-      const personIds = effectivePersonIds([], eaterIds, away.get(key) ?? new Set());
+      let personIds = effectivePersonIds([], eaterIds, away.get(key) ?? new Set());
+      // On a leftovers night, the new dinner is for the others only.
+      if (meal.slot === 'dinner' && leftoverId && linkOn.has(meal.day)) {
+        personIds = (personIds.length > 0 ? personIds : eaterIds).filter((id) => id !== leftoverId);
+        if (personIds.length === 0) return [];
+      }
       const base = { mealPlanId: planId, day: meal.day, slot: meal.slot, personIds };
       const main = {
         ...upsertEntryPayload({
@@ -419,6 +644,7 @@ export function AiWeekPlanner(props: {
           recipeId: meal.recipeId ?? undefined,
           customTitle: meal.recipeId ? undefined : (meal.customTitle ?? undefined),
           position: 0,
+          instructions: meal.recipeId && favs.dayBeforeIds.has(meal.recipeId) ? rt.prepNote : undefined,
         }),
         auto_picked: true,
       };
@@ -433,14 +659,46 @@ export function AiWeekPlanner(props: {
       }));
       return [main, ...sideRows];
     });
+    let inserted: { id: string; day: number; slot: MealSlot; position: number }[] = [];
     if (payloads.length > 0) {
-      const ins = await supabase.from('plan_entries').insert(payloads);
+      const ins = await supabase.from('plan_entries').insert(payloads).select('id, day, slot, position');
       if (ins.error) throw new Error(ins.error.message);
+      inserted = (ins.data ?? []) as typeof inserted;
+    }
+    // Leftovers nights: the person's own row, pointing at the dinner it comes from.
+    if (leftoverId) {
+      const leftoverRows = links.flatMap((link) => {
+        const source = dinnerSource(link.fromDay);
+        if (!source) return [];
+        const sourceId =
+          source.id ?? inserted.find((e) => e.day === link.fromDay && e.slot === 'dinner' && e.position === 0)?.id ?? null;
+        if (!sourceId) return [];
+        return [
+          {
+            ...upsertEntryPayload({
+              mealPlanId: planId,
+              day: link.day,
+              slot: 'dinner',
+              personIds: [leftoverId],
+              recipeId: source.recipeId ?? undefined,
+              customTitle: source.recipeId ? undefined : (source.customTitle ?? undefined),
+              position: 50,
+            }),
+            auto_picked: true,
+            leftover_of: sourceId,
+          },
+        ];
+      });
+      if (leftoverRows.length > 0) {
+        const ins = await supabase.from('plan_entries').insert(leftoverRows);
+        if (ins.error) throw new Error(ins.error.message);
+      }
     }
     const placed = new Set(meals.map((m) => m.recipeId).filter(Boolean));
-    const usedIdeas = ideas.filter((i) => i.recipe_id && placed.has(i.recipe_id));
-    if (usedIdeas.length > 0) {
-      await supabase.from('plan_ideas').delete().in('id', usedIdeas.map((i) => i.id));
+    const usedIdeas = ideas.filter((i) => (i.recipe_id && placed.has(i.recipe_id)) || usedIdeaIds.has(i.id));
+    const usedIds = [...new Set([...usedIdeas.map((i) => i.id), ...usedIdeaIds])];
+    if (usedIds.length > 0) {
+      await supabase.from('plan_ideas').delete().in('id', usedIds);
     }
     invalidateLists('plan', 'groceries');
     await props.onChanged();
@@ -465,7 +723,9 @@ export function AiWeekPlanner(props: {
       assigned_cook: 'family' | 'employee';
       instructions: string | null;
       cook_part: boolean | null;
+      leftover_of: string | null;
     }[])
+      .filter((e) => !e.leftover_of)
       .map((e) => ({
         id: e.id,
         day: e.day,
@@ -791,6 +1051,81 @@ export function AiWeekPlanner(props: {
     </>
   );
 
+  const dur = (n: number) => durationLabel(n, rt);
+  const routineParts: { key: RoutinePart; label: string }[] = routine
+    ? [
+        ...(routine.quick.on ? [{ key: 'quick' as const, label: fmt(rt.lineQuick, { time: dur(routine.quick.maxMinutes) }) }] : []),
+        ...(routine.favourites.length > 0
+          ? [
+              {
+                key: 'favourites' as const,
+                label: fmt(routine.favouritesMin > 0 ? rt.lineFavMin : rt.lineFav, {
+                  n: routine.favouritesMin,
+                  list: routine.favourites.map((f) => f.label).join(', '),
+                }),
+              },
+            ]
+          : []),
+        ...(routine.leftovers.on && eaters.some((p) => p.id === routine.leftovers.personId)
+          ? [
+              {
+                key: 'leftovers' as const,
+                label: fmt(rt.lineLeft, { name: eaters.find((p) => p.id === routine.leftovers.personId)?.name ?? '' }),
+              },
+            ]
+          : []),
+        ...(routine.weekendLunch.on ? [{ key: 'weekend' as const, label: rt.lineWeekend }] : []),
+        ...routine.rules
+          .filter((rule) => rule.on)
+          .map((rule) => ({ key: `rule:${rule.id}` as RoutinePart, label: fmt(rt.lineRule, { rule: rule.title }) })),
+      ]
+    : [];
+  const editRoutine = () => {
+    props.onClose();
+    router.push('/settings/routine');
+  };
+  const routineCard = !ctx ? null : routineParts.length === 0 ? (
+    <Pressable
+      accessibilityRole="button"
+      onPress={editRoutine}
+      style={({ pressed }) => ({ borderWidth: 1, borderStyle: 'dashed', borderColor: colors.accent, borderRadius: 12, padding: 12, gap: 2, backgroundColor: pressed ? colors.cardPressed : 'transparent' })}
+    >
+      <Text style={{ color: colors.accent, fontFamily: fonts.uiSemi, fontSize: fontSize.small }}>{rt.setUpRoutine}</Text>
+      <Muted>{rt.setUpHint}</Muted>
+    </Pressable>
+  ) : (
+    <>
+      <Bubble>{rt.routineIntro}</Bubble>
+      <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 4 }}>
+        {routineParts.map((part) => {
+          const on = !weekOff.has(part.key);
+          return (
+            <Pressable
+              key={part.key}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: on }}
+              onPress={() =>
+                setWeekOff((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(part.key)) next.delete(part.key);
+                  else next.add(part.key);
+                  return next;
+                })
+              }
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44, paddingVertical: 6 }}
+            >
+              <Ionicons name={on ? 'checkbox' : 'square-outline'} size={22} color={on ? colors.text : colors.textMuted} />
+              <Text style={{ flex: 1, color: on ? colors.text : colors.textMuted, fontFamily: fonts.ui, fontSize: fontSize.small }}>{part.label}</Text>
+            </Pressable>
+          );
+        })}
+        <Pressable accessibilityRole="link" onPress={editRoutine} style={{ minHeight: 44, justifyContent: 'center', alignSelf: 'flex-end' }}>
+          <Text style={{ color: colors.accent, fontFamily: fonts.uiSemi, fontSize: fontSize.small }}>{rt.editRoutine}</Text>
+        </Pressable>
+      </View>
+    </>
+  );
+
   const used = counts.salad + counts.meat + counts.fish;
   const step2 = (
     <>
@@ -831,6 +1166,7 @@ export function AiWeekPlanner(props: {
           })}
         </View>
       ) : null}
+      {routineCard}
       <Bubble>{t.countsQ}</Bubble>
       <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingHorizontal: 14 }}>
         {(
@@ -878,7 +1214,6 @@ export function AiWeekPlanner(props: {
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {(
           [
-            ['light', t.styleLight],
             ['leftovers', t.styleLeftovers],
             ['salad_when_away', t.styleSaladAway],
           ] as const
@@ -951,6 +1286,24 @@ export function AiWeekPlanner(props: {
     );
   };
 
+  /** Make-ahead dishes: tonight's prep for tomorrow, or "the evening before" on the first day. */
+  const prepLines = (day: number) => {
+    const lines: string[] = [];
+    for (const meal of meals) {
+      if (!meal.recipeId || !favs.dayBeforeIds.has(meal.recipeId)) continue;
+      const title = titleOf(meal.recipeId, null);
+      if (meal.day === day + 1 && futureDays.includes(day)) lines.push(fmt(rt.prepTonight, { title }));
+      else if (meal.day === day && !futureDays.includes(day - 1)) lines.push(fmt(rt.prepEvening, { title }));
+    }
+    if (lines.length === 0) return null;
+    return lines.map((line) => (
+      <View key={line} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 10, backgroundColor: colors.bgGrouped, marginTop: 4 }}>
+        <Ionicons name="time-outline" size={16} color={colors.saffron} />
+        <Text style={{ flex: 1, color: colors.text, fontFamily: fonts.ui, fontSize: fontSize.meta }}>{line}</Text>
+      </View>
+    ));
+  };
+
   const step3 = (
     <>
       <Bubble>{t.planIntro}</Bubble>
@@ -1001,12 +1354,31 @@ export function AiWeekPlanner(props: {
                 title = unfilledKeys.has(key) ? t.nothingLeft : '—';
                 color = colors.textMuted;
               }
-              if (!out && home.length > 0 && home.length < eaters.length) {
-                const who = home.map((p) => initials(p.name)).join(', ');
+              const link = slot === 'dinner' ? linkOn.get(day) : undefined;
+              const mainEaters = link ? home.filter((p) => p.id !== leftoverId) : home;
+              if (!out && mainEaters.length > 0 && mainEaters.length < eaters.length) {
+                const who = mainEaters.map((p) => initials(p.name)).join(', ');
                 sub = sub ? `${who} · ${sub}` : who;
               }
+              const feeds = slot === 'dinner' && links.some((l) => l.fromDay === day);
+              if (meal && feeds) {
+                const cook = fmt(rt.cookFor, { n: portionsFor(mainEaters.length, day, links) });
+                sub = sub ? `${sub} · ${cook}` : cook;
+              }
               const cat = categoryOf(recipeId);
-              const editable = locked.length === 0 && !out && !!meal;
+              const editable = locked.length === 0 && !out && !(link && mainEaters.length === 0);
+              const cand = meal?.recipeId ? candidateById.get(meal.recipeId) : undefined;
+              const tags: { label: string; tone: 'fav' | 'prep' | 'weekend' | 'plain' }[] = [];
+              if (meal?.recipeId && cand) {
+                const weekday = day <= 4;
+                if (weekday && favs.favouriteIds.has(meal.recipeId)) tags.push({ label: rt.tagFavourite, tone: 'fav' });
+                if (favs.dayBeforeIds.has(meal.recipeId)) tags.push({ label: rt.tagDayBefore, tone: 'prep' });
+                if (!weekday && slot === 'lunch' && effective?.weekendLunch.on && cand.totalMinutes !== null && cand.totalMinutes >= 45)
+                  tags.push({ label: rt.tagWeekend, tone: 'weekend' });
+                if (cand.totalMinutes !== null) tags.push({ label: dur(cand.totalMinutes), tone: 'plain' });
+                if (cand.weeksSincePlanned === null) tags.push({ label: rt.tagNew, tone: 'plain' });
+              }
+              const leftoverSource = link ? dinnerSource(link.fromDay) : null;
               return (
                 <View key={slot} style={{ gap: 4, paddingVertical: 4 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 }}>
@@ -1018,18 +1390,58 @@ export function AiWeekPlanner(props: {
                       <Text style={{ color, fontFamily: fonts.uiMedium, fontSize: fontSize.small }}>{title}</Text>
                       {sub ? <Muted>{sub}</Muted> : null}
                     </View>
-                    {editable && meal ? (
+                    {editable ? (
                       <Pressable
                         accessibilityRole="button"
                         accessibilityLabel={fmt(t.swapA11y, { title })}
-                        onPress={() => swap(meal)}
+                        onPress={() => openChange({ day, slot })}
                         style={({ pressed }) => ({ width: 40, height: 40, borderRadius: 20, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? colors.cardPressed : colors.bg })}
                       >
                         <Ionicons name="swap-horizontal" size={16} color={colors.text} />
                       </Pressable>
                     ) : null}
                   </View>
-                  {editable ? (
+                  {tags.length > 0 ? (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, paddingLeft: 76 }}>
+                      {tags.map((tag) => (
+                        <View
+                          key={tag.label}
+                          style={{
+                            paddingHorizontal: 7,
+                            paddingVertical: 2,
+                            borderRadius: 6,
+                            backgroundColor:
+                              tag.tone === 'prep' ? colors.saffron : tag.tone === 'weekend' ? colors.accent : colors.bgGrouped,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: tag.tone === 'prep' || tag.tone === 'weekend' ? colors.bg : tag.tone === 'fav' ? colors.spineVeg : colors.textMuted,
+                              fontFamily: fonts.uiSemi,
+                              fontSize: 11,
+                            }}
+                          >
+                            {tag.label}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+                  {leftoverPerson && leftoverSource ? (
+                    <View style={{ marginLeft: 76, flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 10, backgroundColor: colors.bgGrouped }}>
+                      <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: colors.text, alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ color: colors.bg, fontFamily: fonts.uiSemi, fontSize: 10 }}>{initials(leftoverPerson.name)}</Text>
+                      </View>
+                      <Text style={{ flex: 1, color: colors.text, fontFamily: fonts.ui, fontSize: fontSize.meta }}>
+                        {fmt(rt.leftoverLine, {
+                          name: leftoverPerson.name,
+                          title: titleOf(leftoverSource.recipeId, leftoverSource.customTitle),
+                          day: link && link.fromDay === PREV_SUNDAY ? rt.lastSunday : dayName(link ? link.fromDay : day),
+                        })}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {editable && meal ? (
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingLeft: 76 }}>
                       {(sides.get(key) ?? []).map((side) => {
                         const sideTitle = titleOf(side.recipeId, side.customTitle);
@@ -1064,6 +1476,7 @@ export function AiWeekPlanner(props: {
                 </View>
               );
             })}
+            {prepLines(day)}
           </View>
         ))}
       </View>
@@ -1235,6 +1648,30 @@ export function AiWeekPlanner(props: {
 
   const canGoBack = step === 2 || step === 3;
 
+  // ---- Change-meal panel data ---------------------------------------------------
+  const panelRecipes: PanelRecipe[] = changeFor
+    ? candidates.flatMap((c) => {
+        const recipe = recipeById.get(c.id);
+        if (!recipe) return [];
+        const meta = [
+          ...(favs.favouriteIds.has(c.id) ? [rt.tagFavourite] : []),
+          ...(favs.dayBeforeIds.has(c.id) ? [rt.tagDayBefore] : []),
+          ...(c.totalMinutes !== null ? [dur(c.totalMinutes)] : []),
+        ];
+        return [{ id: c.id, title: recipe.title, ingredients: (recipe.ingredients ?? []).map((i) => i.name), meta }];
+      })
+    : [];
+  const ideaDate = (week: string) =>
+    dayDate(week, 0).toLocaleDateString(locale, { month: 'short', day: 'numeric' });
+  const panelIdeasWeek: PanelIdea[] = ideas
+    .filter((i) => !usedIdeaIds.has(i.id))
+    .map((i) => ({ ideaId: i.id, recipeId: i.recipe_id, customTitle: i.custom_title, sub: i.note?.trim() || null }));
+  const panelIdeasLater: PanelIdea[] = (laterIdeas ?? [])
+    .filter((i) => !usedIdeaIds.has(i.id))
+    .map((i) => ({ ideaId: i.id, recipeId: i.recipe_id, customTitle: i.custom_title, sub: fmt(rt.ideaFor, { date: ideaDate(i.week_start) }) }));
+  const panelSuggestions = changeFor && ctx ? suggestForCell(proposalInput(), meals, changeFor, 4) : [];
+  const changeMeal = changeFor ? meals.find((m) => m.day === changeFor.day && m.slot === changeFor.slot) : undefined;
+
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={props.onClose}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -1283,6 +1720,58 @@ export function AiWeekPlanner(props: {
         <View style={{ paddingHorizontal: screenPadding, paddingTop: 8, paddingBottom: insets.bottom + 12, borderTopWidth: 1, borderTopColor: colors.border }}>
           {footer}
         </View>
+        {changeFor ? (
+          <ChangeMealPanel
+            title={fmt(rt.changeTitle, { meal: mealName(changeFor.day, changeFor.slot) })}
+            currentTitle={changeMeal ? titleOf(changeMeal.recipeId, changeMeal.customTitle) : null}
+            recipes={panelRecipes}
+            ideasWeek={panelIdeasWeek}
+            ideasLater={panelIdeasLater}
+            suggestions={panelSuggestions}
+            onPick={pickMeal}
+            onLeaveEmpty={leaveEmpty}
+            onEatingOut={eatOut}
+            onClose={() => setChangeFor(null)}
+          />
+        ) : null}
+        {chainAsk && leftoverPerson ? (
+          <PlannerPanel
+            title={fmt(rt.chainQ, { name: leftoverPerson.name, title: chainAsk.oldTitle, day: dayName(chainAsk.day) })}
+            onClose={() => setChainAsk(null)}
+            footer={<Button label={rt.replace} onPress={answerChain} />}
+          >
+            {(
+              [
+                [
+                  'new',
+                  fmt(rt.chainNew, {
+                    name: leftoverPerson.name,
+                    title: titleOf(chainAsk.pick.recipeId, chainAsk.pick.customTitle),
+                  }),
+                  rt.chainNewHint,
+                ],
+                ['off', fmt(rt.chainOff, { name: leftoverPerson.name }), rt.chainOffHint],
+              ] as const
+            ).map(([value, label, hint]) => {
+              const selected = chainChoice === value;
+              return (
+                <Pressable
+                  key={value}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected }}
+                  onPress={() => setChainChoice(value)}
+                  style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start', padding: 12, borderRadius: 14, borderWidth: selected ? 2 : 1, borderColor: selected ? colors.text : colors.border }}
+                >
+                  <Ionicons name={selected ? 'radio-button-on' : 'radio-button-off'} size={22} color={colors.text} />
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text style={{ color: colors.text, fontFamily: fonts.uiMedium, fontSize: fontSize.base }}>{label}</Text>
+                    <Muted>{hint}</Muted>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </PlannerPanel>
+        ) : null}
       </KeyboardAvoidingView>
     </Modal>
   );

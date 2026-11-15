@@ -48,6 +48,8 @@ interface EntryRow {
   person_ids: string[];
   /** Non-family guests eating this meal (migration 0017). */
   guest_count: number;
+  /** Leftovers of another entry (migration 0039). */
+  leftover_of?: string | null;
 }
 
 interface AisleGroup {
@@ -485,7 +487,7 @@ export default function GroceriesScreen() {
       const [{ data: entryRows }, { data: recipeRows }] = await Promise.all([
         supabase
           .from('plan_entries')
-          .select('id, recipe_id, day, slot, position, person_ids, guest_count')
+          .select('id, recipe_id, day, slot, position, person_ids, guest_count, leftover_of')
           .eq('meal_plan_id', planRow.id),
         supabase
           .from('recipes')
@@ -517,7 +519,7 @@ export default function GroceriesScreen() {
         }))
       );
       setHasEntries(entries.length > 0);
-      setMealCount(entries.filter((e) => e.recipe_id).length);
+      setMealCount(entries.filter((e) => e.recipe_id && !e.leftover_of).length);
       if (lines.length === 0) {
         setAisles([]);
         setUnmatched([]);

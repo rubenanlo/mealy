@@ -64,6 +64,19 @@ describe('collectWeekIngredients', () => {
       expect(groups[0].items[1].quantity).toBeNull(); // presence-only line untouched
     });
 
+    it('skips leftover rows and adds their eaters to the meal they come from', () => {
+      const groups = collectWeekIngredients(
+        [
+          { id: 'mon', recipe_id: 'r3', person_ids: ['r', 'p'], guest_count: 0 },
+          { id: 'tue-m', recipe_id: 'r3', person_ids: ['m'], guest_count: 0, leftover_of: 'mon' },
+        ],
+        scaled,
+        4 // 2 eaters + 1 leftover portion = 3 / 4 base = ×0.75
+      );
+      expect(groups).toHaveLength(1);
+      expect(groups[0].items[0].quantity).toBe(150);
+    });
+
     it('scales down to the picked eaters', () => {
       const groups = collectWeekIngredients(
         [{ recipe_id: 'r3', person_ids: ['a', 'b'], guest_count: 0 }],

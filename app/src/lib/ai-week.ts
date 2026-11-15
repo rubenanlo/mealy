@@ -7,6 +7,7 @@ import {
 } from '@/lib/auto-plan';
 import { coreProteins } from '@/lib/category';
 import type { MealSlot, PlanAbsence } from '@/lib/plan';
+import type { ScoringRule } from '@/lib/plan-routine';
 
 /**
  * ✦ AI week planning (2026-11-15). The guided sheet asks who's home and what
@@ -127,18 +128,44 @@ export interface ProposalInput {
   avoidIds?: string[];
   preferIds?: string[];
   lowFodmapOnly?: boolean;
+  /** The household's weekly routine (migration 0039), already resolved to recipe ids. */
+  routine?: RoutineScoring;
 }
+
+/** What the routine means for scoring, computed once per planner session. */
+export interface RoutineScoring {
+  /** Mon–Fri cap in minutes; null when the quick rule is off. */
+  quickMax: number | null;
+  /** Saturday/Sunday lunch upper bound; null when off. */
+  weekendMax: number | null;
+  favouriteIds: ReadonlySet<string>;
+  dayBeforeIds: ReadonlySet<string>;
+  favouritesMin: number;
+  rules: readonly ScoringRule[];
+}
+
+/** Candidate kind for routine favourites (counts toward `favouritesMin`). */
+export const FAVOURITE_KIND = 'favourite';
 
 const isWeekdayLunch = (cell: EmptyCell) => cell.slot === 'lunch' && cell.day <= 4;
 
 /** The answers become hard weekly counts; other household quotas still apply. */
-export function answerQuotas(counts: MealCounts, household: readonly QuotaConstraint[] = []): QuotaConstraint[] {
-  const out = household.filter((q) => q.category !== 'meat' && q.category !== 'fish' && q.category !== 'salad');
+export function answerQuotas(
+  counts: MealCounts,
+  household: readonly QuotaConstraint[] = [],
+  favouritesMin = 0
+): QuotaConstraint[] {
+  const out = household.filter(
+    (q) => q.category !== 'meat' && q.category !== 'fish' && q.category !== 'salad' && q.category !== FAVOURITE_KIND
+  );
   out.push({ category: 'meat', min: counts.meat, max: counts.meat });
   out.push({ category: 'fish', min: counts.fish, max: counts.fish });
   out.push({ category: 'salad', min: counts.salad, max: counts.salad });
+  if (favouritesMin > 0) out.push({ category: FAVOURITE_KIND, min: favouritesMin, max: null });
   return out;
 }
+
+const quotasOf = (input: ProposalInput) => answerQuotas(input.counts, input.quotas, input.routine?.favouritesMin ?? 0);
 
 function existingCounts(existing: readonly PlannedMeal[]): Record<string, number> {
   const counts: Record<string, number> = {};
@@ -166,8 +193,49 @@ function cellBonus(input: ProposalInput) {
       const away = cell.slot === 'lunch' ? input.away.get(cellKey(cell.day, cell.slot)) : undefined;
       s += away && away.size > 0 ? 400 : -900;
     }
+    if (input.routine) s += routineBonus(input.routine, input.away, c, cell);
     return s;
   };
+}
+
+const WEEKDAY_LAST = 4;
+
+/**
+ * The household routine as a score: quick weekdays (dishes made the day
+ * before count as quick), favourites on weekdays, a special weekend lunch, and
+ * the household's own rules (a broken rule is near-forbidden).
+ */
+export function routineBonus(routine: RoutineScoring, away: AwayMap, c: AutoCandidate, cell: EmptyCell): number {
+  let s = 0;
+  const weekday = cell.day <= WEEKDAY_LAST;
+  const favourite = routine.favouriteIds.has(c.id);
+  const minutes = c.totalMinutes;
+  if (weekday) {
+    if (routine.quickMax !== null) {
+      if (routine.dayBeforeIds.has(c.id)) s += 80;
+      else if (minutes === null) s -= 60;
+      else if (minutes <= routine.quickMax) s += 80;
+      else s -= 1800;
+    }
+    if (favourite) s += 220;
+  } else if (cell.slot === 'lunch' && routine.weekendMax !== null) {
+    if (minutes !== null && minutes > routine.weekendMax) s -= 300;
+    else if (minutes !== null && minutes >= 45) s += 260;
+    else if (minutes !== null && minutes < 30) s -= 160;
+    if (c.weeksSincePlanned === null) s += 140;
+    if (favourite) s -= 250;
+  }
+  for (const rule of routine.rules) {
+    if (!rule.avoidIds.has(c.id)) continue;
+    if (rule.days && !rule.days.has(cell.day)) continue;
+    if (rule.slots && !rule.slots.has(cell.slot)) continue;
+    if (rule.personIds.length > 0) {
+      const out = away.get(cellKey(cell.day, cell.slot));
+      if (!rule.personIds.some((id) => !out?.has(id))) continue;
+    }
+    s -= 5000;
+  }
+  return s;
 }
 
 /**
@@ -194,7 +262,7 @@ export function proposeWeek(input: ProposalInput): { meals: ProposedMeal[]; unfi
   const existing = input.existing ?? [];
   const { assignments, unfilled } = autoFillWeek(fillCells, input.candidates, {
     lowFodmapOnly: input.lowFodmapOnly ?? false,
-    quotas: answerQuotas(input.counts, input.quotas),
+    quotas: quotasOf(input),
     existingCounts: existingCounts(existing),
     existing,
     restWeeks: input.restWeeks ?? 3,
@@ -255,7 +323,7 @@ export function swapMeal(input: ProposalInput, meals: readonly ProposedMeal[], t
   const pool = current?.recipeId ? input.candidates.filter((c) => c.id !== current.recipeId) : input.candidates;
   const { assignments } = autoFillWeek([target], pool, {
     lowFodmapOnly: input.lowFodmapOnly ?? false,
-    quotas: answerQuotas(input.counts, input.quotas),
+    quotas: quotasOf(input),
     existingCounts: existingCounts(existing),
     existing,
     restWeeks: input.restWeeks ?? 3,
@@ -263,6 +331,28 @@ export function swapMeal(input: ProposalInput, meals: readonly ProposedMeal[], t
     cellBonus: cellBonus(input),
   });
   return assignments[0]?.recipeId ?? null;
+}
+
+/** Up to `n` different dishes for one meal, best first (the change-meal sheet). */
+export function suggestForCell(
+  input: ProposalInput,
+  meals: readonly ProposedMeal[],
+  target: EmptyCell,
+  n: number
+): string[] {
+  const picked: string[] = [];
+  const current = meals.find((m) => m.day === target.day && m.slot === target.slot)?.recipeId ?? null;
+  for (let i = 0; i < n; i++) {
+    const exclude = new Set([...picked, ...(current ? [current] : [])]);
+    const next = swapMeal(
+      { ...input, candidates: input.candidates.filter((c) => !exclude.has(c.id)) },
+      meals.filter((m) => !(m.day === target.day && m.slot === target.slot)),
+      target
+    );
+    if (!next) break;
+    picked.push(next);
+  }
+  return picked;
 }
 
 /** Salad / meat / fish / other tally for the proposal summary chips. */

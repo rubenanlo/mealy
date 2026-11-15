@@ -15,6 +15,9 @@ export interface ShoppingGroup {
 }
 
 interface EntryLike {
+  id?: string;
+  /** Eaten from another entry's leftovers (migration 0039): no shopping of its own. */
+  leftover_of?: string | null;
   /** Null for free-text meals — they contribute no ingredients. */
   recipe_id: string | null;
   /** Empty ⇒ whole household. Optional so older callers stay unscaled. */
@@ -44,15 +47,27 @@ export function collectWeekIngredients(
   totalEaterCount?: number
 ): ShoppingGroup[] {
   const byId = new Map(recipes.map((recipe) => [recipe.id, recipe]));
+  // Leftover rows add their eaters to the meal they come from instead.
+  const extra = new Map<string, number>();
+  for (const entry of entries) {
+    if (!entry.leftover_of) continue;
+    const n = entry.person_ids && entry.person_ids.length > 0 ? entry.person_ids.length : 1;
+    extra.set(entry.leftover_of, (extra.get(entry.leftover_of) ?? 0) + n);
+  }
   const groups: ShoppingGroup[] = [];
   for (const entry of entries) {
+    if (entry.leftover_of) continue;
     if (entry.recipe_id === null) continue; // custom meal — no ingredients
     const recipe = byId.get(entry.recipe_id);
     if (!recipe) continue;
     const target =
       totalEaterCount === undefined
         ? 0
-        : entryServings(entry.person_ids ?? [], entry.guest_count ?? 0, totalEaterCount);
+        : entryServings(
+            entry.person_ids ?? [],
+            (entry.guest_count ?? 0) + (entry.id ? (extra.get(entry.id) ?? 0) : 0),
+            totalEaterCount
+          );
     const factor = servingsFactor(target, recipe.servings);
     const ingredients =
       factor === null || factor === 1

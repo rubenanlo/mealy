@@ -129,11 +129,18 @@ export function addSuggestions(input: {
 }
 
 /** Main dish of a slot (lowest position) and the rest as sides. */
-export function splitSlot<T extends Pick<PlanEntry, 'day' | 'slot' | 'position'>>(
+export function splitSlot<T extends Pick<PlanEntry, 'day' | 'slot' | 'position'> & { leftover_of?: string | null }>(
   entries: T[],
   day: number,
   slot: MealSlot
-): { main: T | null; sides: T[] } {
+): { main: T | null; sides: T[]; leftovers: T[] } {
   const rows = slotEntries(entries, day, slot);
-  return { main: rows[0] ?? null, sides: rows.slice(1) };
+  // Leftover rows (someone eating last night's dinner) are never the main or a side.
+  const cooked = rows.filter((r) => !r.leftover_of);
+  const main = cooked[0] ?? rows[0] ?? null;
+  return {
+    main,
+    sides: cooked.slice(1),
+    leftovers: rows.filter((r) => r.leftover_of && r !== main),
+  };
 }

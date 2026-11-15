@@ -87,6 +87,21 @@ describe('week page helpers', () => {
     const { main, sides } = splitSlot(rows, 0, 'dinner');
     expect(main?.id).toBe('a');
     expect(sides.map((s) => s.id)).toEqual(['b']);
-    expect(splitSlot(rows, 2, 'lunch')).toEqual({ main: null, sides: [] });
+    expect(splitSlot(rows, 2, 'lunch')).toEqual({ main: null, sides: [], leftovers: [] });
+  });
+
+  it('keeps leftover rows out of the main dish and sides', () => {
+    const rows = [
+      { id: 'l', leftover_of: 'z', ...e(1, 'dinner', 50) },
+      { id: 'a', ...e(1, 'dinner', 0) },
+      { id: 'only', leftover_of: 'z', ...e(2, 'dinner', 50) },
+    ];
+    const one = splitSlot(rows, 1, 'dinner');
+    expect(one.main?.id).toBe('a');
+    expect(one.sides).toEqual([]);
+    expect(one.leftovers.map((r) => r.id)).toEqual(['l']);
+    const two = splitSlot(rows, 2, 'dinner');
+    expect(two.main?.id).toBe('only');
+    expect(two.leftovers).toEqual([]);
   });
 });

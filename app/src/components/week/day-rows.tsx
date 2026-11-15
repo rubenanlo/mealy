@@ -92,7 +92,7 @@ export function DayRows({
               </View>
             </Pressable>
             {WEEK_SLOTS.map((slot) => {
-              const { main, sides } = splitSlot(entries, day, slot);
+              const { main, sides, leftovers } = splitSlot(entries, day, slot);
               const away = awayIds(absences, day, slot);
               const out = everyoneAway(absences, day, slot, eaterIds);
               const label = (width = 64) => (
@@ -154,6 +154,11 @@ export function DayRows({
                     ? d.plan.guestsOne
                     : fmt(d.plan.guestsMany, { count: main.guest_count })
                   : null,
+                ...leftovers.map((l) => {
+                  const source = entries.find((e) => e.id === l.leftover_of);
+                  const names = eaters.filter((p) => l.person_ids.includes(p.id)).map((p) => p.name);
+                  return fmt(d.routine.leftoverRow, { names: names.join(', '), title: source ? titleOf(source) : titleOf(l) });
+                }),
               ].filter(Boolean);
               const employee = main.assigned_cook === 'employee' || sides.some((s) => s.assigned_cook === 'employee');
               return (

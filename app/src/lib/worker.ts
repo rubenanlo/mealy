@@ -675,8 +675,39 @@ export async function aiChangePlan(body: {
   cells: AiPlanCell[];
   candidates: AiPlanCandidate[];
   history: AiChatTurn[];
+  /** The household routine and own rules, as plain lines (migration 0039). */
+  rules?: string[];
 }): Promise<AiPlanChangeResult | null> {
   const reply = await postAi<AiPlanChangeResult>('/ai/plan-change', body);
   if (!reply || typeof reply.message !== 'string' || !Array.isArray(reply.changes)) return null;
   return reply;
+}
+
+export interface AiRuleCard {
+  title: string;
+  summary: string;
+  days: number[];
+  slots: ('lunch' | 'dinner')[];
+  avoid_categories: string[];
+  avoid_words: string[];
+  person_ids: string[];
+}
+
+/** Turn a household rule written in plain words into a card. Null on failure. */
+export async function aiRoutineRule(body: {
+  text: string;
+  language: string;
+  people: { id: string; name: string }[];
+}): Promise<AiRuleCard | null> {
+  const reply = await postAi<AiRuleCard>('/ai/routine-rule', body);
+  if (!reply || typeof reply.title !== 'string') return null;
+  return {
+    title: reply.title,
+    summary: typeof reply.summary === 'string' ? reply.summary : '',
+    days: Array.isArray(reply.days) ? reply.days : [],
+    slots: Array.isArray(reply.slots) ? reply.slots : [],
+    avoid_categories: Array.isArray(reply.avoid_categories) ? reply.avoid_categories : [],
+    avoid_words: Array.isArray(reply.avoid_words) ? reply.avoid_words : [],
+    person_ids: Array.isArray(reply.person_ids) ? reply.person_ids : [],
+  };
 }
