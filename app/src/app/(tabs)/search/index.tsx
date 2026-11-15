@@ -9,7 +9,7 @@ import { useHousehold } from '@/lib/auth';
 import { coreProteins, resolveProteinCategory, type ProteinCategory } from '@/lib/category';
 import { useI18n, type Dict } from '@/lib/i18n';
 import { supabase } from '@/lib/supabase';
-import { titleMatches } from '@/lib/search-text';
+import { buildSearchIndex, scoreRecipes } from '@/lib/search-text';
 import { localizedTitle } from '@/lib/translations';
 import { fonts, fontSize, minTapTarget, radius, screenPadding, tabBarClearance, useTheme } from '@/lib/theme';
 import { useCanonicalIndex } from '@/lib/use-canonical';
@@ -79,7 +79,9 @@ export default function SearchScreen() {
   const insets = useSafeAreaInsets();
   const { householdId } = useHousehold();
 
-  const [recipes, setRecipes] = useState<(RecipeListItem & { searchTitles: string[] })[]>([]);
+  const [recipes, setRecipes] = useState<
+    (RecipeListItem & { searchTitles: string[]; searchIngredients: string[] })[]
+  >([]);
   const [loaded, setLoaded] = useState(false);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
@@ -91,7 +93,7 @@ export default function SearchScreen() {
       supabase
         .from('recipes')
         .select(
-          'id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes, ingredients, fodmap_override, meal_type, recipe_translations(locale, title)'
+          'id, title, tags, needs_review, cover_image_path, servings, prep_minutes, cook_minutes, ingredients, fodmap_override, meal_type, recipe_translations(locale, title, ingredients)'
         )
         .eq('household_id', householdId)
         // Low-FODMAP versions live under their original (toggle on the recipe page).
@@ -105,12 +107,20 @@ export default function SearchScreen() {
             setRecipes(
               (
                 data as (RecipeListItem & {
-                  recipe_translations?: { locale: string; title: string }[] | null;
+                  recipe_translations?:
+                    | { locale: string; title: string; ingredients?: { name?: string }[] | null }[]
+                    | null;
                 })[]
               ).map(({ recipe_translations, ...r }) => ({
                 ...r,
                 title: localizedTitle({ title: r.title, recipe_translations }, locale),
                 searchTitles: [r.title, ...(recipe_translations ?? []).map((t) => t.title)],
+                searchIngredients: [
+                  ...(r.ingredients ?? []),
+                  ...(recipe_translations ?? []).flatMap((t) => t.ingredients ?? []),
+                ]
+                  .map((i) => i?.name ?? '')
+                  .filter(Boolean),
               }))
             );
           }
@@ -122,10 +132,20 @@ export default function SearchScreen() {
     }, [householdId, locale])
   );
 
+  // Every language variant of titles + ingredient names, so a query in any
+  // language (or with a typo) finds the recipe regardless of the app locale.
+  const searchIndex = useMemo(
+    () =>
+      buildSearchIndex(
+        recipes.map((r) => ({ titles: r.searchTitles, ingredients: r.searchIngredients }))
+      ),
+    [recipes]
+  );
+  const scores = useMemo(() => scoreRecipes(searchIndex, query), [searchIndex, query]);
+
   const filtered = useMemo(() => {
-    const q = query.trim();
-    return recipes.filter((recipe) => {
-      if (!titleMatches(recipe.searchTitles, q)) return false;
+    const matches = recipes.filter((recipe, i) => {
+      if (scores && scores[i] === 0) return false;
       if (filter === 'all') return true;
       if (filter === 'needs_review') return recipe.needs_review;
       if ((MEAL_TYPE_FILTERS as readonly string[]).includes(filter)) {
@@ -138,7 +158,14 @@ export default function SearchScreen() {
       // 'fish & meat' recipes satisfy the Fish and Meat chips too.
       return category === filter || coreProteins(category).includes(filter);
     });
-  }, [recipes, query, filter, index]);
+    if (!scores) return matches;
+    // Best matches first; ties keep the newest-first order.
+    const scoreOf = new Map(recipes.map((r, i) => [r.id, scores[i]]));
+    return matches
+      .map((r, order) => ({ r, order, score: scoreOf.get(r.id) ?? 0 }))
+      .sort((a, b) => b.score - a.score || a.order - b.order)
+      .map(({ r }) => r);
+  }, [recipes, scores, filter, index]);
 
   const hasActiveFilters = query.trim().length > 0 || filter !== 'all';
   const clearFilters = () => {
