@@ -64,7 +64,6 @@ import { normalizeDietProfile } from '@/lib/diet';
 import { moveItem, removeItem, updateItem } from '@/lib/edit-list';
 import {
   computeRecipeFodmap,
-  recipeFodmapTier,
   type RecipeFodmap,
 } from '@/lib/fodmap';
 import { fmt, useI18n, type Dict } from '@/lib/i18n';
@@ -85,7 +84,7 @@ import {
 import { entryServings, rescaleIngredients, servingsFactor } from '@/lib/servings';
 import { convertIngredients, convertStepText, needsAiConversion, type UnitSystem } from '@/lib/unit-convert';
 import { supabase } from '@/lib/supabase';
-import { fonts, fontSize, minTapTarget, radius, screenPadding, useTheme } from '@/lib/theme';
+import { fonts, fontSize, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
 import {
   languageDisplayName,
   localizeContent,
@@ -470,8 +469,7 @@ export default function RecipeSheetScreen() {
     servings: string;
     prep: string;
     cook: string;
-    fodmap: 'auto' | 'low' | 'moderate' | 'high';
-  }>({ servings: '', prep: '', cook: '', fodmap: 'auto' });
+  }>({ servings: '', prep: '', cook: '' });
   const [inThisWeek, setInThisWeek] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   /** Bookmark fill + Save-recipe sheet: is this recipe in one of MY folders? */
@@ -787,13 +785,6 @@ export default function RecipeSheetScreen() {
     );
   }, [recipe, matches, canonicalIndex]);
 
-  // Always present once the recipe loads ('check' → "FODMAP ?") so the
-  // byline badge stays a tap target for setting the level manually.
-  const recipeTier = useMemo(() => {
-    if (!recipe) return null;
-    return recipe.fodmap_override ?? (fodmap ? recipeFodmapTier(fodmap) : 'check');
-  }, [recipe, fodmap]);
-
   const flagByRaw = useMemo(
     () => new Map((fodmap?.flags ?? []).map((flag) => [flag.raw, flag])),
     [fodmap]
@@ -968,29 +959,6 @@ export default function RecipeSheetScreen() {
     });
   };
 
-  /** Tap the byline badge: pick the FODMAP level in place. */
-  const editFodmapLevel = (e?: GestureResponderEvent) => {
-    if (!recipe) return;
-    const current = recipe.fodmap_override ?? 'auto';
-    const levels: [string, string, 'low' | 'moderate' | 'high' | null][] = [
-      ['auto', d.recipe.auto, null],
-      ['low', d.recipe.low, 'low'],
-      ['moderate', d.recipe.moderate, 'moderate'],
-      ['high', d.recipe.high, 'high'],
-    ];
-    pickOption({
-      title: d.recipe.fodmapLevelTitle,
-      message: d.recipe.autoDerivesHint,
-      cancelLabel: d.common.cancel,
-      anchor: anchorFromEvent(e),
-      options: levels.map(([value, label, override]) => ({
-        label,
-        checked: current === value,
-        onPress: () => void saveRecipe({ fodmap_override: override }),
-      })),
-    });
-  };
-
   const saveDetails = async () => {
     if (!recipe) return;
     const toInt = (v: string) => {
@@ -1002,7 +970,6 @@ export default function RecipeSheetScreen() {
       servings: newServings,
       prep_minutes: toInt(details.prep),
       cook_minutes: toInt(details.cook),
-      fodmap_override: details.fodmap === 'auto' ? null : details.fodmap,
     };
     // Servings change rescales parsed quantities (spec Part 3).
     if (newServings && recipe.servings && newServings !== recipe.servings) {
@@ -1587,47 +1554,6 @@ export default function RecipeSheetScreen() {
                 <Muted>{category ? CATEGORY_LABELS[category] : d.recipe.typeUnknown}</Muted>
                 <Ionicons name="chevron-down" size={12} color={colors.textMuted} />
               </Pressable>
-              {recipeTier ? (
-                <>
-                  <Muted>·</Muted>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={fmt(d.recipe.fodmapLevelA11y, { tier: tierWord(d, recipeTier) })}
-                    onPress={editFodmapLevel}
-                    hitSlop={8}
-                    style={({ pressed }) => ({
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 2,
-                      opacity: pressed ? 0.6 : 1,
-                    })}
-                  >
-                    <Text
-                      style={{
-                        color:
-                          recipeTier === 'high'
-                            ? colors.danger
-                            : recipeTier === 'moderate'
-                              ? colors.saffron
-                              : recipeTier === 'low'
-                                ? colors.spineVeg
-                                : colors.textMuted,
-                        fontSize: fontSize.meta,
-                        fontFamily: fonts.uiSemi,
-                      }}
-                    >
-                      {recipeTier === 'high'
-                        ? d.recipe.highFodmap
-                        : recipeTier === 'moderate'
-                          ? d.recipe.moderateFodmap
-                          : recipeTier === 'low'
-                            ? d.recipe.lowFodmap
-                            : d.recipe.fodmapUnknown}
-                    </Text>
-                    <Ionicons name="chevron-down" size={12} color={colors.textMuted} />
-                  </Pressable>
-                </>
-              ) : null}
               <Muted>·</Muted>
               <Pressable
                 accessibilityRole="button"
@@ -1661,7 +1587,6 @@ export default function RecipeSheetScreen() {
                     servings: recipe.servings?.toString() ?? '',
                     prep: recipe.prep_minutes?.toString() ?? '',
                     cook: recipe.cook_minutes?.toString() ?? '',
-                    fodmap: recipe.fodmap_override ?? 'auto',
                   });
                   setDetailsOpen(true);
                 }}
@@ -1672,32 +1597,6 @@ export default function RecipeSheetScreen() {
                   <Muted>{d.recipe.addServingsTime}</Muted>
                 )}
               </Pressable>
-              {/* Swap suggestions only make sense when the recipe isn't
-                  already low FODMAP (override or computed). */}
-              {swappableRaws.length > 0 && recipeTier !== 'low' ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={d.recipe.suggestSwapsA11y}
-                  onPress={openFodmapChat}
-                  style={({ pressed }) => ({
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 4,
-                    minHeight: 28,
-                    paddingHorizontal: 10,
-                    borderRadius: 999,
-                    borderWidth: 1,
-                    borderColor: colors.accent,
-                    backgroundColor: 'transparent',
-                    opacity: pressed ? 0.7 : 1,
-                  })}
-                >
-                  <Ionicons name="leaf-outline" size={14} color={colors.accent} />
-                  <Text style={{ color: colors.accent, fontSize: fontSize.meta, fontFamily: fonts.uiSemi }}>
-                    {swapsLoading ? d.recipe.working : d.recipe.lowFodmapChip}
-                  </Text>
-                </Pressable>
-              ) : null}
               {recipe.needs_review ? (
                 <Text style={{ color: colors.saffron, fontSize: fontSize.meta, fontFamily: fonts.uiSemi }}>
                   {d.recipe.needsReview}
@@ -2255,52 +2154,6 @@ export default function RecipeSheetScreen() {
             onChangeText={(v) => setDetails({ ...details, cook: v })}
             keyboardType="number-pad"
           />
-          <Eyebrow>{d.recipe.fodmapLevelTitle}</Eyebrow>
-          <Muted>{d.recipe.fodmapOverrideHint}</Muted>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            {(
-              [
-                ['auto', d.recipe.auto],
-                ['low', d.recipe.low],
-                ['moderate', d.recipe.modShort],
-                ['high', d.recipe.high],
-              ] as ['auto' | 'low' | 'moderate' | 'high', string][]
-            ).map(([value, label]) => {
-              const selected = details.fodmap === value;
-              return (
-                <Pressable
-                  key={value}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  onPress={() => setDetails({ ...details, fodmap: value })}
-                  style={({ pressed }) => ({
-                    flex: 1,
-                    minHeight: 40,
-                    borderRadius: radius.control,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderWidth: selected ? 0 : 1,
-                    borderColor: colors.border,
-                    backgroundColor: selected
-                      ? colors.text
-                      : pressed
-                        ? colors.cardPressed
-                        : 'transparent',
-                  })}
-                >
-                  <Text
-                    style={{
-                      color: selected ? colors.bg : colors.text,
-                      fontSize: fontSize.small,
-                      fontFamily: fonts.uiMedium,
-                    }}
-                  >
-                    {label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
           <Button label={d.common.save} onPress={() => void saveDetails()} />
           <Button label={d.common.cancel} kind="secondary" onPress={() => setDetailsOpen(false)} />
         </View>
