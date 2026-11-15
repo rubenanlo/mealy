@@ -27,6 +27,7 @@ import { AddToWeekSheet } from '@/components/add-to-week';
 import { AskChatSheet, EditChatSheet, ManageVersionSheet, UnitsSheet } from '@/components/ai-assist';
 import { LanguageChip, LanguageSheet } from '@/components/language-sheet';
 import { AiActionsSheet, AiButton, FodmapChatSheet, VersionToggle, type VersionKey } from '@/components/ai-sheet';
+import { CookMode } from '@/components/cook-mode';
 import { CoverRepositionModal } from '@/components/cover-editor';
 import { EditRowControls, SectionTitle } from '@/components/editable-list';
 import { FixMatchSheet } from '@/components/fix-match';
@@ -34,6 +35,8 @@ import { ImageLightbox } from '@/components/image-lightbox';
 import { IngredientRow } from '@/components/ingredient-row';
 import { RecipeSheet } from '@/components/recipe-sheet';
 import { SaveSheet } from '@/components/save-sheet';
+import { AllIngredientsGrid, CHIP_STRIP_HEIGHT, IngredientStrip, StepUses } from '@/components/step-ingredients';
+import { WeekSheet } from '@/components/week/sheet';
 import {
   Body,
   BookmarkChip,
@@ -71,6 +74,7 @@ import { fmt, useI18n, type Dict } from '@/lib/i18n';
 import { resolveMatches } from '@/lib/matching';
 import { useImageUrl } from '@/lib/media';
 import { useReducedMotion } from '@/lib/motion';
+import { amountLabel, mapStepIngredients } from '@/lib/step-ingredients';
 import { type MealSlot, weekStart } from '@/lib/plan';
 import { assignRecipeToSlot, isRecipeUntouched } from '@/lib/recipes';
 import {
@@ -85,7 +89,7 @@ import {
 import { entryServings, rescaleIngredients, servingsFactor } from '@/lib/servings';
 import { convertIngredients, convertStepText, needsAiConversion, type UnitSystem } from '@/lib/unit-convert';
 import { supabase } from '@/lib/supabase';
-import { fonts, fontSize, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
+import { controlHeight, fonts, fontSize, minTapTarget, radius, screenPadding, useTheme } from '@/lib/theme';
 import {
   isUsableTranslation,
   languageDisplayName,
@@ -152,7 +156,6 @@ interface ImageRow {
   position: number;
 }
 
-const PINNED_BAR_HEIGHT = 44;
 
 /** Localized display word for a FODMAP tier ('low' | 'moderate' | 'high' | 'check'). */
 function tierWord(d: Dict, tier: FodmapTier): string {
@@ -572,6 +575,9 @@ export default function RecipeSheetScreen() {
   const [stepsY, setStepsY] = useState<number | null>(null);
   const [pinnedVisible, setPinnedVisible] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
+  /** Cook mode (one step per screen) and the ingredient-chip details sheet. */
+  const [cookOpen, setCookOpen] = useState(false);
+  const [chipIdx, setChipIdx] = useState<number | null>(null);
   const [sheetHeight, setSheetHeight] = useState(0);
   const panelProgress = useRef(new Animated.Value(0)).current;
 
@@ -1278,7 +1284,7 @@ export default function RecipeSheetScreen() {
   const onScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     if (stepsY === null) return;
     const y = event.nativeEvent.contentOffset.y;
-    const shouldPin = y >= stepsY - PINNED_BAR_HEIGHT;
+    const shouldPin = y >= stepsY - CHIP_STRIP_HEIGHT;
     if (shouldPin !== pinnedVisible) {
       setPinnedVisible(shouldPin);
       if (!shouldPin && panelOpen) togglePanel(false);
@@ -1441,6 +1447,9 @@ export default function RecipeSheetScreen() {
     });
   };
   const showPinnedBar = pinnedVisible;
+  // Which ingredients each step names (display language, display amounts).
+  const stepMap = mapStepIngredients(displaySteps, viewIngredients);
+  const canCook = !isNew && !assignTarget && displaySteps.length > 0;
   const actionBottom = (Platform.OS === 'ios' ? insets.bottom : insets.bottom) + 16;
   // While a list is in edit mode the floating action covers the editor's own
   // Add/Save controls — and "add to this week" is the wrong verb mid-edit.
@@ -1955,6 +1964,11 @@ export default function RecipeSheetScreen() {
                         : fmt(d.recipe.stepN, { n: i + 1 })}
                     </Eyebrow>
                     <Body>{step}</Body>
+                    <StepUses
+                      indexes={stepMap.byStep[i] ?? []}
+                      ingredients={viewIngredients}
+                      onPress={setChipIdx}
+                    />
                   </Pressable>
                 ))}
                 {displaySteps.length === 0 ? <Muted>{d.recipe.noSteps}</Muted> : null}
@@ -1967,35 +1981,16 @@ export default function RecipeSheetScreen() {
           </View>
         </ScrollView>
 
-        {/* v3.2: pinned ingredients bar while reading steps */}
+        {/* Sticky ingredient strip while reading steps: amounts at a glance,
+            "All" drops down the full grid. Replaces the thin v3.2 bar. */}
         {showPinnedBar ? (
           <View style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 15 }}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={panelOpen ? d.recipe.hideIngredients : d.recipe.showIngredients}
-              accessibilityState={{ expanded: panelOpen }}
-              onPress={() => togglePanel(!panelOpen)}
-              style={({ pressed }) => ({
-                height: PINNED_BAR_HEIGHT,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                paddingLeft: screenPadding,
-                paddingRight: screenPadding,
-                backgroundColor: pressed ? colors.cardPressed : colors.bg,
-                borderBottomWidth: StyleSheet.hairlineWidth,
-                borderBottomColor: colors.border,
-              })}
-            >
-              <Text style={{ color: colors.text, fontSize: fontSize.small, fontFamily: fonts.uiSemi }}>
-                {d.recipe.ingredients}
-              </Text>
-              <Ionicons
-                name={panelOpen ? 'chevron-up' : 'chevron-down'}
-                size={18}
-                color={colors.textMuted}
-              />
-            </Pressable>
+            <IngredientStrip
+              ingredients={viewIngredients}
+              open={panelOpen}
+              onToggleAll={() => togglePanel(!panelOpen)}
+              onPress={setChipIdx}
+            />
             {panelOpen ? (
               <Animated.View
                 style={{
@@ -2003,6 +1998,19 @@ export default function RecipeSheetScreen() {
                   backgroundColor: colors.bg,
                   borderBottomWidth: StyleSheet.hairlineWidth,
                   borderBottomColor: colors.border,
+                  borderBottomLeftRadius: 20,
+                  borderBottomRightRadius: 20,
+                  ...Platform.select({
+                    ios: {
+                      shadowColor: '#000000',
+                      shadowOpacity: 0.16,
+                      shadowRadius: 20,
+                      shadowOffset: { width: 0, height: 8 },
+                    },
+                    android: { elevation: 10 },
+                    web: { boxShadow: '0 10px 30px rgba(0, 0, 0, 0.18)' } as object,
+                    default: {},
+                  }),
                   opacity: panelProgress,
                   transform: [
                     {
@@ -2013,45 +2021,20 @@ export default function RecipeSheetScreen() {
               >
                 <ScrollView
                   contentContainerStyle={{
-                    paddingHorizontal: screenPadding,
+                    paddingHorizontal: screenPadding - 4,
                     paddingTop: 12,
                     paddingBottom: 20,
+                    gap: 10,
                   }}
                 >
-                  {viewIngredients.map((ing, i) => {
-                    const quantity = [ing.quantity, ing.unit].filter((v) => v != null).join(' ');
-                    return (
-                      <View key={`pin-${ing.raw}-${i}`}>
-                        {i > 0 ? <Hairline /> : null}
-                        <View
-                          style={{
-                            flexDirection: 'row',
-                            alignItems: 'baseline',
-                            gap: 12,
-                            paddingVertical: 12,
-                          }}
-                        >
-                          <Text
-                            style={{ flex: 1, color: colors.text, fontSize: fontSize.small, fontFamily: fonts.ui }}
-                          >
-                            {ing.name}
-                          </Text>
-                          {quantity ? (
-                            <Text
-                              style={{
-                                color: colors.text,
-                                fontSize: fontSize.small,
-                                fontFamily: fonts.ui,
-                                fontVariant: ['tabular-nums'],
-                              }}
-                            >
-                              {quantity}
-                            </Text>
-                          ) : null}
-                        </View>
-                      </View>
-                    );
-                  })}
+                  <Text style={{ color: colors.text, fontSize: fontSize.dayName, fontFamily: fonts.display }}>
+                    {d.recipe.allIngredients}
+                  </Text>
+                  <AllIngredientsGrid
+                    ingredients={viewIngredients}
+                    firstStep={stepMap.firstStep}
+                    onPress={setChipIdx}
+                  />
                 </ScrollView>
               </Animated.View>
             ) : null}
@@ -2091,6 +2074,37 @@ export default function RecipeSheetScreen() {
             />
           ) : isNew ? (
             <Button label={d.common.done} onPress={finishManual} />
+          ) : canCook ? (
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  if (panelOpen) togglePanel(false);
+                  setCookOpen(true);
+                }}
+                style={({ pressed }) => ({
+                  flex: 1,
+                  minHeight: controlHeight,
+                  borderRadius: radius.control,
+                  backgroundColor: colors.text,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  opacity: pressed ? 0.8 : 1,
+                })}
+              >
+                <Ionicons name="play" size={16} color={colors.bg} />
+                <Text style={{ color: colors.bg, fontSize: fontSize.base, fontFamily: fonts.uiSemi }}>
+                  {d.recipe.startCooking}
+                </Text>
+              </Pressable>
+              <Button
+                label={inThisWeek ? d.recipe.addAgainShort : d.recipe.addToWeekShort}
+                onPress={() => setSheetOpen(true)}
+                style={{ flex: 1, paddingHorizontal: 12 }}
+              />
+            </View>
           ) : (
             <Button
               label={inThisWeek ? d.recipe.addAgainThisWeek : d.recipe.addToPlan}
@@ -2100,6 +2114,55 @@ export default function RecipeSheetScreen() {
         </View>
         )}
       </View>
+
+      <CookMode
+        visible={cookOpen}
+        onClose={() => setCookOpen(false)}
+        title={displayTitle}
+        steps={displaySteps}
+        ingredients={viewIngredients}
+        map={stepMap}
+        servingsLabel={(metaParts[0] as string | undefined) ?? null}
+      />
+
+      {(() => {
+        const chip = chipIdx !== null ? viewIngredients[chipIdx] : undefined;
+        const orig = chipIdx !== null ? recipe.ingredients[chipIdx] : undefined;
+        const flag = orig ? flagByRaw.get(orig.raw || orig.name) : undefined;
+        const first = chipIdx !== null ? stepMap.firstStep[chipIdx] : null;
+        return (
+          <WeekSheet
+            visible={chip !== undefined}
+            onClose={() => setChipIdx(null)}
+            title={chip?.name ?? ''}
+            headerRight={
+              chip && amountLabel(chip) ? (
+                <Text
+                  style={{ color: colors.text, fontSize: fontSize.dayName, fontFamily: fonts.uiSemi, fontVariant: ['tabular-nums'] }}
+                >
+                  {amountLabel(chip)}
+                </Text>
+              ) : undefined
+            }
+          >
+            {chip ? (
+              <View style={{ gap: 6, paddingBottom: 8 }}>
+                {chip.raw && chip.raw !== chip.name ? <Muted>{chip.raw}</Muted> : null}
+                <Muted>
+                  {first !== null && first !== undefined
+                    ? fmt(d.recipe.usedInStep, { n: first + 1 })
+                    : d.recipe.notInSteps}
+                </Muted>
+                {fodmapPersons.length > 0 && flag ? (
+                  <Muted>
+                    {fmt(d.recipe.fodmapTierLine, { tier: tierWord(d, flag.tier), explanation: flag.explanation })}
+                  </Muted>
+                ) : null}
+              </View>
+            ) : null}
+          </WeekSheet>
+        );
+      })()}
 
       <AddToWeekSheet
         visible={sheetOpen}
