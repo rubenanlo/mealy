@@ -22,9 +22,12 @@ values
    false, '{}')
 on conflict (slug) do nothing;
 
--- The LLM fallback cached "no match" for these lines; drop those rows so the
--- next load re-matches them against the new aliases.
-delete from ingredient_matches
-where canonical_id is null
-  and raw_normalized in ('galette', 'eau', 'eau tiede', 'water', 'boiling water',
-                         'cup water', 'aigua', 'aigua freda');
+-- The LLM fallback cached "no match" for these lines; point those cache rows
+-- at the new entries so the next load picks them up.
+update ingredient_matches m
+set canonical_id = c.id, matched_by = 'alias', confidence = 1
+from canonical_ingredients c
+where m.canonical_id is null
+  and ((m.raw_normalized = 'galette' and c.slug = 'sarrasin')
+    or (m.raw_normalized in ('eau', 'eau tiede', 'water', 'boiling water', 'cup water',
+                             'aigua', 'aigua freda') and c.slug = 'eau'));
