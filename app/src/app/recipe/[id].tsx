@@ -24,7 +24,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AddToWeekSheet } from '@/components/add-to-week';
-import { AiActionsSheet, AiButton, FodmapChatSheet, VersionToggle } from '@/components/ai-sheet';
+import { AskChatSheet, EditChatSheet, ManageVersionSheet, UnitsSheet } from '@/components/ai-assist';
+import { AiActionsSheet, AiButton, FodmapChatSheet, VersionToggle, type VersionKey } from '@/components/ai-sheet';
 import { CoverRepositionModal } from '@/components/cover-editor';
 import { EditRowControls, SectionTitle } from '@/components/editable-list';
 import { FixMatchSheet } from '@/components/fix-match';
@@ -63,7 +64,6 @@ import { normalizeDietProfile } from '@/lib/diet';
 import { moveItem, removeItem, updateItem } from '@/lib/edit-list';
 import {
   computeRecipeFodmap,
-  recipeFodmapTier,
   type RecipeFodmap,
 } from '@/lib/fodmap';
 import { fmt, useI18n, type Dict } from '@/lib/i18n';
@@ -74,14 +74,17 @@ import { type MealSlot, weekStart } from '@/lib/plan';
 import { assignRecipeToSlot, isRecipeUntouched } from '@/lib/recipes';
 import {
   applySwapSelection,
+  deleteVariant,
+  diffVersion,
   loadVariantFamily,
+  saveCustomVariant,
   saveLowFodmapVariant,
   type VariantFamily,
 } from '@/lib/recipe-variants';
 import { entryServings, rescaleIngredients, servingsFactor } from '@/lib/servings';
-import { convertIngredients, convertStepText, type UnitSystem } from '@/lib/unit-convert';
+import { convertIngredients, convertStepText, needsAiConversion, type UnitSystem } from '@/lib/unit-convert';
 import { supabase } from '@/lib/supabase';
-import { fonts, fontSize, minTapTarget, radius, screenPadding, useTheme } from '@/lib/theme';
+import { fonts, fontSize, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
 import {
   languageDisplayName,
   localizeContent,
@@ -91,8 +94,11 @@ import {
 } from '@/lib/translations';
 import { useCanonicalIndex } from '@/lib/use-canonical';
 import {
+  aiEstimateUnits,
   fetchWebImage,
   fodmapSwaps,
+  type AiEditResult,
+  type AiUnitEstimate,
   reExtract,
   type CanonicalRecipe,
   type FodmapSwapResult,
@@ -124,7 +130,9 @@ interface RecipeDetail {
   updated_at: string | null;
   /** Set on an AI-adapted version: the original it was derived from (0033). */
   variant_of: string | null;
-  variant_kind: 'low_fodmap' | null;
+  variant_kind: 'low_fodmap' | 'custom' | null;
+  /** My version only: what the household asked Mealy AI to change (0036). */
+  variant_note?: string | null;
 }
 
 interface SourceRow {
@@ -337,6 +345,7 @@ export default function RecipeSheetScreen() {
     assignDay,
     assignSlot,
     assignWeek,
+    version: versionParam,
   } = useLocalSearchParams<{
     id: string;
     /** Set when opened from the planner / "what's next": scale to this meal's servings. */
@@ -347,6 +356,8 @@ export default function RecipeSheetScreen() {
     assignDay?: string;
     assignSlot?: string;
     assignWeek?: string;
+    /** 'original' when the reader picked Original on the toggle (skip opening My version). */
+    version?: string;
   }>();
   const { colors } = useTheme();
   const { d, locale } = useI18n();
@@ -391,6 +402,49 @@ export default function RecipeSheetScreen() {
     AsyncStorage.setItem('mealy.unit-system', system).catch(() => {});
   };
 
+  // Ask Mealy AI once per line + system for amounts the unit table can't
+  // convert (a tin, a bunch). Display only: nothing is written back.
+  useEffect(() => {
+    if (!recipe || unitSystem === 'original') return;
+    const system = unitSystem;
+    const asked = estimatedKeysRef.current;
+    const pending = recipe.ingredients.filter((ing) => {
+      const key = `${system}:${ing.raw || ing.name}`;
+      return needsAiConversion(ing, system) && !asked.has(key);
+    });
+    if (pending.length === 0) return;
+    for (const ing of pending) asked.add(`${system}:${ing.raw || ing.name}`);
+    let cancelled = false;
+    let done = false;
+    setUnitsEstimating(true);
+    void aiEstimateUnits(
+      system,
+      recipe.language,
+      pending.map((ing) => ({ raw: ing.raw || ing.name, quantity: ing.quantity, unit: ing.unit, name: ing.name }))
+    ).then((estimates) => {
+      done = true;
+      if (cancelled) return;
+      setUnitsEstimating(false);
+      if (!estimates) {
+        // Let a later visit retry.
+        for (const ing of pending) asked.delete(`${system}:${ing.raw || ing.name}`);
+        return;
+      }
+      setUnitEstimates((prev) => {
+        const next = new Map(prev);
+        for (const est of estimates) next.set(`${system}:${est.raw}`, est);
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+      setUnitsEstimating(false);
+      // Superseded before the answer came back: allow the next run to ask again.
+      if (!done) for (const ing of pending) asked.delete(`${system}:${ing.raw || ing.name}`);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recipe?.id, recipe?.updated_at, unitSystem]);
+
   const pickUnitSystem = (e?: GestureResponderEvent) => {
     const systems: [UnitSystem, string][] = [
       ['original', d.recipe.unitsOriginal],
@@ -415,8 +469,7 @@ export default function RecipeSheetScreen() {
     servings: string;
     prep: string;
     cook: string;
-    fodmap: 'auto' | 'low' | 'moderate' | 'high';
-  }>({ servings: '', prep: '', cook: '', fodmap: 'auto' });
+  }>({ servings: '', prep: '', cook: '' });
   const [inThisWeek, setInThisWeek] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   /** Bookmark fill + Save-recipe sheet: is this recipe in one of MY folders? */
@@ -475,7 +528,26 @@ export default function RecipeSheetScreen() {
   const [family, setFamily] = useState<VariantFamily | null>(null);
   const [savingVariant, setSavingVariant] = useState(false);
   const [variantSaveError, setVariantSaveError] = useState(false);
-  const [savedToast, setSavedToast] = useState(false);
+  const [savedToast, setSavedToast] = useState<string | null>(null);
+  // Mealy AI assistant: change → My version, ask, units (migration 0036).
+  const [editOpen, setEditOpen] = useState(false);
+  const [editInitial, setEditInitial] = useState<string | null>(null);
+  /** Start the change chat from the original even when My version is open. */
+  const [editFromOriginal, setEditFromOriginal] = useState(false);
+  const [askOpen, setAskOpen] = useState(false);
+  const [unitsOpen, setUnitsOpen] = useState(false);
+  const [manageOpen, setManageOpen] = useState(false);
+  const [savingCustom, setSavingCustom] = useState(false);
+  const [customSaveError, setCustomSaveError] = useState(false);
+  /** The original's content, for diff dots and "start over" while My version is open. */
+  const [originalContent, setOriginalContent] = useState<{
+    ingredients: IngredientData[];
+    steps: string[];
+  } | null>(null);
+  /** Mealy AI unit estimates, keyed `${system}:${raw}` (display only). */
+  const [unitEstimates, setUnitEstimates] = useState<Map<string, AiUnitEstimate>>(new Map());
+  const [unitsEstimating, setUnitsEstimating] = useState(false);
+  const estimatedKeysRef = useRef<Set<string>>(new Set());
   // v3.2 pinned-ingredients state
   const [stepsY, setStepsY] = useState<number | null>(null);
   const [pinnedVisible, setPinnedVisible] = useState(false);
@@ -588,9 +660,41 @@ export default function RecipeSheetScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [familyKey, isNew]);
 
+  // My version opens by default; the toggle's Original passes version=original.
+  useEffect(() => {
+    if (!recipe || isNew || !family || recipe.variant_of) return;
+    if (family.customId && family.originalId === recipe.id && versionParam !== 'original') {
+      router.replace({
+        pathname: '/recipe/[id]',
+        params: { id: family.customId, ...(planServingsParam ? { planServings: planServingsParam } : {}) },
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [family, recipe?.id]);
+
+  // While My version is open, load the original's lines for the change dots.
+  useEffect(() => {
+    if (!recipe?.variant_of || recipe.variant_kind !== 'custom') {
+      setOriginalContent(null);
+      return;
+    }
+    let cancelled = false;
+    void supabase
+      .from('recipes')
+      .select('ingredients, steps')
+      .eq('id', recipe.variant_of)
+      .single()
+      .then(({ data }) => {
+        if (!cancelled && data) setOriginalContent(data as { ingredients: IngredientData[]; steps: string[] });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [recipe?.variant_of, recipe?.variant_kind]);
+
   useEffect(() => {
     if (!savedToast) return;
-    const timer = setTimeout(() => setSavedToast(false), 3500);
+    const timer = setTimeout(() => setSavedToast(null), 3500);
     return () => clearTimeout(timer);
   }, [savedToast]);
 
@@ -680,13 +784,6 @@ export default function RecipeSheetScreen() {
       (slug) => canonicalIndex?.bySlug.get(slug) ?? null
     );
   }, [recipe, matches, canonicalIndex]);
-
-  // Always present once the recipe loads ('check' → "FODMAP ?") so the
-  // byline badge stays a tap target for setting the level manually.
-  const recipeTier = useMemo(() => {
-    if (!recipe) return null;
-    return recipe.fodmap_override ?? (fodmap ? recipeFodmapTier(fodmap) : 'check');
-  }, [recipe, fodmap]);
 
   const flagByRaw = useMemo(
     () => new Map((fodmap?.flags ?? []).map((flag) => [flag.raw, flag])),
@@ -862,29 +959,6 @@ export default function RecipeSheetScreen() {
     });
   };
 
-  /** Tap the byline badge: pick the FODMAP level in place. */
-  const editFodmapLevel = (e?: GestureResponderEvent) => {
-    if (!recipe) return;
-    const current = recipe.fodmap_override ?? 'auto';
-    const levels: [string, string, 'low' | 'moderate' | 'high' | null][] = [
-      ['auto', d.recipe.auto, null],
-      ['low', d.recipe.low, 'low'],
-      ['moderate', d.recipe.moderate, 'moderate'],
-      ['high', d.recipe.high, 'high'],
-    ];
-    pickOption({
-      title: d.recipe.fodmapLevelTitle,
-      message: d.recipe.autoDerivesHint,
-      cancelLabel: d.common.cancel,
-      anchor: anchorFromEvent(e),
-      options: levels.map(([value, label, override]) => ({
-        label,
-        checked: current === value,
-        onPress: () => void saveRecipe({ fodmap_override: override }),
-      })),
-    });
-  };
-
   const saveDetails = async () => {
     if (!recipe) return;
     const toInt = (v: string) => {
@@ -896,7 +970,6 @@ export default function RecipeSheetScreen() {
       servings: newServings,
       prep_minutes: toInt(details.prep),
       cook_minutes: toInt(details.cook),
-      fodmap_override: details.fodmap === 'auto' ? null : details.fodmap,
     };
     // Servings change rescales parsed quantities (spec Part 3).
     if (newServings && recipe.servings && newServings !== recipe.servings) {
@@ -1059,7 +1132,7 @@ export default function RecipeSheetScreen() {
       setSwapsResult(null);
       setIngredientsDraft(null);
       setStepsDraft(null);
-      setSavedToast(true);
+      setSavedToast(d.ai.savedToast);
       if (variantId === recipe.id) void load();
       else router.replace({ pathname: '/recipe/[id]', params: { id: variantId } });
     } catch {
@@ -1069,12 +1142,92 @@ export default function RecipeSheetScreen() {
     }
   };
 
-  const switchVersion = (which: 'original' | 'low_fodmap') => {
+  const switchVersion = (which: VersionKey) => {
     if (!family) return;
-    const target = which === 'original' ? family.originalId : family.lowFodmapId;
+    const target =
+      which === 'original' ? family.originalId : which === 'low_fodmap' ? family.lowFodmapId : family.customId;
     if (target && target !== recipe?.id) {
-      router.replace({ pathname: '/recipe/[id]', params: { id: target } });
+      router.replace({
+        pathname: '/recipe/[id]',
+        params: {
+          id: target,
+          ...(which === 'original' ? { version: 'original' } : {}),
+          ...(planServingsParam ? { planServings: planServingsParam } : {}),
+        },
+      });
     }
+  };
+
+  // ---- Mealy AI: change → My version -------------------------------------
+
+  const openEditChat = (opts: { initial?: string | null; fromOriginal?: boolean } = {}) => {
+    setAiOpen(false);
+    setAskOpen(false);
+    setManageOpen(false);
+    setCustomSaveError(false);
+    setEditInitial(opts.initial ?? null);
+    setEditFromOriginal(!!opts.fromOriginal);
+    setEditOpen(true);
+  };
+
+  /** Save the accepted rewrite as the household's My version (never over the original). */
+  const saveCustom = async (result: AiEditResult, note: string) => {
+    if (!recipe || savingCustom) return;
+    setSavingCustom(true);
+    setCustomSaveError(false);
+    try {
+      const ingredients: IngredientData[] = result.ingredients.map(({ change: _c, was: _w, ...ing }) => ({
+        raw: ing.raw || ing.name,
+        quantity: ing.quantity ?? null,
+        unit: ing.unit ?? null,
+        name: ing.name,
+        group: ing.group ?? null,
+        fodmap: ing.fodmap ?? null,
+      }));
+      const steps = result.steps.map((st) => st.text).filter((t) => t.trim());
+      // Changing My version again keeps the earlier requests in its note.
+      const priorNote = recipe.variant_kind === 'custom' && !editFromOriginal ? recipe.variant_note : null;
+      const variantId = await saveCustomVariant({
+        original: { ...recipe, id: recipe.variant_of ?? recipe.id },
+        ingredients,
+        steps,
+        note: [priorNote, note].filter(Boolean).join(' · ').slice(0, 300) || null,
+        userId: userId || null,
+      });
+      queueRecipeTranslation(variantId, {
+        title: recipe.title,
+        language: recipe.language,
+        ingredients,
+        steps,
+      });
+      setEditOpen(false);
+      setSavedToast(d.assist.savedToast);
+      if (variantId === recipe.id) void load();
+      else router.replace({ pathname: '/recipe/[id]', params: { id: variantId } });
+    } catch {
+      setCustomSaveError(true);
+    } finally {
+      setSavingCustom(false);
+    }
+  };
+
+  const deleteCustom = () => {
+    if (!recipe?.variant_of || recipe.variant_kind !== 'custom') return;
+    const originalId = recipe.variant_of;
+    setManageOpen(false);
+    confirmDestructive({
+      title: d.assist.deleteTitle,
+      message: d.assist.deleteBody,
+      confirmLabel: d.assist.deleteConfirm,
+      cancelLabel: d.common.cancel,
+      onConfirm: () => {
+        void deleteVariant(recipe.id)
+          .then(() =>
+            router.replace({ pathname: '/recipe/[id]', params: { id: originalId, version: 'original' } })
+          )
+          .catch(() => notify(d.assist.saveFailed));
+      },
+    });
   };
 
   /** Bookmark chip: save into my folders — same sheet as the library cards. */
@@ -1176,19 +1329,43 @@ export default function RecipeSheetScreen() {
     : d.recipe.showOriginalShort;
   const localized = localizeContent(recipe, contentTranslation);
   const displayTitle = localized.title;
+  // What Mealy AI sees: the stored lines (never the display conversion).
+  const aiContext = {
+    title: recipe.title,
+    language: recipe.language,
+    servings: recipe.servings,
+    ingredients: recipe.ingredients,
+    steps: recipe.steps,
+  };
   // Step prose follows the unit toggle too ("½ cup water", "400 degrees").
   const displaySteps = localized.steps.map((s) => convertStepText(s, unitSystem));
   // Display pipeline: plan scaling first, then the unit-system conversion.
   // Both are skipped while editing — drafts always operate on the original.
+  const scaledIngredients = planFactor
+    ? rescaleIngredients(localized.ingredients, planFactor)
+    : localized.ingredients;
+  const convertedIngredients =
+    ingredientsDraft !== null ? localized.ingredients : convertIngredients(scaledIngredients, unitSystem);
+  // Mealy AI fills the lines the unit table can't (a tin, a bunch): estimates
+  // are for the unscaled line, so the plan factor applies on top. Keyed on the
+  // ORIGINAL raw line (index-aligned with the translated display line).
+  const estimatedIdx = new Set<number>();
   const viewIngredients =
-    ingredientsDraft !== null
-      ? localized.ingredients
-      : convertIngredients(
-          planFactor
-            ? rescaleIngredients(localized.ingredients, planFactor)
-            : localized.ingredients,
-          unitSystem
-        );
+    ingredientsDraft !== null || unitSystem === 'original'
+      ? convertedIngredients
+      : convertedIngredients.map((ing, i) => {
+          const orig = recipe.ingredients[i];
+          const est = orig ? unitEstimates.get(`${unitSystem}:${orig.raw || orig.name}`) : undefined;
+          if (!est || est.quantity === null || !est.unit) return ing;
+          estimatedIdx.add(i);
+          const q = est.quantity * (planFactor ?? 1);
+          return { ...ing, quantity: parseFloat(q.toFixed(q >= 10 ? 0 : 2)), unit: est.unit };
+        });
+  // My version: dots on the lines and steps that differ from the original.
+  const versionDiff =
+    recipe.variant_kind === 'custom' && originalContent && ingredientsDraft === null
+      ? diffVersion(originalContent, { ingredients: recipe.ingredients, steps: recipe.steps })
+      : null;
   const metaParts = [
     planFactor && planServings != null
       ? fmt(d.recipe.servingsThisWeek, { n: planServings })
@@ -1324,11 +1501,37 @@ export default function RecipeSheetScreen() {
               </View>
             )}
 
-            {family?.lowFodmapId && titleDraft === null ? (
-              <VersionToggle
-                active={recipe.variant_of ? 'low_fodmap' : 'original'}
-                onSelect={switchVersion}
-              />
+            {(family?.lowFodmapId || family?.customId) && titleDraft === null ? (
+              <View style={{ gap: 8 }}>
+                <VersionToggle
+                  active={recipe.variant_kind ?? 'original'}
+                  available={[
+                    'original',
+                    ...(family.lowFodmapId ? (['low_fodmap'] as const) : []),
+                    ...(family.customId ? (['custom'] as const) : []),
+                  ]}
+                  onSelect={switchVersion}
+                  onActivePress={(which) => {
+                    if (which === 'custom') setManageOpen(true);
+                  }}
+                />
+                {recipe.variant_kind === 'custom' && recipe.variant_note ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text
+                      numberOfLines={1}
+                      style={{ flex: 1, color: colors.textMuted, fontSize: fontSize.meta, fontFamily: fonts.uiMedium }}
+                    >
+                      {recipe.variant_note}
+                    </Text>
+                    <LinkButton
+                      label={d.assist.changeAgainShort}
+                      onPress={() => openEditChat()}
+                      style={{ minHeight: 36 }}
+                      textStyle={{ fontSize: fontSize.meta }}
+                    />
+                  </View>
+                ) : null}
+              </View>
             ) : null}
 
             {/* Byline-style meta */}
@@ -1351,47 +1554,6 @@ export default function RecipeSheetScreen() {
                 <Muted>{category ? CATEGORY_LABELS[category] : d.recipe.typeUnknown}</Muted>
                 <Ionicons name="chevron-down" size={12} color={colors.textMuted} />
               </Pressable>
-              {recipeTier ? (
-                <>
-                  <Muted>·</Muted>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={fmt(d.recipe.fodmapLevelA11y, { tier: tierWord(d, recipeTier) })}
-                    onPress={editFodmapLevel}
-                    hitSlop={8}
-                    style={({ pressed }) => ({
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 2,
-                      opacity: pressed ? 0.6 : 1,
-                    })}
-                  >
-                    <Text
-                      style={{
-                        color:
-                          recipeTier === 'high'
-                            ? colors.danger
-                            : recipeTier === 'moderate'
-                              ? colors.saffron
-                              : recipeTier === 'low'
-                                ? colors.spineVeg
-                                : colors.textMuted,
-                        fontSize: fontSize.meta,
-                        fontFamily: fonts.uiSemi,
-                      }}
-                    >
-                      {recipeTier === 'high'
-                        ? d.recipe.highFodmap
-                        : recipeTier === 'moderate'
-                          ? d.recipe.moderateFodmap
-                          : recipeTier === 'low'
-                            ? d.recipe.lowFodmap
-                            : d.recipe.fodmapUnknown}
-                    </Text>
-                    <Ionicons name="chevron-down" size={12} color={colors.textMuted} />
-                  </Pressable>
-                </>
-              ) : null}
               <Muted>·</Muted>
               <Pressable
                 accessibilityRole="button"
@@ -1425,7 +1587,6 @@ export default function RecipeSheetScreen() {
                     servings: recipe.servings?.toString() ?? '',
                     prep: recipe.prep_minutes?.toString() ?? '',
                     cook: recipe.cook_minutes?.toString() ?? '',
-                    fodmap: recipe.fodmap_override ?? 'auto',
                   });
                   setDetailsOpen(true);
                 }}
@@ -1436,32 +1597,6 @@ export default function RecipeSheetScreen() {
                   <Muted>{d.recipe.addServingsTime}</Muted>
                 )}
               </Pressable>
-              {/* Swap suggestions only make sense when the recipe isn't
-                  already low FODMAP (override or computed). */}
-              {swappableRaws.length > 0 && recipeTier !== 'low' ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={d.recipe.suggestSwapsA11y}
-                  onPress={openFodmapChat}
-                  style={({ pressed }) => ({
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 4,
-                    minHeight: 28,
-                    paddingHorizontal: 10,
-                    borderRadius: 999,
-                    borderWidth: 1,
-                    borderColor: colors.accent,
-                    backgroundColor: 'transparent',
-                    opacity: pressed ? 0.7 : 1,
-                  })}
-                >
-                  <Ionicons name="leaf-outline" size={14} color={colors.accent} />
-                  <Text style={{ color: colors.accent, fontSize: fontSize.meta, fontFamily: fonts.uiSemi }}>
-                    {swapsLoading ? d.recipe.working : d.recipe.lowFodmapChip}
-                  </Text>
-                </Pressable>
-              ) : null}
               {recipe.needs_review ? (
                 <Text style={{ color: colors.saffron, fontSize: fontSize.meta, fontFamily: fonts.uiSemi }}>
                   {d.recipe.needsReview}
@@ -1723,7 +1858,11 @@ export default function RecipeSheetScreen() {
                           })}
                         >
                           <View style={{ flex: 1 }}>
-                            <IngredientRow ingredient={ing} />
+                            <IngredientRow
+                              ingredient={ing}
+                              marker={versionDiff?.ingredients[i] ?? null}
+                              estimated={estimatedIdx.has(i)}
+                            />
                           </View>
                           {fodmapPersons.length > 0 && flag ? <TierDot tier={flag.tier} /> : null}
                         </Pressable>
@@ -1807,7 +1946,11 @@ export default function RecipeSheetScreen() {
                     }}
                     style={{ gap: 6 }}
                   >
-                    <Eyebrow>{fmt(d.recipe.stepN, { n: i + 1 })}</Eyebrow>
+                    <Eyebrow>
+                      {versionDiff?.steps[i]
+                        ? fmt(d.assist.stepChanged, { n: i + 1 })
+                        : fmt(d.recipe.stepN, { n: i + 1 })}
+                    </Eyebrow>
                     <Body>{step}</Body>
                   </Pressable>
                 ))}
@@ -2011,52 +2154,6 @@ export default function RecipeSheetScreen() {
             onChangeText={(v) => setDetails({ ...details, cook: v })}
             keyboardType="number-pad"
           />
-          <Eyebrow>{d.recipe.fodmapLevelTitle}</Eyebrow>
-          <Muted>{d.recipe.fodmapOverrideHint}</Muted>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            {(
-              [
-                ['auto', d.recipe.auto],
-                ['low', d.recipe.low],
-                ['moderate', d.recipe.modShort],
-                ['high', d.recipe.high],
-              ] as ['auto' | 'low' | 'moderate' | 'high', string][]
-            ).map(([value, label]) => {
-              const selected = details.fodmap === value;
-              return (
-                <Pressable
-                  key={value}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  onPress={() => setDetails({ ...details, fodmap: value })}
-                  style={({ pressed }) => ({
-                    flex: 1,
-                    minHeight: 40,
-                    borderRadius: radius.control,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderWidth: selected ? 0 : 1,
-                    borderColor: colors.border,
-                    backgroundColor: selected
-                      ? colors.text
-                      : pressed
-                        ? colors.cardPressed
-                        : 'transparent',
-                  })}
-                >
-                  <Text
-                    style={{
-                      color: selected ? colors.bg : colors.text,
-                      fontSize: fontSize.small,
-                      fontFamily: fonts.uiMedium,
-                    }}
-                  >
-                    {label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
           <Button label={d.common.save} onPress={() => void saveDetails()} />
           <Button label={d.common.cancel} kind="secondary" onPress={() => setDetailsOpen(false)} />
         </View>
@@ -2274,6 +2371,15 @@ export default function RecipeSheetScreen() {
       <AiActionsSheet
         visible={aiOpen}
         onClose={() => setAiOpen(false)}
+        onChange={() => openEditChat()}
+        onAsk={() => {
+          setAiOpen(false);
+          setAskOpen(true);
+        }}
+        onUnits={() => {
+          setAiOpen(false);
+          setUnitsOpen(true);
+        }}
         onLowFodmap={openFodmapChat}
         hasFodmapWork={swappableRaws.length > 0}
       />
@@ -2298,6 +2404,54 @@ export default function RecipeSheetScreen() {
         onClose={closeSwapsSheet}
       />
 
+      <EditChatSheet
+        visible={editOpen}
+        recipeTitle={displayTitle}
+        base={
+          editFromOriginal && originalContent
+            ? { ...aiContext, ingredients: originalContent.ingredients, steps: originalContent.steps }
+            : aiContext
+        }
+        replacesExisting={!!family?.customId && (recipe.variant_kind !== 'custom' || editFromOriginal)}
+        initialRequest={editInitial}
+        saving={savingCustom}
+        saveError={customSaveError}
+        onSave={(result, note) => void saveCustom(result, note)}
+        onClose={() => setEditOpen(false)}
+      />
+
+      <AskChatSheet
+        visible={askOpen}
+        recipeTitle={displayTitle}
+        recipe={aiContext}
+        onApply={(change) => openEditChat({ initial: change })}
+        onClose={() => setAskOpen(false)}
+      />
+
+      <UnitsSheet
+        visible={unitsOpen}
+        system={unitSystem}
+        onChange={changeUnitSystem}
+        preview={viewIngredients
+          .filter((ing) => ing.quantity !== null)
+          .map((ing) => ({
+            name: ing.name,
+            amount: [ing.quantity, ing.unit].filter((v) => v != null).join(' '),
+            estimated: estimatedIdx.has(viewIngredients.indexOf(ing)),
+          }))}
+        estimating={unitsEstimating}
+        onClose={() => setUnitsOpen(false)}
+      />
+
+      <ManageVersionSheet
+        visible={manageOpen}
+        note={recipe.variant_note ?? null}
+        onChangeAgain={() => openEditChat()}
+        onStartOver={() => openEditChat({ fromOriginal: true })}
+        onDelete={deleteCustom}
+        onClose={() => setManageOpen(false)}
+      />
+
       {savedToast ? (
         <View
           pointerEvents="none"
@@ -2318,7 +2472,7 @@ export default function RecipeSheetScreen() {
         >
           <Ionicons name="checkmark" size={18} color={colors.bg} />
           <Text style={{ color: colors.bg, fontSize: fontSize.small, fontFamily: fonts.uiMedium }}>
-            {d.ai.savedToast}
+            {savedToast}
           </Text>
         </View>
       ) : null}
