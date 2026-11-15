@@ -5,7 +5,9 @@ import { useCallback, useMemo, useState } from 'react';
 import { FlatList, Modal, Platform, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AddToWeekSheet } from '@/components/add-to-week';
 import { AwaySheet } from '@/components/away-sheet';
+import { IdeaSheet } from '@/components/idea-sheet';
 import { GuestStepper } from '@/components/guest-stepper';
 import { PersonChip } from '@/components/person-chip';
 import { WeekDaysRedesign } from '@/components/week-days-redesign';
@@ -49,6 +51,7 @@ import {
   type PlanAbsence,
   type PlanEntry,
 } from '@/lib/plan';
+import type { PlanIdea } from '@/lib/plan-ideas';
 import { quotaProgress } from '@/lib/quotas';
 import { entryServings } from '@/lib/servings';
 import { supabase } from '@/lib/supabase';
@@ -189,6 +192,11 @@ export default function PlanScreen() {
   const [entries, setEntries] = useState<PlanEntry[]>([]);
   /** Per-meal "eats away" marks for the shown week (migration 0031). */
   const [absences, setAbsences] = useState<PlanAbsence[]>([]);
+  /** Meal ideas parked for the shown week, no day yet (migration 0037). */
+  const [ideas, setIdeas] = useState<PlanIdea[]>([]);
+  /** Idea whose "Plan" sheet is open; null = closed. */
+  const [ideaToPlan, setIdeaToPlan] = useState<PlanIdea | null>(null);
+  const [ideaSheetOpen, setIdeaSheetOpen] = useState(false);
   /** Day whose AwaySheet is open; null = closed. */
   const [awayDay, setAwayDay] = useState<number | null>(null);
   /** Which week's data is on screen — spinner until it matches weekIso. */
@@ -214,12 +222,21 @@ export default function PlanScreen() {
 
   const loadWeek = useCallback(
     async (week: string) => {
-      const { data: planRow } = await supabase
-        .from('meal_plans')
-        .select('id, week_start, status')
-        .eq('household_id', householdId)
-        .eq('week_start', week)
-        .maybeSingle();
+      const [{ data: planRow }, { data: ideaRows }] = await Promise.all([
+        supabase
+          .from('meal_plans')
+          .select('id, week_start, status')
+          .eq('household_id', householdId)
+          .eq('week_start', week)
+          .maybeSingle(),
+        supabase
+          .from('plan_ideas')
+          .select('*')
+          .eq('household_id', householdId)
+          .eq('week_start', week)
+          .order('created_at'),
+      ]);
+      setIdeas((ideaRows as PlanIdea[]) ?? []);
       setPlan((planRow as MealPlanRow) ?? null);
       if (planRow) {
         const [{ data: entryRows }, { data: absenceRows }] = await Promise.all([
@@ -462,6 +479,8 @@ export default function PlanScreen() {
         avoidIds: autoEntries
           .map((e) => e.recipe_id)
           .filter((id): id is string => id !== null),
+        // The week's parked ideas go in first.
+        preferIds: ideas.map((i) => i.recipe_id).filter((id): id is string => id !== null),
       });
       if (assignments.length === 0) {
         setAutoOpen(false);
@@ -492,6 +511,12 @@ export default function PlanScreen() {
           auto_picked: true,
         }))
       );
+      // Ideas that just got a day leave the ideas list.
+      const placed = new Set(assignments.map((a) => a.recipeId));
+      const usedIdeas = ideas.filter((i) => i.recipe_id && placed.has(i.recipe_id));
+      if (usedIdeas.length > 0) {
+        await supabase.from('plan_ideas').delete().in('id', usedIdeas.map((i) => i.id));
+      }
       invalidateLists('plan', 'groceries');
       setAutoOpen(false);
       await loadWeek(weekIso);
@@ -678,6 +703,17 @@ export default function PlanScreen() {
       revert();
     }
   };
+
+  const removeIdea = async (ideaId: string) => {
+    setIdeas((prev) => prev.filter((i) => i.id !== ideaId));
+    await supabase.from('plan_ideas').delete().eq('id', ideaId);
+    invalidateLists('plan');
+  };
+
+  const ideaTitle = (idea: PlanIdea) =>
+    idea.custom_title ??
+    (idea.recipe_id ? recipeById.get(idea.recipe_id)?.title : undefined) ??
+    d.plan.recipeFallback;
 
   const removeEntry = async (entryId: string) => {
     await supabase.from('plan_entries').delete().eq('id', entryId);
@@ -899,6 +935,118 @@ export default function PlanScreen() {
           paddingBottom: insets.bottom + (showApprove ? tabBarClearance + 72 : tabBarClearance),
         }}
       >
+        {loadedWeek === weekIso && !isPastWeek ? (
+          ideas.length > 0 ? (
+            <View
+              style={{
+                backgroundColor: colors.bgGrouped,
+                borderRadius: radius.card * 1.5,
+                padding: 14,
+                gap: 10,
+                marginBottom: 12,
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Ionicons name="bulb-outline" size={18} color={colors.text} />
+                <Eyebrow style={{ flex: 1, color: colors.text }}>
+                  {`${d.plan.ideasForWeek} · ${ideas.length}`}
+                </Eyebrow>
+                <LinkButton
+                  label={d.plan.addIdea}
+                  accessibilityLabel={d.plan.addIdeaA11y}
+                  onPress={() => setIdeaSheetOpen(true)}
+                  textStyle={{ fontSize: fontSize.small }}
+                />
+              </View>
+              {ideas.map((idea) => {
+                const recipe = idea.recipe_id ? recipeById.get(idea.recipe_id) : undefined;
+                const category = recipe
+                  ? resolveProteinCategory(recipe.tags, recipe.ingredients, index)
+                  : null;
+                const title = ideaTitle(idea);
+                return (
+                  <View
+                    key={idea.id}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 10,
+                      backgroundColor: colors.card,
+                      borderRadius: radius.card,
+                      paddingVertical: 8,
+                      paddingLeft: 12,
+                      paddingRight: 6,
+                    }}
+                  >
+                    {category ? <CategoryDot category={category} size={8} /> : null}
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text
+                        numberOfLines={2}
+                        style={{ color: colors.text, fontSize: fontSize.small, fontFamily: fonts.uiMedium }}
+                      >
+                        {title}
+                      </Text>
+                      {idea.note || !recipe ? (
+                        <Muted numberOfLines={2}>{idea.note || d.components.customMeal}</Muted>
+                      ) : null}
+                    </View>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={fmt(d.plan.planIdeaA11y, { title })}
+                      onPress={() => setIdeaToPlan(idea)}
+                      style={({ pressed }) => ({
+                        minHeight: 36,
+                        paddingHorizontal: 12,
+                        borderRadius: radius.control,
+                        justifyContent: 'center',
+                        backgroundColor: colors.text,
+                        opacity: pressed ? 0.8 : 1,
+                      })}
+                    >
+                      <Text style={{ color: colors.bg, fontSize: fontSize.meta, fontFamily: fonts.uiSemi }}>
+                        {d.plan.planIdea}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={fmt(d.plan.removeIdeaA11y, { title })}
+                      onPress={() => void removeIdea(idea.id)}
+                      hitSlop={8}
+                      style={({ pressed }) => ({
+                        width: 32,
+                        height: 32,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        opacity: pressed ? 0.5 : 1,
+                      })}
+                    >
+                      <Ionicons name="close" size={18} color={colors.textMuted} />
+                    </Pressable>
+                  </View>
+                );
+              })}
+              {ideas.some((i) => i.recipe_id) ? <Muted>{d.plan.ideasFirstHint}</Muted> : null}
+            </View>
+          ) : (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setIdeaSheetOpen(true)}
+              style={({ pressed }) => ({
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                minHeight: minTapTarget,
+                marginBottom: 4,
+                opacity: pressed ? 0.6 : 1,
+              })}
+            >
+              <Ionicons name="bulb-outline" size={18} color={colors.accent} />
+              <Text style={{ color: colors.accent, fontSize: fontSize.small, fontFamily: fonts.uiSemi }}>
+                {d.plan.saveIdeaLater}
+              </Text>
+            </Pressable>
+          )
+        ) : null}
         {loadedWeek !== weekIso ? <Loading /> : null}
         {loadedWeek === weekIso && WEEK_REDESIGN ? (
           <WeekDaysRedesign
@@ -1423,6 +1571,23 @@ export default function PlanScreen() {
           <Button label={d.common.cancel} kind="secondary" onPress={() => setAutoOpen(false)} />
         </View>
       </Modal>
+
+      <AddToWeekSheet
+        visible={ideaToPlan !== null}
+        recipeId={ideaToPlan?.recipe_id ?? null}
+        customTitle={ideaToPlan?.custom_title ?? null}
+        recipeTitle={ideaToPlan ? ideaTitle(ideaToPlan) : ''}
+        idea={ideaToPlan}
+        onClose={() => setIdeaToPlan(null)}
+        onAdded={() => void loadWeek(weekIso)}
+      />
+
+      <IdeaSheet
+        visible={ideaSheetOpen}
+        initialWeek={addWeeks(weekIso, 1)}
+        onClose={() => setIdeaSheetOpen(false)}
+        onSaved={() => void loadWeek(weekIso)}
+      />
     </SafeAreaView>
   );
 }

@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View, type GestureResponderEvent } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { IdeaSheet } from '@/components/idea-sheet';
 import { RecipeImage } from '@/components/recipe-cards';
 import { UpcomingMealsStrip, type UpcomingCell } from '@/components/upcoming-strip';
 import {
@@ -26,6 +27,7 @@ import { buildCells, type EntryRow, type RecipeLite } from '@/lib/meal-cells';
 import { isMealUpcoming, normalizeMealTimes, type MealTimes } from '@/lib/meal-times';
 import { anchorFromEvent, pickOption } from '@/lib/options';
 import { addWeeks, dayDate, weekStart, type MealSlot } from '@/lib/plan';
+import { ideaCounts } from '@/lib/plan-ideas';
 import { supabase } from '@/lib/supabase';
 import { localizedTitle } from '@/lib/translations';
 import {
@@ -69,6 +71,9 @@ export default function WeeksScreen() {
   const [loaded, setLoaded] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
   const [noteDraft, setNoteDraft] = useState('');
+  /** Ideas per future week_start (migration 0037). */
+  const [ideasByWeek, setIdeasByWeek] = useState<Map<string, number>>(new Map());
+  const [ideaSheetOpen, setIdeaSheetOpen] = useState(false);
 
   const currentWeek = weekStart(new Date());
 
@@ -103,6 +108,12 @@ export default function WeeksScreen() {
         }),
     ]);
     if (hh) setMealTimes(normalizeMealTimes(hh.meal_times));
+    const { data: ideaRows } = await supabase
+      .from('plan_ideas')
+      .select('week_start')
+      .eq('household_id', householdId)
+      .gte('week_start', weekStart(new Date()));
+    setIdeasByWeek(ideaCounts((ideaRows as { week_start: string }[]) ?? []));
     const allPlans = (planRows as PlanRow[]) ?? [];
     setPlans(allPlans);
     if (allPlans.length === 0) {
@@ -401,16 +412,21 @@ export default function WeeksScreen() {
             </Pressable>
           )}
 
-          {/* Jump ahead: next week always, plus any further planned weeks. */}
+          {/* Jump ahead: next week always, plus any further week with meals or ideas. */}
           {[
-            {
-              week: addWeeks(currentWeek, 1),
-              meals: futureWeeks.find((p) => p.week_start === addWeeks(currentWeek, 1))?.meals ?? 0,
-            },
-            ...futureWeeks
-              .filter((p) => p.week_start !== addWeeks(currentWeek, 1))
-              .map((p) => ({ week: p.week_start, meals: p.meals })),
-          ].map(({ week, meals }) => (
+            ...new Set([
+              addWeeks(currentWeek, 1),
+              ...futureWeeks.map((p) => p.week_start),
+              ...[...ideasByWeek.keys()].filter((w) => w > currentWeek),
+            ]),
+          ]
+            .sort()
+            .map((week) => ({
+              week,
+              meals: futureWeeks.find((p) => p.week_start === week)?.meals ?? 0,
+              ideas: ideasByWeek.get(week) ?? 0,
+            }))
+            .map(({ week, meals, ideas }) => (
             <Pressable
               key={week}
               accessibilityRole="button"
@@ -429,13 +445,32 @@ export default function WeeksScreen() {
                 {week === addWeeks(currentWeek, 1) ? d.plan.nextWeek : weekLabel(week)}
               </Body>
               <Muted>
-                {meals > 0
-                  ? `${meals} ${meals === 1 ? d.plan.mealOne : d.plan.mealMany}`
+                {meals > 0 || ideas > 0
+                  ? [
+                      meals > 0 ? `${meals} ${meals === 1 ? d.plan.mealOne : d.plan.mealMany}` : null,
+                      ideas > 0 ? `${ideas} ${ideas === 1 ? d.plan.ideaOne : d.plan.ideaMany}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')
                   : weekDate(week)}
               </Muted>
               <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
             </Pressable>
           ))}
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setIdeaSheetOpen(true)}
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 10,
+              minHeight: minTapTarget,
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <Ionicons name="bulb-outline" size={20} color={colors.accent} />
+            <Body style={{ flex: 1, color: colors.accent }}>{d.plan.saveIdeaLater}</Body>
+          </Pressable>
         </View>
 
         {/* The employee's cooking list; her web link shows this week only. */}
@@ -680,6 +715,11 @@ export default function WeeksScreen() {
         </>
         ) : null}
       </ScrollView>
+      <IdeaSheet
+        visible={ideaSheetOpen}
+        onClose={() => setIdeaSheetOpen(false)}
+        onSaved={() => void load()}
+      />
     </SafeAreaView>
   );
 }

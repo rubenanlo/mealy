@@ -125,7 +125,7 @@ export function SaveSheet({
 
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={d.components.addToThisWeek}
+              accessibilityLabel={d.components.addToPlan}
               onPress={onAddToWeek}
               style={({ pressed }) => ({
                 flexDirection: 'row',
@@ -136,7 +136,7 @@ export function SaveSheet({
               })}
             >
               <Ionicons name="calendar-outline" size={20} color={colors.text} />
-              <Body style={{ flex: 1 }}>{d.components.addToThisWeek}</Body>
+              <Body style={{ flex: 1 }}>{d.components.addToPlan}</Body>
               <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
             </Pressable>
             <Hairline />

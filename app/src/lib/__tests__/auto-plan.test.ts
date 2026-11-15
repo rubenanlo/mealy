@@ -80,6 +80,17 @@ describe('autoFillWeek', () => {
     expect(assignments.map((a) => a.recipeId)).toEqual(['meat1', 'fish1', 'meat2']);
   });
 
+  it('picks the week\'s parked ideas first, each only once', () => {
+    const { assignments } = autoFillWeek(
+      [cell(0), cell(1), cell(2)],
+      [cand('fresh'), cand('idea-1', { weeksSincePlanned: 1 }), cand('idea-2', { weeksSincePlanned: 2 })],
+      { lowFodmapOnly: false, restWeeks: 3, preferIds: ['idea-1', 'idea-2'] }
+    );
+    const ids = assignments.map((a) => a.recipeId);
+    expect(ids.slice(0, 2).sort()).toEqual(['idea-1', 'idea-2']);
+    expect(ids[2]).toBe('fresh');
+  });
+
   it('prefers recipes not planned recently', () => {
     const { assignments } = autoFillWeek(
       [cell(0)],
