@@ -1,5 +1,5 @@
-// Meal plans home (2026-11-15): the summary page before the week. Up next and
-// the coming meals, the weeks with how far along each is, what the employee
+// Meal plans home (2026-11-15): the summary page before the week. Up next
+// (swipe for the following meals), the weeks with how far along each is, what the employee
 // does this week (with her instructions), and past weeks. Tapping a week
 // opens the one-page week planner (plan/detail).
 
@@ -11,12 +11,12 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { IdeaSheet } from '@/components/idea-sheet';
 import { RecipeImage } from '@/components/recipe-cards';
-import { UpcomingMealsStrip, type UpcomingCell } from '@/components/upcoming-strip';
+import type { UpcomingCell } from '@/components/upcoming-strip';
 import { Button, Eyebrow, LinkButton, Loading, Muted, SectionHeader, Title } from '@/components/ui';
 import { InstructionsSheet } from '@/components/week/instructions-sheet';
 import { PastWeekSheet, type PastDay, type PastDish } from '@/components/week/past-week-sheet';
 import { Badge } from '@/components/week/sheet';
-import { UpNextCard, useMealWhen } from '@/components/week/up-next-card';
+import { UpNextCarousel } from '@/components/week/up-next-card';
 import { isSalad } from '@/lib/ai-week';
 import { useHousehold } from '@/lib/auth';
 import { resolveProteinCategory } from '@/lib/category';
@@ -81,7 +81,6 @@ export function PlanHome() {
   const insets = useSafeAreaInsets();
   const { householdId } = useHousehold();
   const index = useCanonicalIndex();
-  const mealWhen = useMealWhen();
   const slotLabel = (slot: MealSlot) => (slot === 'lunch' ? d.common.lunch : d.common.dinner);
 
   const [plans, setPlans] = useState<PlanRow[]>([]);
@@ -448,52 +447,13 @@ export function PlanHome() {
 
         {loaded ? (
           <>
-            {/* Up next + coming up */}
-            {upcoming.length > 0 ? (
-              <UpNextCard
-                cell={upcoming[0]!}
-                when={mealWhen(upcoming[0]!)}
-                onOpenRecipe={openRecipe}
-                onPress={() => openWeek(upcoming[0]!.weekIso ?? currentWeek)}
-              />
-            ) : (
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => openWeek(currentWeek)}
-                style={({ pressed }) => ({
-                  minHeight: 110,
-                  borderRadius: radius.card * 2,
-                  borderWidth: 1,
-                  borderStyle: 'dashed',
-                  borderColor: colors.border,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 6,
-                  backgroundColor: pressed ? colors.cardPressed : 'transparent',
-                })}
-              >
-                <Muted>{t.nothingNext}</Muted>
-                <Text style={{ color: colors.accent, fontFamily: fonts.uiSemi, fontSize: fontSize.base }}>
-                  {t.planThisWeek}
-                </Text>
-              </Pressable>
-            )}
-
-            {upcoming.length > 1 ? (
-              <View style={{ gap: 12 }}>
-                <SectionHeader title={t.comingUp} linkLabel={t.thisWeekLink} onLinkPress={() => openWeek(currentWeek)} />
-                <UpcomingMealsStrip
-                  cells={upcoming.slice(1, 15)}
-                  todayIndex={todayIndex}
-                  markFirst={false}
-                  onPressCell={(cell) =>
-                    cell.recipeIds.length === 1
-                      ? openRecipe(cell.recipeIds[0]!, cell.servings[0])
-                      : openWeek(cell.weekIso ?? currentWeek)
-                  }
-                />
-              </View>
-            ) : null}
+            {/* Up next: swipe for the following meals */}
+            <UpNextCarousel
+              cells={upcoming}
+              onOpenRecipe={openRecipe}
+              onPressCell={(cell) => openWeek(cell.weekIso ?? currentWeek)}
+              onPlanMore={() => openWeek(upcoming.at(-1)?.weekIso ?? currentWeek)}
+            />
 
             {/* Weeks */}
             <View style={{ gap: 8 }}>

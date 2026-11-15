@@ -2,6 +2,10 @@
 
 const en = {
   upNext: 'Up next',
+  thatsAll: 'That’s everything planned',
+  planMore: '+ Plan more meals',
+  swipeHint: 'Swipe for {n} more meals',
+  swipeHintOne: 'Swipe for 1 more meal',
   openRecipe: 'Open recipe',
   openWeek: 'Open week',
   tomorrow: 'Tomorrow',
@@ -47,6 +51,10 @@ type PlanHomeStrings = typeof en;
 
 const es: PlanHomeStrings = {
   upNext: 'Lo próximo',
+  thatsAll: 'Eso es todo lo planificado',
+  planMore: '+ Planificar más comidas',
+  swipeHint: 'Desliza para ver {n} comidas más',
+  swipeHintOne: 'Desliza para ver 1 comida más',
   openRecipe: 'Abrir receta',
   openWeek: 'Abrir semana',
   tomorrow: 'Mañana',
@@ -90,6 +98,10 @@ const es: PlanHomeStrings = {
 
 const fr: PlanHomeStrings = {
   upNext: 'À suivre',
+  thatsAll: 'C’est tout ce qui est prévu',
+  planMore: '+ Prévoir d’autres repas',
+  swipeHint: 'Glissez pour voir {n} autres repas',
+  swipeHintOne: 'Glissez pour voir 1 autre repas',
   openRecipe: 'Ouvrir la recette',
   openWeek: 'Ouvrir la semaine',
   tomorrow: 'Demain',
@@ -133,6 +145,10 @@ const fr: PlanHomeStrings = {
 
 const it: PlanHomeStrings = {
   upNext: 'Prossimo',
+  thatsAll: 'È tutto ciò che è in programma',
+  planMore: '+ Pianifica altri pasti',
+  swipeHint: 'Scorri per altri {n} pasti',
+  swipeHintOne: 'Scorri per 1 altro pasto',
   openRecipe: 'Apri la ricetta',
   openWeek: 'Apri la settimana',
   tomorrow: 'Domani',

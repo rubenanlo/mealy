@@ -96,10 +96,13 @@ describe('PlanHome', () => {
     await waitFor(() => expect(getByText('Today · Dinner')).toBeTruthy());
     expect(getByText('Up next')).toBeTruthy();
     expect(getByText(/\+ Rice/)).toBeTruthy();
-    fireEvent.press(getByText('Open recipe'));
+    fireEvent.press(getAllByText('Open recipe')[0]!);
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/recipe/[id]', params: { id: 'salmon', planServings: '2' } });
 
-    expect(getByText('Coming up')).toBeTruthy();
+    // Swipe on to next week's Monday lunch, then the "plan more" card.
+    expect(getByText('Swipe for 1 more meal')).toBeTruthy();
+    expect(getByText('Tomorrow · Lunch')).toBeTruthy();
+    expect(getByText('+ Plan more meals')).toBeTruthy();
     expect(getByText('This week · Nov 9–15')).toBeTruthy();
     expect(getByText('Next week · Nov 16–22')).toBeTruthy();
 
