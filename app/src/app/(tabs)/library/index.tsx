@@ -39,6 +39,7 @@ import {
   UpcomingMealsStrip,
   type UpcomingCell,
 } from "@/components/upcoming-strip";
+import { UpNextCard, useMealWhen } from "@/components/week/up-next-card";
 import { SaveSheet } from "@/components/save-sheet";
 import {
   EmptyState,
@@ -451,6 +452,7 @@ export default function HomeScreen() {
     d,
   ]);
 
+  const mealWhen = useMealWhen();
   const openRecipe = (id: string) => router.push(`/recipe/${id}`);
 
   const savedSet = useMemo(
@@ -759,26 +761,45 @@ export default function HomeScreen() {
                   linkLabel={d.library.seeAll}
                   onLinkPress={() => router.navigate("/plan")}
                 />
-                <UpcomingMealsStrip
-                  cells={upcoming}
-                  todayIndex={todayIndex}
-                  onPressCell={(cell) =>
-                    cell.recipeIds.length === 1
-                      ? router.push({
-                          pathname: "/recipe/[id]",
-                          params: {
-                            id: cell.recipeIds[0],
-                            planServings: String(cell.servings[0]),
-                          },
-                        })
-                      : cell.weekIso && cell.weekIso !== weekIso
-                        ? router.push({
-                            pathname: "/plan/detail",
-                            params: { week: cell.weekIso },
-                          })
-                        : router.push("/plan/upcoming")
+                <UpNextCard
+                  cell={upcoming[0]!}
+                  when={mealWhen(upcoming[0]!)}
+                  onOpenRecipe={(id, servings) =>
+                    router.push({
+                      pathname: "/recipe/[id]",
+                      params: { id, planServings: String(servings) },
+                    })
+                  }
+                  onPress={() =>
+                    router.push({
+                      pathname: "/plan/detail",
+                      params: { week: upcoming[0]!.weekIso ?? weekIso },
+                    })
                   }
                 />
+                {upcoming.length > 1 ? (
+                  <UpcomingMealsStrip
+                    cells={upcoming.slice(1)}
+                    todayIndex={todayIndex}
+                    markFirst={false}
+                    onPressCell={(cell) =>
+                      cell.recipeIds.length === 1
+                        ? router.push({
+                            pathname: "/recipe/[id]",
+                            params: {
+                              id: cell.recipeIds[0],
+                              planServings: String(cell.servings[0]),
+                            },
+                          })
+                        : cell.weekIso && cell.weekIso !== weekIso
+                          ? router.push({
+                              pathname: "/plan/detail",
+                              params: { week: cell.weekIso },
+                            })
+                          : router.push("/plan/upcoming")
+                    }
+                  />
+                ) : null}
                 <Hairline />
               </View>
             ) : null}

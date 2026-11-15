@@ -24,10 +24,13 @@ export function UpcomingMealsStrip({
   cells,
   todayIndex,
   onPressCell,
+  markFirst = true,
 }: {
   cells: UpcomingCell[];
   todayIndex: number;
   onPressCell: (cell: UpcomingCell) => void;
+  /** Highlight the first cell as the next meal (off when an Up next card sits above). */
+  markFirst?: boolean;
 }) {
   const { colors } = useTheme();
   const { d } = useI18n();
@@ -76,9 +79,9 @@ export function UpcomingMealsStrip({
             />
           )}
           <View style={{ paddingTop: 8, gap: 2 }}>
-            <Eyebrow style={i === 0 ? { color: colors.saffron } : undefined}>
+            <Eyebrow style={markFirst && i === 0 ? { color: colors.saffron } : undefined}>
               {`${cell.dayLabel ?? (cell.day === todayIndex ? d.plan.today : d.common.days[cell.day])} · ${slotLabel(cell.slot)}`}
-              {i === 0 ? ` · ${d.plan.next}` : ''}
+              {markFirst && i === 0 ? ` · ${d.plan.next}` : ''}
             </Eyebrow>
             <Text
               numberOfLines={2}
