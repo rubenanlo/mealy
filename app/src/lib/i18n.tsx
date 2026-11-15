@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 
 import { ai } from '@/lib/i18n/ai';
+import { assist } from '@/lib/i18n/assist';
 import { auth } from '@/lib/i18n/auth';
 import { capture } from '@/lib/i18n/capture';
 import { common } from '@/lib/i18n/common';
@@ -46,6 +47,7 @@ export const dictionaries = {
     mealPrefs: mealPrefs.en,
     components: components.en,
     ai: ai.en,
+    assist: assist.en,
   },
   es: {
     common: common.es,
@@ -62,6 +64,7 @@ export const dictionaries = {
     mealPrefs: mealPrefs.es,
     components: components.es,
     ai: ai.es,
+    assist: assist.es,
   },
   fr: {
     common: common.fr,
@@ -78,6 +81,7 @@ export const dictionaries = {
     mealPrefs: mealPrefs.fr,
     components: components.fr,
     ai: ai.fr,
+    assist: assist.fr,
   },
   it: {
     common: common.it,
@@ -94,6 +98,7 @@ export const dictionaries = {
     mealPrefs: mealPrefs.it,
     components: components.it,
     ai: ai.it,
+    assist: assist.it,
   },
 } as const;
 

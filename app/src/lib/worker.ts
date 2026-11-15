@@ -411,6 +411,101 @@ export async function fodmapSwaps(request: FodmapSwapRequest): Promise<FodmapSwa
 }
 
 // ---------------------------------------------------------------------------
+// Mealy AI assistant: change a recipe, ask about it, estimate unit gaps.
+// ---------------------------------------------------------------------------
+
+export interface AiChatTurn {
+  role: 'user' | 'assistant';
+  text: string;
+}
+
+export interface AiRecipeContext {
+  title: string;
+  language: string;
+  servings: number | null;
+  ingredients: IngredientRow[];
+  steps: string[];
+}
+
+export type AiLineChange = 'same' | 'changed' | 'added';
+
+export interface AiEditResult {
+  summary: string;
+  title_suffix: string;
+  ingredients: (IngredientRow & { change: AiLineChange; was: string | null })[];
+  removed: string[];
+  steps: { text: string; change: AiLineChange }[];
+  extra_minutes: number | null;
+}
+
+export interface AiAskResult {
+  answer: string;
+  suggested_change: string;
+}
+
+export interface AiUnitEstimate {
+  raw: string;
+  quantity: number | null;
+  unit: string | null;
+}
+
+/** JSON POST that degrades to null on any failure (the AI sheets show a retry). */
+async function postAi<T>(path: string, body: unknown): Promise<T | null> {
+  if (!WORKER_URL) return null;
+  try {
+    const token = await accessToken();
+    const response = await fetch(`${WORKER_URL}${path}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) return null;
+    return (await response.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
+/** Ask the worker to rewrite the recipe for the cook's change. Null on failure. */
+export async function aiEditRecipe(
+  recipe: AiRecipeContext,
+  request: string,
+  history: AiChatTurn[] = []
+): Promise<AiEditResult | null> {
+  const reply = await postAi<AiEditResult>('/ai/edit', { ...recipe, request, history });
+  if (!reply || !Array.isArray(reply.ingredients) || !Array.isArray(reply.steps)) return null;
+  return reply;
+}
+
+/** Ask a question about the recipe. Null on failure. */
+export async function aiAskRecipe(
+  recipe: AiRecipeContext,
+  question: string,
+  history: AiChatTurn[] = []
+): Promise<AiAskResult | null> {
+  const reply = await postAi<AiAskResult>('/ai/ask', { ...recipe, question, history });
+  if (!reply || typeof reply.answer !== 'string') return null;
+  return reply;
+}
+
+/** Estimate conversions the unit table couldn't do (display only). Null on failure. */
+export async function aiEstimateUnits(
+  target: 'metric' | 'us',
+  language: string,
+  lines: { raw: string; quantity: number | null; unit: string | null; name: string }[]
+): Promise<AiUnitEstimate[] | null> {
+  if (lines.length === 0) return [];
+  const reply = await postAi<{ lines?: unknown }>('/ai/units', { target, language, lines });
+  if (!reply || !Array.isArray(reply.lines)) return null;
+  return (reply.lines as AiUnitEstimate[]).filter(
+    (l) =>
+      !!l &&
+      typeof l.raw === 'string' &&
+      (l.quantity === null || (typeof l.quantity === 'number' && Number.isFinite(l.quantity) && l.quantity > 0))
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Persistence: IngestResult -> Supabase rows (+ media upload).
 // ---------------------------------------------------------------------------
 
