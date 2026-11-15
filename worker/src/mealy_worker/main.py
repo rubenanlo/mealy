@@ -32,6 +32,7 @@ from .ingest.social import ingest_social
 from .ingest.url import ingest_url
 from .jobs import run_capture_job
 from .matching import IngredientMatch, match_ingredients
+from .plan_ai import PlanChangeRequest, PlanChangeResponse, change_plan
 from .models import CanonicalRecipe, IngestResult, Verbatim
 from .structure import structure_text
 from .translate import TranslateRequest, TranslateResponse, translate_recipe
@@ -213,3 +214,11 @@ async def ai_ask_route(body: AskRequest, _claims: dict = Depends(verify_token)) 
 async def ai_units_route(body: UnitsRequest, _claims: dict = Depends(verify_token)) -> UnitsResponse:
     """Estimate conversions the app's unit table can't do (density, tins)."""
     return await estimate_units(body)
+
+
+@app.post("/ai/plan-change", response_model=PlanChangeResponse)
+async def ai_plan_change_route(
+    body: PlanChangeRequest, _claims: dict = Depends(verify_token)
+) -> PlanChangeResponse:
+    """Apply the family's free-text change to a proposed week plan (proposal only)."""
+    return await change_plan(body)

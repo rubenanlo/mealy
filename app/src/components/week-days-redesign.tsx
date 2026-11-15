@@ -364,7 +364,9 @@ export function WeekDaysRedesign({
                                         color: colors.textMuted,
                                       }}
                                     >
-                                      {d.plan.employeeCooks}
+                                      {entry.cook_part
+                                        ? `${d.plan.employeeCooks} · ${d.aiPlan.partBadge}`
+                                        : d.plan.employeeCooks}
                                     </Text>
                                   </View>
                                 ) : null}

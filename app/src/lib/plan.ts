@@ -21,6 +21,8 @@ export interface PlanEntry {
   auto_picked?: boolean;
   /** Free-text note for whoever cooks this meal (migration 0031). */
   instructions?: string | null;
+  /** The employee prepares only part of the dish, described in `instructions` (migration 0038). */
+  cook_part?: boolean;
 }
 
 /** One person marked "eats away" for one meal (migration 0031). */

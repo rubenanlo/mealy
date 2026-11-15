@@ -630,3 +630,53 @@ export async function captureFromPdf(asset: MediaAsset, ctx: RecipeRowsContext):
   const result = await ingestPdf(asset);
   return captureCommon(result, ctx, [asset]);
 }
+
+// ---------------------------------------------------------------------------
+// ✦ AI week planning: free-text changes to a proposed plan (/ai/plan-change)
+// ---------------------------------------------------------------------------
+
+export interface AiPlanCell {
+  day: number;
+  slot: 'lunch' | 'dinner';
+  recipe_id: string | null;
+  title: string | null;
+  category: string | null;
+  locked: boolean;
+  going_out: boolean;
+  eaters: string | null;
+}
+
+export interface AiPlanCandidate {
+  id: string;
+  title: string;
+  category: string | null;
+  salad: boolean;
+  minutes: number | null;
+  weeks_since: number | null;
+}
+
+export interface AiPlanChange {
+  day: number;
+  slot: 'lunch' | 'dinner';
+  action: 'set' | 'clear';
+  recipe_id: string | null;
+  custom_title: string | null;
+}
+
+export interface AiPlanChangeResult {
+  message: string;
+  changes: AiPlanChange[];
+}
+
+/** Ask the worker to apply the family's change to the proposal. Null on failure. */
+export async function aiChangePlan(body: {
+  request: string;
+  language: string;
+  cells: AiPlanCell[];
+  candidates: AiPlanCandidate[];
+  history: AiChatTurn[];
+}): Promise<AiPlanChangeResult | null> {
+  const reply = await postAi<AiPlanChangeResult>('/ai/plan-change', body);
+  if (!reply || typeof reply.message !== 'string' || !Array.isArray(reply.changes)) return null;
+  return reply;
+}

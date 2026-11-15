@@ -24,6 +24,7 @@ const L10N = {
     forName: 'For',
     noMeals: 'No meals assigned right now — check back later.',
     moreInstructions: 'More instructions',
+    onlyPart: 'Only this part:',
     allMeals: '‹ All meals',
     notFoundTitle: 'Not found',
     linkNotValid: 'Link not valid',
@@ -46,6 +47,7 @@ const L10N = {
     forName: 'Para',
     noMeals: 'No hay comidas asignadas ahora mismo. Vuelve a mirar más tarde.',
     moreInstructions: 'Más instrucciones',
+    onlyPart: 'Solo esta parte:',
     allMeals: '‹ Todas las comidas',
     notFoundTitle: 'No encontrado',
     linkNotValid: 'Enlace no válido',
@@ -68,6 +70,7 @@ const L10N = {
     forName: 'Pour',
     noMeals: 'Aucun repas assigné pour le moment. Revenez plus tard.',
     moreInstructions: 'Instructions supplémentaires',
+    onlyPart: 'Seulement cette partie :',
     allMeals: '‹ Tous les repas',
     notFoundTitle: 'Introuvable',
     linkNotValid: 'Lien non valide',
@@ -90,6 +93,7 @@ const L10N = {
     forName: 'Per',
     noMeals: 'Nessun pasto assegnato al momento. Ricontrolla più tardi.',
     moreInstructions: 'Altre istruzioni',
+    onlyPart: 'Solo questa parte:',
     allMeals: '‹ Tutti i pasti',
     notFoundTitle: 'Non trovato',
     linkNotValid: 'Link non valido',
@@ -241,11 +245,12 @@ Deno.serve(async (req) => {
     recipe_id: string | null;
     custom_title: string | null;
     instructions: string | null;
+    cook_part: boolean | null;
   }[] = [];
   if (planList.length > 0) {
     const { data: entryRows } = await admin
       .from('plan_entries')
-      .select('meal_plan_id, day, slot, recipe_id, custom_title, instructions')
+      .select('meal_plan_id, day, slot, recipe_id, custom_title, instructions, cook_part')
       .in('meal_plan_id', planList.map((p) => p.id))
       .eq('assigned_cook', 'employee');
     entries = entryRows ?? [];
@@ -291,6 +296,9 @@ Deno.serve(async (req) => {
     }
   }
 
+  // The family's note; "only this part" when she prepares part of the dish (0038).
+  const noteHtml = (e: { instructions: string | null; cook_part: boolean | null }) =>
+    `<p class="note">${e.cook_part ? `<strong>${esc(t.onlyPart)}</strong> ` : ''}${esc(e.instructions ?? '')}</p>`;
   const slotLine = (entry: { day: number; slot: string }) =>
     `${t.days[entry.day] ?? ''} · ${t.slots[entry.slot] ?? entry.slot}`;
   const metaLine = (r: RecipeRow) =>
@@ -322,7 +330,7 @@ Deno.serve(async (req) => {
     for (const occ of occurrences) {
       body += `<p class="eyebrow" style="margin-top:8px">${esc(slotLine(occ))}</p>`;
       // The family's note for this meal ("veggies first").
-      if (occ.instructions) body += `<p class="note">${esc(occ.instructions)}</p>`;
+      if (occ.instructions) body += noteHtml(occ);
     }
     // Original source link, same section as the app's recipe page.
     const { data: sourceRows } = await admin
@@ -368,7 +376,7 @@ Deno.serve(async (req) => {
       `${t.days[entry.day] ?? ''} · ${t.slots[entry.slot] ?? entry.slot}`
     )}</p><h3>${esc(recipe?.title ?? entry.custom_title ?? t.meal)}</h3>${
       recipe && metaLine(recipe) ? `<p class="muted">${esc(metaLine(recipe))}</p>` : ''
-    }${entry.instructions ? `<p class="note">${esc(entry.instructions)}</p>` : ''}</div>`;
+    }${entry.instructions ? noteHtml(entry) : ''}</div>`;
     body += recipe
       ? `<a class="card" href="?token=${esc(token)}&r=${esc(recipe.id)}">${inner}</a>`
       : `<div class="card">${inner}</div>`;
