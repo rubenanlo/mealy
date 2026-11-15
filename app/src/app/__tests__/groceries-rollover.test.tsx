@@ -155,11 +155,14 @@ const metrics = {
 };
 
 /**
- * The list opens fully folded, so every content assertion below has to open
- * its section first — same tap the user makes.
+ * Errands show first; the grocery list is a folded card whose aisles are
+ * folded too, so content assertions open both — same taps the user makes.
  */
+const press = (el: unknown) => fireEvent.press(el as Parameters<typeof fireEvent.press>[0]);
 const openSection = (getByLabelText: (t: string) => unknown, name: string) =>
-  fireEvent.press(getByLabelText(`Expand ${name}`) as Parameters<typeof fireEvent.press>[0]);
+  press(getByLabelText(`Expand ${name}`));
+const openGroceries = (getByLabelText: (t: string) => unknown) =>
+  press(getByLabelText('Show the grocery list'));
 
 const renderScreen = () =>
   render(
@@ -177,30 +180,32 @@ describe('groceries weekly rollover', () => {
     mockDb.items = [{ id: 'g1', label: 'Palmolive', week_start: addWeeks(thisWeek, -1) }];
   });
 
-  it('shows the generated list plus custom items during the planned week', async () => {
+  it('shows errands first, then the generated list once groceries are opened', async () => {
     mockDb.plans = { [thisWeek]: { id: 'plan-1' } };
-    const { getByText, getByLabelText } = renderScreen();
-    await waitFor(() => expect(getByText('Produce')).toBeTruthy()); // localized aisle
-    openSection(getByLabelText, 'Produce');
+    const { getByText, queryByText, getByLabelText } = renderScreen();
+    await waitFor(() => expect(getByText('Palmolive')).toBeTruthy());
+    expect(getByText('0 of 1')).toBeTruthy(); // grocery card count
+    expect(queryByText('Carrot')).toBeNull();
+    openGroceries(getByLabelText);
+    // Errands fold to a summary while groceries are open.
+    expect(queryByText('Palmolive')).toBeNull();
+    expect(getByText('1 to do')).toBeTruthy();
+    openSection(getByLabelText, 'Produce'); // localized aisle
     expect(getByText('Carrot')).toBeTruthy();
     expect(getByText('250 g')).toBeTruthy(); // 2 × 125 g
-    openSection(getByLabelText, 'Other / errands');
+    press(getByLabelText('Show errands'));
     expect(getByText('Palmolive')).toBeTruthy();
   });
 
-  it('opens with every section folded, and unfolds one on tap', async () => {
+  it('opens groceries with every aisle folded, and unfolds one on tap', async () => {
     mockDb.plans = { [thisWeek]: { id: 'plan-1' } };
-    const { getByText, getAllByText, queryByText, getByLabelText } = renderScreen();
-    await waitFor(() => expect(getByText('Produce')).toBeTruthy());
-    // Headings and their counts only — no rows from any section. Produce and
-    // Other/errands hold one line each, so a folded "1" shows on both.
-    expect(getAllByText('1')).toHaveLength(2);
+    const { getByText, queryByText, getByLabelText } = renderScreen();
+    await waitFor(() => expect(getByText('0 of 1')).toBeTruthy());
+    openGroceries(getByLabelText);
+    expect(getByText('Produce')).toBeTruthy();
     expect(queryByText('Carrot')).toBeNull();
-    expect(queryByText('Palmolive')).toBeNull();
     openSection(getByLabelText, 'Produce');
     expect(getByText('Carrot')).toBeTruthy();
-    // Opening one section leaves the others alone.
-    expect(queryByText('Palmolive')).toBeNull();
   });
 
   it('carries an errand added on an earlier week into the current one', async () => {
@@ -210,21 +215,18 @@ describe('groceries weekly rollover', () => {
       // Added while viewing next week — must not leak backwards into this one.
       { id: 'g2', label: 'Picard', week_start: addWeeks(thisWeek, 1) },
     ];
-    const { getByText, queryByText, getByLabelText } = renderScreen();
-    await waitFor(() => expect(getByText('Other / errands')).toBeTruthy());
-    openSection(getByLabelText, 'Other / errands');
-    expect(getByText('Seda dental')).toBeTruthy();
+    const { getByText, queryByText } = renderScreen();
+    await waitFor(() => expect(getByText('Seda dental')).toBeTruthy());
     expect(queryByText('Picard')).toBeNull();
   });
 
-  it('empties the generated list a week later but keeps the Other items', async () => {
+  it('empties the generated list a week later but keeps the errands', async () => {
     // The plan exists only for LAST week — what the screen sees post-rollover.
     mockDb.plans = { [addWeeks(thisWeek, -1)]: { id: 'plan-1' } };
-    const { getByText, queryByText, getByLabelText } = renderScreen();
-    await waitFor(() => expect(getByText('No meals planned this week.')).toBeTruthy());
+    const { getByText, queryByText } = renderScreen();
+    await waitFor(() => expect(getByText('Palmolive')).toBeTruthy());
+    expect(getByText('No meals planned this week.')).toBeTruthy(); // card subtitle
     expect(queryByText('Produce')).toBeNull();
-    openSection(getByLabelText, 'Other / errands');
-    expect(getByText('Palmolive')).toBeTruthy();
     expect(queryByText('Carrot')).toBeNull();
   });
 });
