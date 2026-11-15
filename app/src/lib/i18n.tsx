@@ -18,6 +18,7 @@ import { plan } from '@/lib/i18n/plan';
 import { recipe } from '@/lib/i18n/recipe';
 import { search } from '@/lib/i18n/search';
 import { settings } from '@/lib/i18n/settings';
+import { weekPage } from '@/lib/i18n/weekPage';
 import { supabase } from '@/lib/supabase';
 
 export type Locale = 'en' | 'es' | 'fr' | 'it';
@@ -52,6 +53,7 @@ export const dictionaries = {
     myFodmap: myFodmap.en,
     assist: assist.en,
     aiPlan: aiPlan.en,
+    weekPage: weekPage.en,
   },
   es: {
     common: common.es,
@@ -71,6 +73,7 @@ export const dictionaries = {
     myFodmap: myFodmap.es,
     assist: assist.es,
     aiPlan: aiPlan.es,
+    weekPage: weekPage.es,
   },
   fr: {
     common: common.fr,
@@ -90,6 +93,7 @@ export const dictionaries = {
     myFodmap: myFodmap.fr,
     assist: assist.fr,
     aiPlan: aiPlan.fr,
+    weekPage: weekPage.fr,
   },
   it: {
     common: common.it,
@@ -109,6 +113,7 @@ export const dictionaries = {
     myFodmap: myFodmap.it,
     assist: assist.it,
     aiPlan: aiPlan.it,
+    weekPage: weekPage.it,
   },
 } as const;
 
