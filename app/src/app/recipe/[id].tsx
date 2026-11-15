@@ -2090,7 +2090,7 @@ export default function RecipeSheetScreen() {
             <Button label={d.common.done} onPress={finishManual} />
           ) : (
             <Button
-              label={inThisWeek ? d.recipe.addAgainThisWeek : d.recipe.addToThisWeek}
+              label={inThisWeek ? d.recipe.addAgainThisWeek : d.recipe.addToPlan}
               onPress={() => setSheetOpen(true)}
             />
           )}

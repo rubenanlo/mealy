@@ -16,6 +16,8 @@ import type { MealSlot } from '@/lib/plan';
  * 4. Freshness: recipes never planned rank first, then oldest-cooked;
  *    anything inside the household's rest window is strongly demoted.
  * 5. "Choose again" demotes last round's picks below everything fresh.
+ * 6. Ideas parked for the week (preferIds) go in before anything else,
+ *    still placed on the slot that suits them best.
  *
  * Category maximums stay hard limits, and a recipe repeats within the week
  * only when every alternative is exhausted (small libraries).
@@ -68,6 +70,8 @@ export interface AutoFillOptions {
   restWeeks?: number;
   /** "Choose again": last round's picks rank below everything fresh. */
   avoidIds?: string[];
+  /** Recipes parked as ideas for this week: picked first (migration 0037). */
+  preferIds?: string[];
 }
 
 const SLOTS_PER_DAY = 2;
@@ -90,6 +94,7 @@ export function autoFillWeek(
     ? candidates.filter((c) => c.fodmapTier === 'low')
     : candidates;
   const avoid = new Set(options.avoidIds ?? []);
+  const prefer = new Set(options.preferIds ?? []);
   const restWeeks = options.restWeeks ?? 0;
 
   const orderedCells = [...cells].sort(
@@ -134,6 +139,8 @@ export function autoFillWeek(
 
   const score = (c: AutoCandidate, cell: EmptyCell): number => {
     let s = 0;
+    // 6. The week's ideas outrank everything but an in-week repeat.
+    if (prefer.has(c.id)) s += 1500;
     // 1. Fill weekly minimums before anything else.
     if (inDeficit(c.category)) s += 1000;
     // 2. Protein spacing: adjacency is near-forbidden, same/next day is
