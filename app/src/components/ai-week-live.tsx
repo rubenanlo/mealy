@@ -5,38 +5,6 @@ import { shareEmployeeLink } from '@/lib/employee-link';
 import { fmt, useI18n } from '@/lib/i18n';
 import { fonts, fontSize, radius, useTheme } from '@/lib/theme';
 
-/** Week screen entry point to the ✦ AI planner (replaces "Choose for us"). */
-export function AiPlanButton({ onPress }: { onPress: () => void }) {
-  const { colors } = useTheme();
-  const { d } = useI18n();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={d.aiPlan.openButton}
-      onPress={onPress}
-      style={({ pressed }) => ({
-        minHeight: 56,
-        borderRadius: radius.card * 1.25,
-        backgroundColor: colors.text,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-        paddingHorizontal: 16,
-        opacity: pressed ? 0.85 : 1,
-      })}
-    >
-      <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' }}>
-        <Ionicons name="sparkles-outline" size={18} color={colors.text} />
-      </View>
-      <View style={{ flex: 1, gap: 2 }}>
-        <Text style={{ color: colors.bg, fontFamily: fonts.uiSemi, fontSize: fontSize.base }}>{d.aiPlan.openButton}</Text>
-        <Text style={{ color: colors.bg, opacity: 0.75, fontFamily: fonts.ui, fontSize: fontSize.meta }}>{d.aiPlan.openHint}</Text>
-      </View>
-      <Ionicons name="chevron-forward" size={18} color={colors.bg} />
-    </Pressable>
-  );
-}
-
 /** "The plan is live" card shown right after the AI planner approves a week. */
 export function LiveCard({
   summary,
