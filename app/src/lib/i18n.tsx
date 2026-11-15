@@ -20,6 +20,7 @@ import { search } from '@/lib/i18n/search';
 import { settings } from '@/lib/i18n/settings';
 import { planHome } from '@/lib/i18n/planHome';
 import { weekPage } from '@/lib/i18n/weekPage';
+import { routine } from '@/lib/i18n/routine';
 import { supabase } from '@/lib/supabase';
 
 export type Locale = 'en' | 'es' | 'fr' | 'it';
@@ -55,6 +56,7 @@ export const dictionaries = {
     assist: assist.en,
     aiPlan: aiPlan.en,
     weekPage: weekPage.en,
+    routine: routine.en,
     planHome: planHome.en,
   },
   es: {
@@ -76,6 +78,7 @@ export const dictionaries = {
     assist: assist.es,
     aiPlan: aiPlan.es,
     weekPage: weekPage.es,
+    routine: routine.es,
     planHome: planHome.es,
   },
   fr: {
@@ -97,6 +100,7 @@ export const dictionaries = {
     assist: assist.fr,
     aiPlan: aiPlan.fr,
     weekPage: weekPage.fr,
+    routine: routine.fr,
     planHome: planHome.fr,
   },
   it: {
@@ -118,6 +122,7 @@ export const dictionaries = {
     assist: assist.it,
     aiPlan: aiPlan.it,
     weekPage: weekPage.it,
+    routine: routine.it,
     planHome: planHome.it,
   },
 } as const;

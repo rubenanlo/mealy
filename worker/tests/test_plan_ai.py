@@ -74,3 +74,48 @@ async def test_custom_title_and_clear(monkeypatch):
         (6, "set", None, "Leftovers"),
         (5, "clear", None, None),
     ]
+
+
+async def test_routine_lines_reach_the_prompt(monkeypatch):
+    fake = FakeClient({"message": "Nothing to change.", "changes": []})
+    monkeypatch.setattr(structure, "get_anthropic_client", lambda: fake)
+    await plan_ai.change_plan(_request(rules=["Pizza night on Friday", "  "]))
+    text = fake.calls[0]["messages"][0]["content"][0]["text"]
+    assert "<routine>\n- Pizza night on Friday\n</routine>" in text
+
+
+async def test_no_routine_block_without_rules(monkeypatch):
+    fake = FakeClient({"message": "Done.", "changes": []})
+    monkeypatch.setattr(structure, "get_anthropic_client", lambda: fake)
+    await plan_ai.change_plan(_request())
+    assert "<routine>" not in fake.calls[0]["messages"][0]["content"][0]["text"]
+
+
+async def test_routine_rule_card_is_cleaned(monkeypatch):
+    fake = FakeClient(
+        {
+            "title": "No fish on Mondays",
+            "summary": "Fish dishes are left out on Monday.",
+            "days": [0, 0, 9],
+            "slots": ["dinner"],
+            "avoid_categories": ["fish", "dessert"],
+            "avoid_words": [" coriander ", ""],
+            "person_ids": ["p1", "stranger"],
+        }
+    )
+    monkeypatch.setattr(structure, "get_anthropic_client", lambda: fake)
+    card = await plan_ai.routine_rule(
+        plan_ai.RoutineRuleRequest(
+            text="No fish on Mondays",
+            language="en",
+            people=[plan_ai.RulePerson(id="p1", name="Patricia")],
+        )
+    )
+    assert card.days == [0]
+    assert card.slots == ["dinner"]
+    assert card.avoid_categories == ["fish"]
+    assert card.avoid_words == ["coriander"]
+    assert card.person_ids == ["p1"]
+    text = fake.calls[0]["messages"][0]["content"][0]["text"]
+    assert "p1 | Patricia" in text
+    assert "<rule>\nNo fish on Mondays\n</rule>" in text

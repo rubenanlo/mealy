@@ -32,7 +32,14 @@ from .ingest.social import ingest_social
 from .ingest.url import ingest_url
 from .jobs import run_capture_job
 from .matching import IngredientMatch, match_ingredients
-from .plan_ai import PlanChangeRequest, PlanChangeResponse, change_plan
+from .plan_ai import (
+    PlanChangeRequest,
+    PlanChangeResponse,
+    RoutineRuleCard,
+    RoutineRuleRequest,
+    change_plan,
+    routine_rule,
+)
 from .models import CanonicalRecipe, IngestResult, Verbatim
 from .structure import structure_text
 from .translate import TranslateRequest, TranslateResponse, translate_recipe
@@ -222,3 +229,11 @@ async def ai_plan_change_route(
 ) -> PlanChangeResponse:
     """Apply the family's free-text change to a proposed week plan (proposal only)."""
     return await change_plan(body)
+
+
+@app.post("/ai/routine-rule", response_model=RoutineRuleCard)
+async def ai_routine_rule_route(
+    body: RoutineRuleRequest, _claims: dict = Depends(verify_token)
+) -> RoutineRuleCard:
+    """Turn a household rule written in plain words into a rule card."""
+    return await routine_rule(body)

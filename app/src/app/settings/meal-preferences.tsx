@@ -32,7 +32,7 @@ interface PersonRow {
 
 /**
  * Meal preferences, split in two: family-wide settings (suggestions, meal
- * times, shared requirements) and per-person preferences (quotas, FODMAP,
+ * times, weekly routine) and per-person preferences (quotas, FODMAP,
  * allergens, dislikes) reached through the person rows.
  */
 export default function MealPreferencesScreen() {
@@ -42,8 +42,6 @@ export default function MealPreferencesScreen() {
   const { householdId } = useHousehold();
 
   const [persons, setPersons] = useState<PersonRow[]>([]);
-  const [householdNotes, setHouseholdNotes] = useState('');
-  const [notesSaved, setNotesSaved] = useState(false);
   const [mealTimes, setMealTimes] = useState<MealTimes>(normalizeMealTimes(null));
   const [timesSaved, setTimesSaved] = useState(false);
   const [timesError, setTimesError] = useState<string | null>(null);
@@ -58,13 +56,12 @@ export default function MealPreferencesScreen() {
         .order('created_at'),
       supabase
         .from('households')
-        .select('other_requirements, meal_times, suggested_rest_weeks')
+        .select('meal_times, suggested_rest_weeks')
         .eq('id', householdId)
         .single(),
     ]);
     setPersons((personRows as PersonRow[]) ?? []);
     if (hh) {
-      setHouseholdNotes(hh.other_requirements ?? '');
       setMealTimes(normalizeMealTimes(hh.meal_times));
       if (typeof hh.suggested_rest_weeks === 'number') setRestWeeks(hh.suggested_rest_weeks);
     }
@@ -104,16 +101,6 @@ export default function MealPreferencesScreen() {
 
   const setTime = (slot: 'lunch' | 'dinner', field: 'start' | 'end', value: string) =>
     setMealTimes((prev) => ({ ...prev, [slot]: { ...prev[slot], [field]: value } }));
-
-  const saveHouseholdNotes = async () => {
-    // Stored verbatim; structured-proposal parsing is Phase 3 (spec §2).
-    await supabase
-      .from('households')
-      .update({ other_requirements: householdNotes })
-      .eq('id', householdId);
-    setNotesSaved(true);
-    setTimeout(() => setNotesSaved(false), 2000);
-  };
 
   // Display labels only — the stored mode values never change.
   const fodmapLabels: Record<FodmapMode, string> = {
@@ -229,20 +216,12 @@ export default function MealPreferencesScreen() {
           onPress={() => void saveMealTimes()}
         />
 
-        <Eyebrow style={{ marginTop: 16 }}>{d.mealPrefs.otherRequirements}</Eyebrow>
-        <Muted>{d.mealPrefs.otherRequirementsHint}</Muted>
-        <Field
-          value={householdNotes}
-          onChangeText={setHouseholdNotes}
-          placeholder={d.mealPrefs.otherRequirementsPlaceholder}
-          multiline
-          style={{ minHeight: 100, textAlignVertical: 'top', backgroundColor: colors.card }}
-        />
-        <Button
-          label={notesSaved ? d.mealPrefs.saved : d.common.save}
-          kind="secondary"
-          onPress={() => void saveHouseholdNotes()}
-        />
+        {/* The old free-text household notes now live as rule cards in the routine (0039). */}
+        <Eyebrow style={{ marginTop: 16 }}>{d.routine.rowTitle}</Eyebrow>
+        <Muted>{d.routine.rowHint}</Muted>
+        <SettingsGroup>
+          <SettingsRow label={d.routine.title} onPress={() => router.push('/settings/routine')} />
+        </SettingsGroup>
 
         {/* ---- Per-person preferences: quotas, FODMAP, allergens, dislikes.
              Employees cook rather than eat, so they are not listed here. ---- */}

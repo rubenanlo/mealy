@@ -23,6 +23,8 @@ export interface PlanEntry {
   instructions?: string | null;
   /** The employee prepares only part of the dish, described in `instructions` (migration 0038). */
   cook_part?: boolean;
+  /** Eaten from another entry's leftovers, e.g. last night's dinner (migration 0039). */
+  leftover_of?: string | null;
 }
 
 /** One person marked "eats away" for one meal (migration 0031). */
