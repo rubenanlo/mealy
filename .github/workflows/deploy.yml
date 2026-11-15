@@ -148,7 +148,7 @@ jobs:
             flags=""
             case " $NO_JWT " in *" $fn "*) flags="--no-verify-jwt" ;; esac
             echo "Deploying $fn $flags"
-            supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF" $flags
+            supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF" --yes $flags
           done
 
   menu_proxy:
