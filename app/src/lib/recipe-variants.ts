@@ -7,13 +7,15 @@ import type { FodmapSwapResult, IngredientRow } from '@/lib/worker';
  * original instead of overwriting it. A variant is a full `recipes` row linked
  * by `variant_of`, so plan entries, groceries and FODMAP flags work unchanged.
  */
-export type VariantKind = 'low_fodmap';
+export type VariantKind = 'low_fodmap' | 'custom';
 
 export interface VariantFamily {
   /** Id of the original recipe (the row with variant_of = null). */
   originalId: string;
   /** Id of its low-FODMAP version, when one exists. */
   lowFodmapId: string | null;
+  /** Id of the household's own "My version" (migration 0036), when one exists. */
+  customId: string | null;
 }
 
 /** Title suffix in the recipe's own language; translations carry it onward. */
@@ -47,7 +49,7 @@ export function applySwapSelection(
   });
 }
 
-/** Resolve the original + low-FODMAP ids for whichever member of the family is open. */
+/** Resolve the original + version ids for whichever member of the family is open. */
 export async function loadVariantFamily(recipe: {
   id: string;
   variant_of: string | null;
@@ -55,11 +57,11 @@ export async function loadVariantFamily(recipe: {
   const originalId = recipe.variant_of ?? recipe.id;
   const { data } = await supabase
     .from('recipes')
-    .select('id')
-    .eq('variant_of', originalId)
-    .eq('variant_kind', 'low_fodmap')
-    .maybeSingle();
-  return { originalId, lowFodmapId: (data as { id: string } | null)?.id ?? null };
+    .select('id, variant_kind')
+    .eq('variant_of', originalId);
+  const rows = (data as { id: string; variant_kind: VariantKind }[] | null) ?? [];
+  const idOf = (kind: VariantKind) => rows.find((r) => r.variant_kind === kind)?.id ?? null;
+  return { originalId, lowFodmapId: idOf('low_fodmap'), customId: idOf('custom') };
 }
 
 /** Columns copied from the original onto a new variant row. */
@@ -89,21 +91,66 @@ export async function saveLowFodmapVariant(input: {
   steps: string[];
   userId: string | null;
 }): Promise<string> {
-  const { original } = input;
-  const content = {
-    title: lowFodmapTitle(original.title, original.language),
-    ingredients: input.ingredients,
-    steps: input.steps,
-    // The user accepted the swaps for this version; the engine still shows
-    // per-line flags, the override only sets the byline badge.
-    fodmap_override: null,
-    updated_at: new Date().toISOString(),
-  };
+  return saveVariant({
+    kind: 'low_fodmap',
+    original: input.original,
+    userId: input.userId,
+    content: {
+      title: lowFodmapTitle(input.original.title, input.original.language),
+      ingredients: input.ingredients,
+      steps: input.steps,
+      // The user accepted the swaps for this version; the engine still shows
+      // per-line flags, the override only sets the byline badge.
+      fodmap_override: null,
+    },
+  });
+}
+
+/**
+ * Save (or replace) the household's "My version" of `original` (migration
+ * 0036). One per original, shared by the household; the original row is
+ * never written. `note` is the one-line summary shown under the toggle.
+ */
+export async function saveCustomVariant(input: {
+  original: VariantSourceRecipe;
+  ingredients: IngredientRow[];
+  steps: string[];
+  note: string | null;
+  userId: string | null;
+}): Promise<string> {
+  return saveVariant({
+    kind: 'custom',
+    original: input.original,
+    userId: input.userId,
+    content: {
+      title: input.original.title,
+      ingredients: input.ingredients,
+      steps: input.steps,
+      variant_note: input.note,
+    },
+  });
+}
+
+/** Delete a version row (never an original: guarded by variant_of). */
+export async function deleteVariant(id: string): Promise<void> {
+  const { error } = await supabase.from('recipes').delete().eq('id', id).not('variant_of', 'is', null);
+  if (error) throw new Error(error.message);
+  invalidateLists('library', 'plan', 'groceries');
+}
+
+async function saveVariant(input: {
+  kind: VariantKind;
+  original: VariantSourceRecipe;
+  userId: string | null;
+  content: Record<string, unknown>;
+}): Promise<string> {
+  const { original, kind } = input;
+  const content = { ...input.content, updated_at: new Date().toISOString() };
   const { data: existing } = await supabase
     .from('recipes')
     .select('id')
     .eq('variant_of', original.id)
-    .eq('variant_kind', 'low_fodmap')
+    .eq('variant_kind', kind)
     .maybeSingle();
   if (existing) {
     const id = (existing as { id: string }).id;
@@ -128,11 +175,36 @@ export async function saveLowFodmapVariant(input: {
       cover_focal: original.cover_focal,
       created_by: input.userId,
       variant_of: original.id,
-      variant_kind: 'low_fodmap' satisfies VariantKind,
+      variant_kind: kind,
     })
     .select('id')
     .single();
   if (error || !data) throw new Error(error?.message ?? 'Could not save the version');
   invalidateLists('library', 'plan', 'groceries');
   return (data as { id: string }).id;
+}
+
+/** Per-line markers for a version compared with its original (display only). */
+export type LineChange = 'added' | 'changed' | null;
+
+/**
+ * Which ingredient lines and steps of a version differ from the original.
+ * Ingredients pair by name: a name the original lacks is "added", a known
+ * name with a different line is "changed". Steps are "changed" when their
+ * text is not in the original.
+ */
+export function diffVersion(
+  original: { ingredients: IngredientRow[]; steps: string[] },
+  version: { ingredients: IngredientRow[]; steps: string[] }
+): { ingredients: LineChange[]; steps: boolean[] } {
+  const key = (s: string) => s.trim().toLowerCase();
+  const raws = new Set(original.ingredients.map((i) => key(i.raw || i.name)));
+  const names = new Set(original.ingredients.map((i) => key(i.name)));
+  const steps = new Set(original.steps.map(key));
+  return {
+    ingredients: version.ingredients.map((i) =>
+      raws.has(key(i.raw || i.name)) ? null : names.has(key(i.name)) ? 'changed' : 'added'
+    ),
+    steps: version.steps.map((s) => !steps.has(key(s))),
+  };
 }

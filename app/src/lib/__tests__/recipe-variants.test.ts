@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase';
 
-import { applySwapSelection, lowFodmapTitle, saveLowFodmapVariant } from '../recipe-variants';
+import { applySwapSelection, diffVersion, lowFodmapTitle, saveLowFodmapVariant } from '../recipe-variants';
 
 jest.mock('@/lib/supabase', () => ({ supabase: { from: jest.fn() } }));
 jest.mock('@/lib/list-refresh', () => ({ invalidateLists: jest.fn() }));
@@ -91,5 +91,19 @@ describe('saveLowFodmapVariant', () => {
     const id = await saveLowFodmapVariant({ original, ingredients: [], steps: [], userId: null });
     expect(id).toBe('v1');
     expect(eq).toHaveBeenCalledWith('id', 'v1');
+  });
+});
+
+describe('diffVersion', () => {
+  it('marks added and changed ingredients and reworded steps', () => {
+    const out = diffVersion(
+      { ingredients: [ing('2 tbsp olive oil', 'olive oil'), ing('1 onion', 'onion')], steps: ['Soften.', 'Simmer.'] },
+      {
+        ingredients: [ing('150 g chorizo', 'chorizo'), ing('1 tsp olive oil', 'olive oil'), ing('1 onion', 'onion')],
+        steps: ['Fry chorizo, then soften.', 'Simmer.'],
+      }
+    );
+    expect(out.ingredients).toEqual(['added', 'changed', null]);
+    expect(out.steps).toEqual([true, false]);
   });
 });

@@ -1,4 +1,4 @@
-import { convertIngredient, convertIngredients, convertStepText } from '../unit-convert';
+import { convertIngredient, convertIngredients, convertStepText, needsAiConversion } from '../unit-convert';
 import type { IngredientRow } from '../worker';
 
 const ing = (quantity: number | null, unit: string | null): IngredientRow => ({
@@ -79,5 +79,33 @@ describe('convertStepText', () => {
   it('handles mixed fractions in prose', () => {
     expect(convertStepText('pour in 1½ cups broth', 'metric')).toBe('pour in 360 ml broth');
     expect(convertStepText('pour in 1 1/2 cups broth', 'metric')).toBe('pour in 360 ml broth');
+  });
+});
+
+describe('needsAiConversion', () => {
+  const line = (quantity: number | null, unit: string | null) => ({
+    raw: 'x',
+    name: 'x',
+    quantity,
+    unit,
+    group: null,
+    fodmap: null,
+  });
+
+  it('flags tins, bunches and knobs when a system is chosen', () => {
+    expect(needsAiConversion(line(1, 'tin'), 'us')).toBe(true);
+    expect(needsAiConversion(line(1, 'boîte'), 'metric')).toBe(true);
+    expect(needsAiConversion(line(1, 'bunch'), 'us')).toBe(true);
+  });
+
+  it('leaves table units, spoons, counts and "as written" alone', () => {
+    expect(needsAiConversion(line(200, 'g'), 'us')).toBe(false);
+    expect(needsAiConversion(line(1, 'cup'), 'metric')).toBe(false);
+    expect(needsAiConversion(line(2, 'tbsp'), 'us')).toBe(false);
+    expect(needsAiConversion(line(1, 'c. à soupe'), 'us')).toBe(false);
+    expect(needsAiConversion(line(3, 'gousses'), 'us')).toBe(false);
+    expect(needsAiConversion(line(2, null), 'us')).toBe(false);
+    expect(needsAiConversion(line(null, 'tin'), 'us')).toBe(false);
+    expect(needsAiConversion(line(1, 'tin'), 'original')).toBe(false);
   });
 });
