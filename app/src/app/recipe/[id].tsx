@@ -25,6 +25,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AddToWeekSheet } from '@/components/add-to-week';
 import { AskChatSheet, EditChatSheet, ManageVersionSheet, UnitsSheet } from '@/components/ai-assist';
+import { LanguageChip, LanguageSheet } from '@/components/language-sheet';
 import { AiActionsSheet, AiButton, FodmapChatSheet, VersionToggle, type VersionKey } from '@/components/ai-sheet';
 import { CoverRepositionModal } from '@/components/cover-editor';
 import { EditRowControls, SectionTitle } from '@/components/editable-list';
@@ -86,7 +87,9 @@ import { convertIngredients, convertStepText, needsAiConversion, type UnitSystem
 import { supabase } from '@/lib/supabase';
 import { fonts, fontSize, minTapTarget, screenPadding, useTheme } from '@/lib/theme';
 import {
+  isUsableTranslation,
   languageDisplayName,
+  languageOptions,
   localizeContent,
   queueRecipeTranslation,
   translationPending,
@@ -170,6 +173,7 @@ function Hero({
   focal = null,
   onEdit,
   onAi,
+  language,
 }: {
   path: string | null;
   saved: boolean;
@@ -179,6 +183,8 @@ function Hero({
   onEdit?: () => void;
   /** Opens the Mealy AI sheet; the ✦ chip sits top-left, clear of the bookmark. */
   onAi?: () => void;
+  /** Translate chip under the bookmark; opens the language sheet. */
+  language?: { translated: boolean; name: string; onPress: () => void } | null;
 }) {
   const { colors } = useTheme();
   const { d } = useI18n();
@@ -236,6 +242,15 @@ function Hero({
         />
       ) : null}
       {onAi ? <AiButton onPress={onAi} style={{ position: 'absolute', top: 12, left: 12 }} /> : null}
+      {language ? (
+        <LanguageChip
+          translated={language.translated}
+          languageName={language.name}
+          onPress={language.onPress}
+          // Under the bookmark when there is a photo, else in its corner.
+          style={{ top: path ? 56 : 12, right: 12 }}
+        />
+      ) : null}
       {/* Edit chip sits bottom-right, clear of the top-right bookmark chip. */}
       {path && onEdit ? (
         <View style={{ position: 'absolute', bottom: 12, right: 12 }}>
@@ -346,6 +361,7 @@ export default function RecipeSheetScreen() {
     assignSlot,
     assignWeek,
     version: versionParam,
+    lang: langParam,
   } = useLocalSearchParams<{
     id: string;
     /** Set when opened from the planner / "what's next": scale to this meal's servings. */
@@ -358,6 +374,8 @@ export default function RecipeSheetScreen() {
     assignWeek?: string;
     /** 'original' when the reader picked Original on the toggle (skip opening My version). */
     version?: string;
+    /** Language picked in the language sheet; carried across version switches. */
+    lang?: string;
   }>();
   const { colors } = useTheme();
   const { d, locale } = useI18n();
@@ -381,9 +399,10 @@ export default function RecipeSheetScreen() {
   const recipeRef = useRef<RecipeDetail | null>(null);
 
   const [recipe, setRecipe] = useState<RecipeDetail | null>(null);
-  const [translation, setTranslation] = useState<
-    (TranslationRow & { translated_at: string | null }) | null
-  >(null);
+  /** Every translation row of this recipe (one per supported locale). */
+  const [translations, setTranslations] = useState<
+    (TranslationRow & { translated_at: string | null })[]
+  >([]);
   /** Live "who eats this" servings for this week's plan (null = not planned). */
   const [livePlanServings, setLivePlanServings] = useState<number | null>(null);
   /** NYT-style unit conversion (display only), persisted across recipes. */
@@ -475,8 +494,9 @@ export default function RecipeSheetScreen() {
   /** Bookmark fill + Save-recipe sheet: is this recipe in one of MY folders? */
   const [savedToFolder, setSavedToFolder] = useState(false);
   const [saveOpen, setSaveOpen] = useState(false);
-  // "Original (Italiano)" toggle: view the untranslated recipe on demand.
-  const [showOriginal, setShowOriginal] = useState(false);
+  // Language sheet: the language picked for display (null = the app locale).
+  const [chosenLang, setChosenLang] = useState<string | null>(langParam ?? null);
+  const [languageOpen, setLanguageOpen] = useState(false);
   const [coverMenuOpen, setCoverMenuOpen] = useState(false);
   const [repositionOpen, setRepositionOpen] = useState(false);
   const [pickCapturedOpen, setPickCapturedOpen] = useState(false);
@@ -564,9 +584,7 @@ export default function RecipeSheetScreen() {
       supabase
         .from('recipe_translations')
         .select('locale, title, ingredients, steps, translated_at')
-        .eq('recipe_id', id)
-        .eq('locale', locale)
-        .maybeSingle(),
+        .eq('recipe_id', id),
       supabase
         .from('meal_plans')
         .select('id')
@@ -600,7 +618,7 @@ export default function RecipeSheetScreen() {
     setSavedToFolder(
       (((folderLinks.data ?? []) as { folder_id: string }[])).some((l) => mine.has(l.folder_id))
     );
-    setTranslation((t.data as (TranslationRow & { translated_at: string | null }) | null) ?? null);
+    setTranslations((t.data as (TranslationRow & { translated_at: string | null })[] | null) ?? []);
     if (weekPlan.data) {
       // Live meal servings: reflects who eats this right now, so quantities
       // rescale immediately when people/guests are added to the meal.
@@ -631,7 +649,7 @@ export default function RecipeSheetScreen() {
       setInThisWeek(false);
       setLivePlanServings(null);
     }
-  }, [id, householdId, locale, userId]);
+  }, [id, householdId, userId]);
 
   useEffect(() => {
     void load();
@@ -710,17 +728,21 @@ export default function RecipeSheetScreen() {
     };
   }, [isNew]);
 
-  // A translation into the active locale exists and matches the current
+  // Language on screen: the one picked in the language sheet, else the app
+  // locale. Picking the recipe's own language (or one with no usable row)
+  // shows the original.
+  const viewLocale = chosenLang ?? locale;
+  const usableLocales = recipe
+    ? translations.filter((t) => isUsableTranslation(recipe, t)).map((t) => t.locale)
+    : [];
+  const translation = translations.find((t) => t.locale === viewLocale) ?? null;
+  // A translation into the viewed language exists and matches the current
   // content (fresh + same line counts) — the display can use it.
-  const usableTranslation = !!(
-    recipe &&
-    translation &&
-    (!translation.translated_at || !recipe.updated_at || translation.translated_at >= recipe.updated_at) &&
-    translation.ingredients.length === recipe.ingredients.length &&
-    translation.steps.length === recipe.steps.length
-  );
+  const usableTranslation = !!(recipe && translation && usableLocales.includes(translation.locale));
+  // Only the app locale is ever "on its way" by default; a picked language
+  // was usable when picked.
   const awaitingTranslation =
-    !!recipe && translationPending(recipe.language, locale, usableTranslation);
+    !!recipe && chosenLang === null && translationPending(recipe.language, locale, usableTranslation);
 
   // "Translating…" pill: while a translation should be on its way, refetch
   // its row every few seconds so the content flips over by itself. Bounded —
@@ -734,10 +756,8 @@ export default function RecipeSheetScreen() {
         const { data } = await supabase
           .from('recipe_translations')
           .select('locale, title, ingredients, steps, translated_at')
-          .eq('recipe_id', id)
-          .eq('locale', locale)
-          .maybeSingle();
-        if (data) setTranslation(data as TranslationRow & { translated_at: string | null });
+          .eq('recipe_id', id);
+        if (data) setTranslations(data as (TranslationRow & { translated_at: string | null })[]);
         setTranslatePolls((c) => c + 1);
       })();
     }, 4000);
@@ -1153,6 +1173,8 @@ export default function RecipeSheetScreen() {
           id: target,
           ...(which === 'original' ? { version: 'original' } : {}),
           ...(planServingsParam ? { planServings: planServingsParam } : {}),
+          // The picked language follows the reader to the other version.
+          ...(chosenLang ? { lang: chosenLang } : {}),
         },
       });
     }
@@ -1322,11 +1344,14 @@ export default function RecipeSheetScreen() {
   // quantities) the translations regenerate asynchronously — until the fresh
   // rows land, the stale ones would show the OLD quantities, so ignore any
   // translation older than the recipe's last edit.
-  const contentTranslation = usableTranslation && !showOriginal ? translation : null;
-  const originalLanguage = recipe ? languageDisplayName(recipe.language, locale) : null;
-  const showOriginalLabel = originalLanguage
-    ? fmt(d.recipe.showOriginal, { language: originalLanguage })
-    : d.recipe.showOriginalShort;
+  const contentTranslation = usableTranslation ? translation : null;
+  // Language sheet: shown once at least one translation can be displayed.
+  const langOptions = languageOptions(recipe.language, usableLocales);
+  const activeLangCode = contentTranslation ? contentTranslation.locale : langOptions[0].code;
+  const activeLangName = contentTranslation
+    ? (languageDisplayName(contentTranslation.locale, locale) ?? contentTranslation.locale)
+    : (languageDisplayName(recipe.language, locale) ?? d.recipe.languageOriginal);
+  const showLanguage = usableLocales.some((l) => l !== recipe.language);
   const localized = localizeContent(recipe, contentTranslation);
   const displayTitle = localized.title;
   // What Mealy AI sees: the stored lines (never the display conversion).
@@ -1447,6 +1472,11 @@ export default function RecipeSheetScreen() {
             focal={recipe.cover_focal}
             onEdit={() => setCoverMenuOpen(true)}
             onAi={isNew ? undefined : () => setAiOpen(true)}
+            language={
+              showLanguage
+                ? { translated: !!contentTranslation, name: activeLangName, onPress: () => setLanguageOpen(true) }
+                : null
+            }
             onPress={
               heroPath
                 ? // The cover enlarges alone; the Original source gallery below
@@ -1606,33 +1636,6 @@ export default function RecipeSheetScreen() {
                 <Text style={{ color: colors.textMuted, fontSize: fontSize.meta, fontFamily: fonts.uiSemi }}>
                   {d.recipe.translating}
                 </Text>
-              ) : null}
-              {/* Icon-only original/translation toggle; hidden when the
-                  recipe is already in the app language (nothing to toggle). */}
-              {usableTranslation && recipe.language !== locale ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: showOriginal }}
-                  accessibilityLabel={showOriginal ? d.recipe.showTranslation : showOriginalLabel}
-                  onPress={() => setShowOriginal((v) => !v)}
-                  hitSlop={8}
-                  style={({ pressed }) => ({
-                    width: 28,
-                    height: 28,
-                    borderRadius: 14,
-                    borderWidth: 1,
-                    borderColor: showOriginal ? colors.accent : colors.border,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    opacity: pressed ? 0.7 : 1,
-                  })}
-                >
-                  <Ionicons
-                    name="language-outline"
-                    size={14}
-                    color={showOriginal ? colors.accent : colors.textMuted}
-                  />
-                </Pressable>
               ) : null}
             </View>
 
@@ -2368,6 +2371,16 @@ export default function RecipeSheetScreen() {
         </View>
       </Modal>
 
+      <LanguageSheet
+        visible={languageOpen}
+        options={langOptions}
+        activeCode={activeLangCode}
+        onClose={() => setLanguageOpen(false)}
+        onSelect={(option) => {
+          setLanguageOpen(false);
+          setChosenLang(option.original ? (recipe.language ?? 'original') : option.code);
+        }}
+      />
       <AiActionsSheet
         visible={aiOpen}
         onClose={() => setAiOpen(false)}
