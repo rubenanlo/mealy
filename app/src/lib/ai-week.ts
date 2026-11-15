@@ -27,8 +27,8 @@ export const SLOTS: MealSlot[] = ['lunch', 'dinner'];
 
 export const cellKey = (day: number, slot: MealSlot) => `${day}-${slot}`;
 
-/** Weekday lunches a school child eats away (Ruben: Monday, Thursday, Friday). */
-export const SCHOOL_LUNCH_DAYS = [0, 3, 4] as const;
+/** Weekday lunches a school child eats away (Ruben: Monday, Tuesday, Thursday, Friday). */
+export const SCHOOL_LUNCH_DAYS = [0, 1, 3, 4] as const;
 
 const SALAD_RE = /\b(salads?|ensaladas?|salades?|insalat[ae]|amanida)\b/i;
 

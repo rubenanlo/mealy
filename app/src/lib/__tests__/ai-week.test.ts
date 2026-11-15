@@ -77,12 +77,12 @@ describe('who is home', () => {
     expect(findSchoolChild([persons[0]])).toBeNull();
   });
 
-  it('school marks Marc away for Mon, Thu, Fri lunch on the given days only', () => {
+  it('school marks Marc away for Mon, Tue, Thu, Fri lunch on the given days only', () => {
     const map = withSchoolLunches(new Map(), 'm', true, [0, 1, 2, 3, 4, 5, 6]);
-    expect(absencesFrom(map).map((a) => `${a.day}-${a.slot}`)).toEqual(['0-lunch', '3-lunch', '4-lunch']);
+    expect(absencesFrom(map).map((a) => `${a.day}-${a.slot}`)).toEqual(['0-lunch', '1-lunch', '3-lunch', '4-lunch']);
     const pastMonday = withSchoolLunches(new Map(), 'm', true, [3, 4, 5, 6]);
     expect(absencesFrom(pastMonday).map((a) => a.day)).toEqual([3, 4]);
-    expect(absencesFrom(withSchoolLunches(map, 'm', false, [0, 3, 4]))).toEqual([]);
+    expect(absencesFrom(withSchoolLunches(map, 'm', false, [0, 1, 3, 4]))).toEqual([]);
   });
 
   it('going out = everyone away, and toggles back', () => {
