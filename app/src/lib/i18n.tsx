@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 
 import { ai } from '@/lib/i18n/ai';
+import { assist } from '@/lib/i18n/assist';
 import { auth } from '@/lib/i18n/auth';
 import { capture } from '@/lib/i18n/capture';
 import { common } from '@/lib/i18n/common';
@@ -48,6 +49,7 @@ export const dictionaries = {
     components: components.en,
     ai: ai.en,
     myFodmap: myFodmap.en,
+    assist: assist.en,
   },
   es: {
     common: common.es,
@@ -65,6 +67,7 @@ export const dictionaries = {
     components: components.es,
     ai: ai.es,
     myFodmap: myFodmap.es,
+    assist: assist.es,
   },
   fr: {
     common: common.fr,
@@ -82,6 +85,7 @@ export const dictionaries = {
     components: components.fr,
     ai: ai.fr,
     myFodmap: myFodmap.fr,
+    assist: assist.fr,
   },
   it: {
     common: common.it,
@@ -99,6 +103,7 @@ export const dictionaries = {
     components: components.it,
     ai: ai.it,
     myFodmap: myFodmap.it,
+    assist: assist.it,
   },
 } as const;
 

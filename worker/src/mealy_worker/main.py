@@ -13,6 +13,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
 
+from .assist import (
+    AskRequest,
+    AskResponse,
+    EditRequest,
+    EditResponse,
+    UnitsRequest,
+    UnitsResponse,
+    ask_recipe,
+    edit_recipe,
+    estimate_units,
+)
 from .auth import verify_token
 from .fodmap import SwapRequest, SwapResponse, suggest_swaps
 from .images import fetch_validated_image
@@ -184,3 +195,21 @@ async def fodmap_swaps_route(
 ) -> SwapResponse:
     """Low-FODMAP substitution suggestions (spec Part 8)."""
     return await suggest_swaps(body)
+
+
+@app.post("/ai/edit", response_model=EditResponse)
+async def ai_edit_route(body: EditRequest, _claims: dict = Depends(verify_token)) -> EditResponse:
+    """Rewrite a recipe to accommodate the cook's change (proposal only)."""
+    return await edit_recipe(body)
+
+
+@app.post("/ai/ask", response_model=AskResponse)
+async def ai_ask_route(body: AskRequest, _claims: dict = Depends(verify_token)) -> AskResponse:
+    """Answer a question about a recipe."""
+    return await ask_recipe(body)
+
+
+@app.post("/ai/units", response_model=UnitsResponse)
+async def ai_units_route(body: UnitsRequest, _claims: dict = Depends(verify_token)) -> UnitsResponse:
+    """Estimate conversions the app's unit table can't do (density, tins)."""
+    return await estimate_units(body)

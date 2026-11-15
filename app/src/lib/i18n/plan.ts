@@ -109,6 +109,17 @@ const en = {
   lowFodmapToggle: 'Low-FODMAP for every family member',
   pickNewSelection: 'Pick a new selection',
   fillTheWeek: 'Fill the week',
+  ideasForWeek: 'Ideas for this week',
+  ideaForLater: 'Idea for later',
+  addIdea: '+ Idea',
+  addIdeaA11y: 'Save an idea',
+  planIdea: 'Plan',
+  planIdeaA11y: 'Plan {title}',
+  removeIdeaA11y: 'Remove idea {title}',
+  ideasFirstHint: '“Choose for us” uses these ideas first.',
+  saveIdeaLater: 'Save an idea for a later week',
+  ideaOne: 'idea',
+  ideaMany: 'ideas',
 };
 
 const es: typeof en = {
@@ -217,6 +228,17 @@ const es: typeof en = {
   lowFodmapToggle: 'Bajo en FODMAP para toda la familia',
   pickNewSelection: 'Elegir otra selección',
   fillTheWeek: 'Rellenar la semana',
+  ideasForWeek: 'Ideas para esta semana',
+  ideaForLater: 'Idea para más tarde',
+  addIdea: '+ Idea',
+  addIdeaA11y: 'Guardar una idea',
+  planIdea: 'Planificar',
+  planIdeaA11y: 'Planificar {title}',
+  removeIdeaA11y: 'Quitar la idea {title}',
+  ideasFirstHint: '«Elegir por nosotros» usa primero estas ideas.',
+  saveIdeaLater: 'Guardar una idea para otra semana',
+  ideaOne: 'idea',
+  ideaMany: 'ideas',
 };
 
 const fr: typeof en = {
@@ -323,6 +345,17 @@ const fr: typeof en = {
   lowFodmapToggle: 'Pauvre en FODMAP pour toute la famille',
   pickNewSelection: 'Choisir une nouvelle sélection',
   fillTheWeek: 'Remplir la semaine',
+  ideasForWeek: 'Idées pour cette semaine',
+  ideaForLater: 'Idée pour plus tard',
+  addIdea: '+ Idée',
+  addIdeaA11y: 'Garder une idée',
+  planIdea: 'Planifier',
+  planIdeaA11y: 'Planifier {title}',
+  removeIdeaA11y: 'Retirer l’idée {title}',
+  ideasFirstHint: '« Choisir pour nous » utilise d’abord ces idées.',
+  saveIdeaLater: 'Garder une idée pour une autre semaine',
+  ideaOne: 'idée',
+  ideaMany: 'idées',
 };
 
 const it: typeof en = {
@@ -431,6 +464,17 @@ const it: typeof en = {
   lowFodmapToggle: 'A basso contenuto di FODMAP per tutta la famiglia',
   pickNewSelection: 'Scegli una nuova selezione',
   fillTheWeek: 'Riempi la settimana',
+  ideasForWeek: 'Idee per questa settimana',
+  ideaForLater: 'Idea per dopo',
+  addIdea: '+ Idea',
+  addIdeaA11y: 'Salva un’idea',
+  planIdea: 'Pianifica',
+  planIdeaA11y: 'Pianifica {title}',
+  removeIdeaA11y: 'Rimuovi l’idea {title}',
+  ideasFirstHint: '«Scegli per noi» usa prima queste idee.',
+  saveIdeaLater: 'Salva un’idea per un’altra settimana',
+  ideaOne: 'idea',
+  ideaMany: 'idee',
 };
 
 export const plan = { en, es, fr, it };

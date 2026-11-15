@@ -95,6 +95,26 @@ export function convertIngredients(list: IngredientRow[], system: UnitSystem): I
   return list.map((ing) => convertIngredient(ing, system));
 }
 
+/**
+ * Units the plain tables above leave alone on purpose: spoons, pinches and
+ * natural counts read the same in every system.
+ */
+const UNIVERSAL_UNIT_RE =
+  /^(c\.?\s?[àa]|cuill|tbsp|tbs|tsp|tablespoons?|teaspoons?|cs|cc|cucharad|cucharit|cucchia|pinch|pinc|pizzic|pizca|clove|gousse|diente|spicch|slice|tranche|rodaja|fett|pieces?|pi[eè]ce|pieza|pezz|sprig|brin|rama|rameti?t|leaf|leaves|feuille|hoja|foglia|eggs?|[oœ]ufs?|huevos?|uova)/;
+
+/**
+ * True when a line has a quantity in a unit neither table knows and that
+ * isn't universal (a tin, a bunch, a knob): Mealy AI estimates these when
+ * the reader switches systems. Display only.
+ */
+export function needsAiConversion(ing: IngredientRow, system: UnitSystem): boolean {
+  if (system === 'original' || ing.quantity === null || !ing.unit) return false;
+  const u = ing.unit.trim().toLowerCase();
+  if (!u) return false;
+  if (u in US_MASS || u in US_VOLUME || u in METRIC_MASS || u in METRIC_VOLUME) return false;
+  return !UNIVERSAL_UNIT_RE.test(u);
+}
+
 // --- step-text conversion (quantities + oven temperatures in prose) ---------
 
 const FRACTIONS: Record<string, number> = {

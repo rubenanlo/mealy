@@ -1,8 +1,11 @@
 import { supabase } from '@/lib/supabase';
 
 import {
+  isUsableTranslation,
+  languageOptions,
   localizeContent,
   localizedTitle,
+  nativeLanguageName,
   translateAndStore,
   translationPending,
 } from '../translations';
@@ -168,5 +171,45 @@ describe('languageDisplayName', () => {
   it('falls back for unknown or missing codes', () => {
     expect(languageDisplayName(null, 'en')).toBeNull();
     expect(languageDisplayName('zz', 'en')).toBe('ZZ');
+  });
+});
+
+describe('languageOptions', () => {
+  it('lists the original first, then the other locales with availability', () => {
+    expect(languageOptions('en', ['es', 'fr'])).toEqual([
+      { code: 'en', original: true, available: true },
+      { code: 'es', original: false, available: true },
+      { code: 'fr', original: false, available: true },
+      { code: 'it', original: false, available: false },
+    ]);
+  });
+
+  it('keeps a non-app source language as the original', () => {
+    const opts = languageOptions('de', ['en']);
+    expect(opts[0]).toEqual({ code: 'de', original: true, available: true });
+    expect(opts.map((o) => o.code)).toEqual(['de', 'en', 'es', 'fr', 'it']);
+  });
+
+  it('falls back to an "original" entry when the language is unknown', () => {
+    expect(languageOptions(null, [])[0]).toEqual({ code: 'original', original: true, available: true });
+  });
+});
+
+describe('isUsableTranslation', () => {
+  const recipe = { updated_at: '2026-11-15T10:00:00Z', ingredients: [1, 2], steps: ['a'] };
+  it('accepts a fresh, aligned row', () => {
+    expect(isUsableTranslation(recipe, { translated_at: '2026-11-15T11:00:00Z', ingredients: [1, 2], steps: ['a'] })).toBe(true);
+  });
+  it('rejects a stale row', () => {
+    expect(isUsableTranslation(recipe, { translated_at: '2026-11-15T09:00:00Z', ingredients: [1, 2], steps: ['a'] })).toBe(false);
+  });
+  it('rejects a misaligned row', () => {
+    expect(isUsableTranslation(recipe, { translated_at: null, ingredients: [1], steps: ['a'] })).toBe(false);
+  });
+});
+
+describe('nativeLanguageName', () => {
+  it('uses the app label for supported locales', () => {
+    expect(nativeLanguageName('es')).toBe('Español');
   });
 });

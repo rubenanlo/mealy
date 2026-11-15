@@ -112,11 +112,17 @@ function ActionRow({ icon, label, hint, onPress, highlighted, badge }: ActionRow
 export function AiActionsSheet({
   visible,
   onClose,
+  onChange,
+  onAsk,
+  onUnits,
   onLowFodmap,
   hasFodmapWork,
 }: {
   visible: boolean;
   onClose: () => void;
+  onChange: () => void;
+  onAsk: () => void;
+  onUnits: () => void;
   onLowFodmap: () => void;
   /** False when the engine found nothing high/moderate (the chat says so). */
   hasFodmapWork: boolean;
@@ -160,15 +166,30 @@ export function AiActionsSheet({
           </Text>
         </View>
         <ActionRow
+          icon="create-outline"
+          label={d.assist.changeOption}
+          hint={d.assist.changeOptionHint}
+          onPress={onChange}
+          highlighted
+        />
+        <ActionRow
+          icon="chatbubble-ellipses-outline"
+          label={d.assist.askOption}
+          hint={d.assist.askOptionHint}
+          onPress={onAsk}
+        />
+        <ActionRow
+          icon="swap-horizontal-outline"
+          label={d.assist.unitsOption}
+          hint={d.assist.unitsOptionHint}
+          onPress={onUnits}
+        />
+        <ActionRow
           icon="leaf-outline"
           label={d.ai.lowFodmapOption}
           hint={hasFodmapWork ? d.ai.lowFodmapOptionHint : d.ai.alreadyLowHint}
           onPress={onLowFodmap}
-          highlighted
         />
-        <ActionRow icon="nutrition-outline" label={d.ai.vegetarianOption} badge={d.ai.soon} />
-        <ActionRow icon="people-outline" label={d.ai.guestsOption} badge={d.ai.soon} />
-        <ActionRow icon="chatbubble-ellipses-outline" label={d.ai.askOption} badge={d.ai.soon} />
       </View>
     </Modal>
   );
@@ -505,47 +526,35 @@ export function FodmapChatSheet(props: FodmapChatProps) {
   );
 }
 
-/** Original | Low-FODMAP segmented switch shown under the title of a recipe family. */
+export type VersionKey = 'original' | 'low_fodmap' | 'custom';
+
+/**
+ * Original | Low-FODMAP | My version segmented switch shown under the title
+ * of a recipe family. Tapping the active "My version" segment opens its
+ * manage sheet (onActivePress).
+ */
 export function VersionToggle({
   active,
+  available,
   onSelect,
+  onActivePress,
 }: {
-  active: 'original' | 'low_fodmap';
-  onSelect: (which: 'original' | 'low_fodmap') => void;
+  active: VersionKey;
+  /** Segments to show, in order; 'original' is always first. */
+  available: VersionKey[];
+  onSelect: (which: VersionKey) => void;
+  onActivePress?: (which: VersionKey) => void;
 }) {
   const { colors } = useTheme();
   const { d } = useI18n();
-  const seg = (which: 'original' | 'low_fodmap', label: string, leaf: boolean) => {
-    const on = active === which;
-    return (
-      <Pressable
-        key={which}
-        accessibilityRole="tab"
-        accessibilityState={{ selected: on }}
-        onPress={() => !on && onSelect(which)}
-        style={{
-          flex: 1,
-          minHeight: 40,
-          borderRadius: radius.control,
-          backgroundColor: on ? colors.card : 'transparent',
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 6,
-        }}
-      >
-        {leaf ? <Ionicons name="leaf-outline" size={14} color={colors.spineVeg} /> : null}
-        <Text
-          style={{
-            color: on ? colors.text : colors.textMuted,
-            fontSize: fontSize.small,
-            fontFamily: fonts.uiSemi,
-          }}
-        >
-          {label}
-        </Text>
-      </Pressable>
-    );
+  const labels: Record<VersionKey, string> = {
+    original: d.ai.versionOriginal,
+    low_fodmap: d.ai.versionLowFodmap,
+    custom: d.assist.versionMine,
+  };
+  const icons: Partial<Record<VersionKey, { name: keyof typeof Ionicons.glyphMap; color: string }>> = {
+    low_fodmap: { name: 'leaf-outline', color: colors.spineVeg },
+    custom: { name: 'create-outline', color: colors.accent },
   };
   return (
     <View
@@ -553,8 +562,44 @@ export function VersionToggle({
       accessibilityLabel={d.ai.versionsA11y}
       style={{ flexDirection: 'row', backgroundColor: colors.bgGrouped, borderRadius: radius.card, padding: 3 }}
     >
-      {seg('original', d.ai.versionOriginal, false)}
-      {seg('low_fodmap', d.ai.versionLowFodmap, true)}
+      {available.map((which) => {
+        const on = active === which;
+        const icon = icons[which];
+        return (
+          <Pressable
+            key={which}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: on }}
+            onPress={() => (on ? onActivePress?.(which) : onSelect(which))}
+            style={{
+              flex: 1,
+              minHeight: 40,
+              borderRadius: radius.control,
+              backgroundColor: on ? colors.card : 'transparent',
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+              paddingHorizontal: 4,
+            }}
+          >
+            {icon ? <Ionicons name={icon.name} size={14} color={on ? icon.color : colors.textMuted} /> : null}
+            <Text
+              numberOfLines={1}
+              style={{
+                color: on ? colors.text : colors.textMuted,
+                fontSize: fontSize.small,
+                fontFamily: fonts.uiSemi,
+              }}
+            >
+              {labels[which]}
+            </Text>
+            {on && onActivePress && which === 'custom' ? (
+              <Ionicons name="chevron-down" size={14} color={colors.textMuted} />
+            ) : null}
+          </Pressable>
+        );
+      })}
     </View>
   );
 }

@@ -1,4 +1,4 @@
-import type { Locale } from '@/lib/i18n';
+import { LOCALES, type Locale } from '@/lib/i18n';
 import { supabase } from '@/lib/supabase';
 import type { IngredientRow } from '@/lib/worker';
 import { workerUrl } from '@/lib/worker-url';
@@ -138,4 +138,53 @@ export function languageDisplayName(code: string | null, locale: Locale): string
     // Intl.DisplayNames unavailable (older Hermes) — fall through.
   }
   return code.toUpperCase();
+}
+
+/**
+ * A translation row is safe to display for the current content: no older than
+ * the recipe's last edit and line-for-line aligned (flags/matches pair by index).
+ */
+export function isUsableTranslation(
+  recipe: { updated_at?: string | null; ingredients: unknown[]; steps: unknown[] },
+  translation: { translated_at?: string | null; ingredients: unknown[]; steps: unknown[] }
+): boolean {
+  return (
+    (!translation.translated_at || !recipe.updated_at || translation.translated_at >= recipe.updated_at) &&
+    translation.ingredients.length === recipe.ingredients.length &&
+    translation.steps.length === recipe.steps.length
+  );
+}
+
+export interface LanguageOption {
+  /** Language code: the recipe's own language, or a supported locale. */
+  code: string;
+  /** The recipe as written (always selectable). */
+  original: boolean;
+  /** A usable translation exists (always true for the original). */
+  available: boolean;
+}
+
+/**
+ * Choices for the recipe language sheet: the original first, then every other
+ * supported locale, marked available when a usable translation row exists.
+ * Unknown source language: the original is listed under the code 'original'.
+ */
+export function languageOptions(recipeLanguage: string | null, usableLocales: string[]): LanguageOption[] {
+  const usable = new Set(usableLocales);
+  const originalCode = recipeLanguage ?? 'original';
+  return [
+    { code: originalCode, original: true, available: true },
+    ...LOCALES.filter((l) => l.code !== recipeLanguage).map((l) => ({
+      code: l.code,
+      original: false,
+      available: usable.has(l.code),
+    })),
+  ];
+}
+
+/** A language's name in itself ("es" → "Español"), for the language sheet. */
+export function nativeLanguageName(code: string): string {
+  const known = LOCALES.find((l) => l.code === code);
+  if (known) return known.label;
+  return languageDisplayName(code, code as Locale) ?? code.toUpperCase();
 }
