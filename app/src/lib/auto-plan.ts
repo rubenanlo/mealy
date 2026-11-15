@@ -31,6 +31,11 @@ export interface AutoCandidate {
   weeksSincePlanned: number | null;
   /** prep + cook minutes; null when the recipe has no time info. */
   totalMinutes: number | null;
+  /**
+   * Extra quota buckets beyond the protein category (e.g. 'salad' for the AI
+   * planner's salad count). They count, cap and space like categories.
+   */
+  kinds?: string[];
 }
 
 export interface EmptyCell {
@@ -56,6 +61,7 @@ export interface PlannedMeal {
   day: number;
   slot: MealSlot;
   category: string | null;
+  kinds?: string[];
 }
 
 export interface AutoFillOptions {
@@ -72,6 +78,8 @@ export interface AutoFillOptions {
   avoidIds?: string[];
   /** Recipes parked as ideas for this week: picked first (migration 0037). */
   preferIds?: string[];
+  /** Extra per-cell score (AI planner: light weekday lunches, salads when someone's away). */
+  cellBonus?: (candidate: AutoCandidate, cell: EmptyCell) => number;
 }
 
 const SLOTS_PER_DAY = 2;
@@ -105,32 +113,36 @@ export function autoFillWeek(
   const counts: Record<string, number> = { ...(options.existingCounts ?? {}) };
   // 'fish & meat' meals live in both core-protein buckets: they hit either
   // max, satisfy either deficit, and space against both fish and meat.
-  const cores = (category: string | null) => (category === null ? [] : coreProteins(category));
-  const atMax = (category: string | null) =>
-    cores(category).some((core) => {
+  const coresOf = (category: string | null) => (category === null ? [] : coreProteins(category));
+  const cores = (item: { category: string | null; kinds?: string[] }) => [
+    ...coresOf(item.category),
+    ...(item.kinds ?? []),
+  ];
+  const atMax = (item: AutoCandidate) =>
+    cores(item).some((core) => {
       const quota = quotas.find((q) => q.category === core);
       return quota?.max != null && (counts[core] ?? 0) >= quota.max;
     });
-  const inDeficit = (category: string | null) =>
-    cores(category).some((core) => {
+  const inDeficit = (item: AutoCandidate) =>
+    cores(item).some((core) => {
       const quota = quotas.find((q) => q.category === core);
       return quota !== undefined && (counts[core] ?? 0) < quota.min;
     });
 
   /** Slot indexes occupied per core protein — manual meals count from the start. */
   const occupied = new Map<string, number[]>();
-  const occupy = (category: string | null, at: number) => {
-    for (const core of cores(category)) {
+  const occupy = (item: { category: string | null; kinds?: string[] }, at: number) => {
+    for (const core of cores(item)) {
       const list = occupied.get(core) ?? [];
       list.push(at);
       occupied.set(core, list);
     }
   };
   for (const meal of options.existing ?? []) {
-    occupy(meal.category, slotIndex(meal.day, meal.slot));
+    occupy(meal, slotIndex(meal.day, meal.slot));
   }
-  const distanceToSame = (category: string | null, at: number): number => {
-    const spots = cores(category).flatMap((core) => occupied.get(core) ?? []);
+  const distanceToSame = (item: AutoCandidate, at: number): number => {
+    const spots = cores(item).flatMap((core) => occupied.get(core) ?? []);
     if (spots.length === 0) return MAX_DISTANCE;
     return Math.min(...spots.map((s) => Math.abs(s - at)));
   };
@@ -142,10 +154,10 @@ export function autoFillWeek(
     // 6. The week's ideas outrank everything but an in-week repeat.
     if (prefer.has(c.id)) s += 1500;
     // 1. Fill weekly minimums before anything else.
-    if (inDeficit(c.category)) s += 1000;
+    if (inDeficit(c)) s += 1000;
     // 2. Protein spacing: adjacency is near-forbidden, same/next day is
     //    strongly discouraged, farther apart scores higher.
-    const dist = distanceToSame(c.category, slotIndex(cell.day, cell.slot));
+    const dist = distanceToSame(c, slotIndex(cell.day, cell.slot));
     s += Math.min(dist, MAX_DISTANCE) * 10;
     if (dist <= 1) s -= 500;
     else if (dist <= 3) s -= 200;
@@ -164,6 +176,7 @@ export function autoFillWeek(
     // 5. Last round's picks ("choose again") and in-week repeats.
     if (avoid.has(c.id)) s -= 700;
     if (used.has(c.id)) s -= 2000;
+    if (options.cellBonus) s += options.cellBonus(c, cell);
     return s;
   };
 
@@ -171,7 +184,7 @@ export function autoFillWeek(
   const unfilled: EmptyCell[] = [];
 
   for (const cell of orderedCells) {
-    const eligible = pool.filter((c) => !atMax(c.category));
+    const eligible = pool.filter((c) => !atMax(c));
     if (eligible.length === 0) {
       unfilled.push(cell);
       continue;
@@ -186,10 +199,10 @@ export function autoFillWeek(
       }
     }
     used.add(pick.id);
-    for (const core of cores(pick.category)) {
+    for (const core of cores(pick)) {
       counts[core] = (counts[core] ?? 0) + 1;
     }
-    occupy(pick.category, slotIndex(cell.day, cell.slot));
+    occupy(pick, slotIndex(cell.day, cell.slot));
     assignments.push({ day: cell.day, slot: cell.slot, recipeId: pick.id });
   }
 

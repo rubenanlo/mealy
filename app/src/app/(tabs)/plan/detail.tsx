@@ -2,10 +2,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { FlatList, Modal, Platform, Pressable, ScrollView, Switch, Text, View } from 'react-native';
+import { FlatList, Modal, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AddToWeekSheet } from '@/components/add-to-week';
+import { AiPlanButton, LiveCard } from '@/components/ai-week-live';
+import { AiWeekPlanner, type PlannerContext } from '@/components/ai-week-planner';
 import { AwaySheet } from '@/components/away-sheet';
 import { IdeaSheet } from '@/components/idea-sheet';
 import { GuestStepper } from '@/components/guest-stepper';
@@ -13,7 +15,6 @@ import { PersonChip } from '@/components/person-chip';
 import { WeekDaysRedesign } from '@/components/week-days-redesign';
 import { MetaLine, RecipeImage, RecipeRow, type RecipeListItem } from '@/components/recipe-cards';
 import {
-  Body,
   Button,
   CategoryDot,
   Eyebrow,
@@ -25,13 +26,13 @@ import {
   Title,
 } from '@/components/ui';
 import { useHousehold } from '@/lib/auth';
-import { autoFillWeek, type AutoCandidate } from '@/lib/auto-plan';
+import type { AutoCandidate } from '@/lib/auto-plan';
 import { matchCanonical, normalizeRaw } from '@/lib/canonical';
 import { looksLikeDessert, resolveProteinCategory, type ProteinCategory } from '@/lib/category';
 import { normalizeDietProfile } from '@/lib/diet';
 import { computeRecipeFodmap, recipeFodmapTier } from '@/lib/fodmap';
 import { invalidateLists } from '@/lib/list-refresh';
-import { confirmDestructive, notify } from '@/lib/confirm';
+import { confirmDestructive } from '@/lib/confirm';
 import { backOr } from '@/lib/nav';
 import { fmt, useI18n } from '@/lib/i18n';
 import { useImageUrl } from '@/lib/media';
@@ -51,7 +52,7 @@ import {
   type PlanAbsence,
   type PlanEntry,
 } from '@/lib/plan';
-import type { PlanIdea } from '@/lib/plan-ideas';
+import { isPastDay, type PlanIdea } from '@/lib/plan-ideas';
 import { quotaProgress } from '@/lib/quotas';
 import { entryServings } from '@/lib/servings';
 import { supabase } from '@/lib/supabase';
@@ -75,6 +76,7 @@ interface Person {
   is_employee: boolean;
   diet_profile: unknown;
   avatar_color?: string | null;
+  share_token?: string | null;
 }
 
 interface RecipeLite {
@@ -264,7 +266,7 @@ export default function PlanScreen() {
         const [{ data: personRows }, { data: recipeRows }] = await Promise.all([
           supabase
             .from('persons')
-            .select('id, name, is_employee, diet_profile, avatar_color')
+            .select('id, name, is_employee, diet_profile, avatar_color, share_token')
             .eq('household_id', householdId)
             .order('created_at'),
           supabase
@@ -343,197 +345,97 @@ export default function PlanScreen() {
     return chips;
   }, [eaters, entries, recipes, index]);
 
-  // "Choose for us" auto-fill (intermediary sheet asks about low-FODMAP).
-  const [autoOpen, setAutoOpen] = useState(false);
-  const [autoLowFodmap, setAutoLowFodmap] = useState(false);
-  const [autoBusy, setAutoBusy] = useState(false);
-  /** Durable provenance: entries the auto-planner inserted (auto_picked). */
-  const autoEntries = useMemo(() => entries.filter((e) => e.auto_picked), [entries]);
-  const canReroll = autoEntries.length > 0;
+  // ✦ AI week planner (replaces "Choose for us"). The planner reuses the
+  // deterministic scorer: candidates carry plan history, quotas come from
+  // each eater's meal preferences.
+  const [aiOpen, setAiOpen] = useState(false);
+  const [liveSummary, setLiveSummary] = useState<{ meals: number; employee: number } | null>(null);
 
   const emptyCells = useMemo(() => {
     const cells: { day: number; slot: MealSlot }[] = [];
     for (let day = 0; day < 7; day += 1) {
       for (const slot of ['lunch', 'dinner'] as MealSlot[]) {
-        if (slotEntries(entries, day, slot).length === 0) cells.push({ day, slot });
+        if (slotEntries(entries, day, slot).length === 0 && !isPastDay(weekIso, day)) {
+          cells.push({ day, slot });
+        }
       }
     }
     return cells;
-  }, [entries]);
+  }, [entries, weekIso]);
 
-  const runAutoFill = async () => {
-    if (autoBusy || (emptyCells.length === 0 && !canReroll)) return;
-    setAutoBusy(true);
-    try {
-      // "Choose again": clear the auto-picked entries first so their slots
-      // re-open; manual picks are never touched.
-      let currentEntries = entries;
-      if (canReroll) {
-        const ids = autoEntries.map((e) => e.id);
-        await supabase.from('plan_entries').delete().in('id', ids);
-        currentEntries = entries.filter((e) => !e.auto_picked);
-        invalidateLists('plan', 'groceries');
-      }
-      const openCells: { day: number; slot: MealSlot }[] = [];
-      for (let day = 0; day < 7; day += 1) {
-        for (const slot of ['lunch', 'dinner'] as MealSlot[]) {
-          if (slotEntries(currentEntries, day, slot).length === 0) openCells.push({ day, slot });
-        }
-      }
-      // Full plan history: freshness ranks recipes by how long ago they were
-      // last cooked; the household's rest window demotes anything recent.
-      const [{ data: hh }, { data: historyRows }] = await Promise.all([
-        supabase.from('households').select('suggested_rest_weeks').eq('id', householdId).single(),
-        supabase
-          .from('plan_entries')
-          .select('recipe_id, meal_plans!inner(household_id, week_start)')
-          .eq('meal_plans.household_id', householdId),
-      ]);
-      // Latest PAST week each recipe was planned (weeks >= this one don't count).
-      const lastPlanned = new Map<string, string>();
-      for (const row of (historyRows ?? []) as unknown as {
-        recipe_id: string | null;
-        meal_plans: { week_start: string };
-      }[]) {
-        const week = row.meal_plans.week_start;
-        if (!row.recipe_id || week >= weekIso) continue;
-        const prev = lastPlanned.get(row.recipe_id);
-        if (!prev || week > prev) lastPlanned.set(row.recipe_id, week);
-      }
-      const weeksSince = (week: string) =>
-        Math.max(0, Math.round((Date.parse(weekIso) - Date.parse(week)) / 604_800_000));
-
-      // Only lunch/dinner recipes belong on the week grid (null = main) —
-      // and never desserts, even when meal_type was left unset.
-      const mains = recipes.filter(
-        (r) =>
-          (r.meal_type ?? 'main') === 'main' && !looksLikeDessert(r.dish_type, r.tags)
-      );
-      const candidates: AutoCandidate[] = mains.map((r) => {
-        const lines = (r.ingredients ?? []).map((ing) => ({
-          raw: ing.raw || ing.name,
-          name: ing.name,
-          quantity: ing.quantity,
-          unit: ing.unit,
-        }));
-        const computed =
-          index && lines.length > 0
-            ? recipeFodmapTier(
-                computeRecipeFodmap(lines, r.servings ?? null, (line) =>
-                  matchCanonical(normalizeRaw(line.raw), index)?.ingredient ?? null
-                )
-              )
-            : 'check';
-        const last = lastPlanned.get(r.id);
-        return {
-          id: r.id,
-          category: resolveProteinCategory(r.tags, r.ingredients, index),
-          fodmapTier: r.fodmap_override ?? computed,
-          weeksSincePlanned: last !== undefined ? weeksSince(last) : null,
-          totalMinutes:
-            r.prep_minutes == null && r.cook_minutes == null
-              ? null
-              : (r.prep_minutes ?? 0) + (r.cook_minutes ?? 0),
-        };
-      });
-
-      // Household weekly quotas: one shared meal feeds everyone, so the
-      // strictest bounds across eaters apply (highest min, lowest max).
-      const quotaMap = new Map<string, { min: number; max: number | null }>();
-      for (const person of eaters) {
-        const profile = normalizeDietProfile(person.diet_profile);
-        for (const target of profile.proteinQuotas.targets) {
-          const agg = quotaMap.get(target.category) ?? { min: 0, max: null };
-          agg.min = Math.max(agg.min, target.min ?? 0);
-          if (target.max !== null) {
-            agg.max = agg.max === null ? target.max : Math.min(agg.max, target.max);
-          }
-          quotaMap.set(target.category, agg);
-        }
-      }
-      const quotas = [...quotaMap.entries()].map(([category, q]) => ({ category, ...q }));
-
-      // Meals already on this week's grid count toward the quotas.
-      const categoryById = new Map(
-        recipes.map((r) => [r.id, resolveProteinCategory(r.tags, r.ingredients, index)])
-      );
-      const existingCounts: Record<string, number> = {};
-      for (const entry of currentEntries) {
-        const cat = entry.recipe_id ? categoryById.get(entry.recipe_id) : null;
-        if (cat) existingCounts[cat] = (existingCounts[cat] ?? 0) + 1;
-      }
-      // Manual meals anchor protein spacing: an auto pick never lands the
-      // same category next to a dish someone placed by hand.
-      const existing = currentEntries.map((entry) => ({
-        day: entry.day,
-        slot: entry.slot as MealSlot,
-        category: entry.recipe_id ? (categoryById.get(entry.recipe_id) ?? null) : null,
-      }));
-
-      const { assignments, unfilled } = autoFillWeek(openCells, candidates, {
-        lowFodmapOnly: autoLowFodmap,
-        quotas,
-        existingCounts,
-        existing,
-        restWeeks: hh?.suggested_rest_weeks ?? 3,
-        avoidIds: autoEntries
-          .map((e) => e.recipe_id)
-          .filter((id): id is string => id !== null),
-        // The week's parked ideas go in first.
-        preferIds: ideas.map((i) => i.recipe_id).filter((id): id is string => id !== null),
-      });
-      if (assignments.length === 0) {
-        setAutoOpen(false);
-        await loadWeek(weekIso);
-        notify(
-          d.plan.noRecipesTitle,
-          autoLowFodmap ? d.plan.noLowFodmapRecipes : d.plan.addRecipesFirst
-        );
-        return;
-      }
-      const mealPlanId = await ensurePlan();
-      await supabase.from('plan_entries').insert(
-        assignments.map((a) => ({
-          ...upsertEntryPayload({
-            mealPlanId,
-            day: a.day,
-            slot: a.slot,
-            recipeId: a.recipeId,
-            // Whole household, minus whoever eats away for that meal.
-            personIds: effectivePersonIds(
-              [],
-              eaters.map((p) => p.id),
-              awayIds(absences, a.day, a.slot)
-            ),
-            assignedCook: 'family',
-            position: 0,
-          }),
-          auto_picked: true,
-        }))
-      );
-      // Ideas that just got a day leave the ideas list.
-      const placed = new Set(assignments.map((a) => a.recipeId));
-      const usedIdeas = ideas.filter((i) => i.recipe_id && placed.has(i.recipe_id));
-      if (usedIdeas.length > 0) {
-        await supabase.from('plan_ideas').delete().in('id', usedIdeas.map((i) => i.id));
-      }
-      invalidateLists('plan', 'groceries');
-      setAutoOpen(false);
-      await loadWeek(weekIso);
-      if (unfilled.length > 0) {
-        const body =
-          unfilled.length === 1
-            ? autoLowFodmap
-              ? d.plan.partlyFilledOneLow
-              : d.plan.partlyFilledOne
-            : fmt(autoLowFodmap ? d.plan.partlyFilledManyLow : d.plan.partlyFilledMany, {
-                count: unfilled.length,
-              });
-        notify(d.plan.weekPartlyFilled, body);
-      }
-    } finally {
-      setAutoBusy(false);
+  const loadPlannerContext = async (): Promise<PlannerContext> => {
+    // Full plan history: freshness ranks recipes by how long ago they were
+    // last cooked; the household's rest window demotes anything recent.
+    const [{ data: hh }, { data: historyRows }] = await Promise.all([
+      supabase.from('households').select('suggested_rest_weeks').eq('id', householdId).single(),
+      supabase
+        .from('plan_entries')
+        .select('recipe_id, meal_plans!inner(household_id, week_start)')
+        .eq('meal_plans.household_id', householdId),
+    ]);
+    // Latest PAST week each recipe was planned (weeks >= this one don't count).
+    const lastPlanned = new Map<string, string>();
+    for (const row of (historyRows ?? []) as unknown as {
+      recipe_id: string | null;
+      meal_plans: { week_start: string };
+    }[]) {
+      const week = row.meal_plans.week_start;
+      if (!row.recipe_id || week >= weekIso) continue;
+      const prev = lastPlanned.get(row.recipe_id);
+      if (!prev || week > prev) lastPlanned.set(row.recipe_id, week);
     }
+    const weeksSince = (week: string) =>
+      Math.max(0, Math.round((Date.parse(weekIso) - Date.parse(week)) / 604_800_000));
+
+    // Only lunch/dinner recipes belong on the week grid (null = main) —
+    // and never desserts, even when meal_type was left unset.
+    const mains = recipes.filter(
+      (r) => (r.meal_type ?? 'main') === 'main' && !looksLikeDessert(r.dish_type, r.tags)
+    );
+    const candidates: AutoCandidate[] = mains.map((r) => {
+      const lines = (r.ingredients ?? []).map((ing) => ({
+        raw: ing.raw || ing.name,
+        name: ing.name,
+        quantity: ing.quantity,
+        unit: ing.unit,
+      }));
+      const computed =
+        index && lines.length > 0
+          ? recipeFodmapTier(
+              computeRecipeFodmap(lines, r.servings ?? null, (line) =>
+                matchCanonical(normalizeRaw(line.raw), index)?.ingredient ?? null
+              )
+            )
+          : 'check';
+      const last = lastPlanned.get(r.id);
+      return {
+        id: r.id,
+        category: resolveProteinCategory(r.tags, r.ingredients, index),
+        fodmapTier: r.fodmap_override ?? computed,
+        weeksSincePlanned: last !== undefined ? weeksSince(last) : null,
+        totalMinutes:
+          r.prep_minutes == null && r.cook_minutes == null
+            ? null
+            : (r.prep_minutes ?? 0) + (r.cook_minutes ?? 0),
+      };
+    });
+
+    // Household weekly quotas: one shared meal feeds everyone, so the
+    // strictest bounds across eaters apply (highest min, lowest max).
+    const quotaMap = new Map<string, { min: number; max: number | null }>();
+    for (const person of eaters) {
+      const profile = normalizeDietProfile(person.diet_profile);
+      for (const target of profile.proteinQuotas.targets) {
+        const agg = quotaMap.get(target.category) ?? { min: 0, max: null };
+        agg.min = Math.max(agg.min, target.min ?? 0);
+        if (target.max !== null) {
+          agg.max = agg.max === null ? target.max : Math.min(agg.max, target.max);
+        }
+        quotaMap.set(target.category, agg);
+      }
+    }
+    const quotas = [...quotaMap.entries()].map(([category, q]) => ({ category, ...q }));
+    return { candidates, quotas, restWeeks: hh?.suggested_rest_weeks ?? 3 };
   };
 
   const ensurePlan = async (): Promise<string> => {
@@ -907,12 +809,19 @@ export default function PlanScreen() {
         </View>
       ) : null}
 
-      {emptyCells.length > 0 || canReroll ? (
+      {!isPastWeek && emptyCells.length > 0 ? (
         <View style={{ paddingHorizontal: screenPadding, paddingBottom: 12 }}>
-          <Button
-            label={canReroll ? d.plan.chooseAgain : d.plan.chooseForUs}
-            kind="secondary"
-            onPress={() => setAutoOpen(true)}
+          <AiPlanButton onPress={() => setAiOpen(true)} />
+        </View>
+      ) : null}
+
+      {liveSummary ? (
+        <View style={{ paddingHorizontal: screenPadding, paddingBottom: 12 }}>
+          <LiveCard
+            summary={liveSummary}
+            employee={persons.find((p) => p.is_employee && p.share_token) ?? null}
+            onGroceries={() => router.push('/groceries')}
+            onDismiss={() => setLiveSummary(null)}
           />
         </View>
       ) : null}
@@ -1519,58 +1428,21 @@ export default function PlanScreen() {
         onClose={() => setAwayDay(null)}
       />
 
-      {/* Choose-for-us intermediary: confirm + low-FODMAP toggle. */}
-      <Modal
-        visible={autoOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setAutoOpen(false)}
-      >
-        <Pressable
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }}
-          onPress={() => setAutoOpen(false)}
-        />
-        <View
-          style={{
-            backgroundColor: colors.bg,
-            padding: screenPadding,
-            paddingBottom: insets.bottom + 16,
-            gap: 14,
-            borderTopLeftRadius: 16,
-            borderTopRightRadius: 16,
-          }}
-        >
-          <Eyebrow>{canReroll ? d.plan.chooseAgain : d.plan.chooseForUs}</Eyebrow>
-          <Muted>
-            {canReroll
-              ? d.plan.chooseAgainBody
-              : emptyCells.length === 1
-                ? d.plan.fillBodyOne
-                : fmt(d.plan.fillBodyMany, { count: emptyCells.length })}
-          </Muted>
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              minHeight: 52,
-            }}
-          >
-            <Body style={{ flex: 1 }}>{d.plan.lowFodmapToggle}</Body>
-            <Switch
-              value={autoLowFodmap}
-              onValueChange={setAutoLowFodmap}
-              trackColor={{ true: colors.accent }}
-            />
-          </View>
-          <Button
-            label={canReroll ? d.plan.pickNewSelection : d.plan.fillTheWeek}
-            onPress={() => void runAutoFill()}
-            loading={autoBusy}
-          />
-          <Button label={d.common.cancel} kind="secondary" onPress={() => setAutoOpen(false)} />
-        </View>
-      </Modal>
+      <AiWeekPlanner
+        visible={aiOpen}
+        weekIso={weekIso}
+        planStatus={plan?.status ?? null}
+        entries={entries}
+        absences={absences}
+        ideas={ideas}
+        persons={persons}
+        recipes={recipes}
+        loadContext={loadPlannerContext}
+        ensurePlan={ensurePlan}
+        onChanged={() => loadWeek(weekIso)}
+        onApproved={setLiveSummary}
+        onClose={() => setAiOpen(false)}
+      />
 
       <AddToWeekSheet
         visible={ideaToPlan !== null}
