@@ -1,5 +1,5 @@
-// The one-page week planner (design A, 2026-11-15). Replaces the separate
-// Meal plans overview and Week detail screens: week chips on top, a progress
+// The one-page week planner (design A, 2026-11-15), opened from the Meal
+// plans home (plan/index) at plan/detail: week chips on top, a progress
 // line, compact day rows, and sheets for adding a meal, its details, who's
 // home and the review/approve hand-off.
 
@@ -47,6 +47,7 @@ import {
   type PlanAbsence,
   type PlanEntry,
 } from '@/lib/plan';
+import { copyEntriesToWeek, weekEntryCount } from '@/lib/plan-copy';
 import type { PlanIdea } from '@/lib/plan-ideas';
 import { quotaProgress } from '@/lib/quotas';
 import { supabase } from '@/lib/supabase';
@@ -605,47 +606,17 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
   const copyToCurrentWeek = async () => {
     const source = entries;
     if (source.length === 0) return;
-    const { data: existing } = await supabase
-      .from('meal_plans')
-      .select('id, plan_entries(count)')
-      .eq('household_id', householdId)
-      .eq('week_start', currentWeek)
-      .maybeSingle();
+    const { planId, count } = await weekEntryCount(householdId, currentWeek);
     const run = async () => {
       setBusy(true);
       try {
-        let planId = (existing?.id as string | undefined) ?? null;
-        if (!planId) {
-          const { data: created } = await supabase
-            .from('meal_plans')
-            .insert({ household_id: householdId, week_start: currentWeek })
-            .select('id')
-            .single();
-          planId = (created?.id as string | undefined) ?? null;
-        } else {
-          await supabase.from('plan_entries').delete().eq('meal_plan_id', planId);
-        }
-        if (!planId) return;
-        await supabase.from('plan_entries').insert(
-          source.map((e) => ({
-            meal_plan_id: planId,
-            day: e.day,
-            slot: e.slot,
-            recipe_id: e.recipe_id,
-            custom_title: e.custom_title,
-            person_ids: e.person_ids,
-            guest_count: e.guest_count,
-            assigned_cook: e.assigned_cook,
-            position: e.position,
-          }))
-        );
+        if (!(await copyEntriesToWeek(householdId, source, currentWeek, planId))) return;
         invalidateLists('plan', 'groceries');
         setWeekIso(currentWeek);
       } finally {
         setBusy(false);
       }
     };
-    const count = (existing as { plan_entries?: { count: number }[] } | null)?.plan_entries?.[0]?.count ?? 0;
     if (count > 0) {
       confirmDestructive({
         title: d.plan.replaceWeekTitle,
