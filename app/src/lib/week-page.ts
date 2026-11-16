@@ -216,8 +216,19 @@ export interface SlotChanges {
   remove: string[];
 }
 
+/** Eaters home for a meal who have nothing planned (the main is for someone else and no plate is theirs). */
+export function uncoveredEaters<T extends SlotRow>(
+  entries: T[],
+  absences: readonly PlanAbsence[],
+  day: number,
+  slot: MealSlot,
+  eaterIds: readonly string[]
+): string[] {
+  return eaterIds.filter((id) => personMeal(entries, absences, day, slot, id).kind === 'none');
+}
+
 /**
- * Take one person off whatever they eat at a meal, so a new plate (or an
+ * Take one person (or several) off whatever they eat at a meal, so a new plate (or an
  * absence) can take their place. "Everyone" lists on the main become the
  * concrete household minus that person, so the main and the new plate never
  * overlap. Empty plates and leftover rows are deleted with their sides.
@@ -227,11 +238,13 @@ export function detachPerson<T extends SlotRow & { id: string }>(
   entries: T[],
   day: number,
   slot: MealSlot,
-  personId: string,
+  person: string | readonly string[],
   householdIds: readonly string[],
   away: ReadonlySet<string>,
   opts: { join?: boolean } = {}
 ): SlotChanges {
+  const people = typeof person === 'string' ? [person] : [...person];
+  const isOneOf = (id: string) => people.includes(id);
   const { main, sides, plates, leftovers } = splitSlot(entries, day, slot);
   const update: SlotChanges['update'] = [];
   const remove: string[] = [];
@@ -240,25 +253,26 @@ export function detachPerson<T extends SlotRow & { id: string }>(
     const ids = main.person_ids ?? [];
     let next: string[] | null = null;
     if (opts.join) {
-      if (ids.length > 0 && !ids.includes(personId)) next = [...ids, personId];
+      const missing = people.filter((id) => !ids.includes(id));
+      if (ids.length > 0 && missing.length > 0) next = [...ids, ...missing];
     } else if (ids.length === 0) {
-      next = everyone.filter((id) => id !== personId);
-    } else if (ids.includes(personId)) {
-      next = ids.filter((id) => id !== personId);
+      next = everyone.filter((id) => !isOneOf(id));
+    } else if (ids.some(isOneOf)) {
+      next = ids.filter((id) => !isOneOf(id));
     }
     if (next) for (const row of [main, ...sides]) update.push({ id: row.id, person_ids: next });
   }
   for (const plate of plates) {
     const ids = plate.dish.person_ids ?? [];
-    if (!ids.includes(personId)) continue;
-    const next = ids.filter((id) => id !== personId);
+    if (!ids.some(isOneOf)) continue;
+    const next = ids.filter((id) => !isOneOf(id));
     if (next.length === 0) remove.push(plate.dish.id, ...plate.sides.map((s) => s.id));
     else for (const row of [plate.dish, ...plate.sides]) update.push({ id: row.id, person_ids: next });
   }
   for (const row of leftovers) {
     const ids = row.person_ids ?? [];
-    if (!ids.includes(personId)) continue;
-    const next = ids.filter((id) => id !== personId);
+    if (!ids.some(isOneOf)) continue;
+    const next = ids.filter((id) => !isOneOf(id));
     if (next.length === 0) remove.push(row.id);
     else update.push({ id: row.id, person_ids: next });
   }

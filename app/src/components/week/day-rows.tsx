@@ -7,7 +7,7 @@ import { fmt, useI18n } from '@/lib/i18n';
 import { awayIds, dayDate, type MealSlot, type PlanAbsence, type PlanEntry } from '@/lib/plan';
 import { isPastDay } from '@/lib/plan-ideas';
 import { fonts, fontSize, radius, useTheme } from '@/lib/theme';
-import { WEEK_SLOTS, everyoneAway, splitSlot } from '@/lib/week-page';
+import { WEEK_SLOTS, everyoneAway, splitSlot, uncoveredEaters } from '@/lib/week-page';
 
 interface RecipeLike {
   id: string;
@@ -30,6 +30,7 @@ export function DayRows({
   readOnly,
   onAdd,
   onOpen,
+  onAddFor,
   onHome,
 }: {
   weekIso: string;
@@ -41,6 +42,8 @@ export function DayRows({
   readOnly: boolean;
   onAdd: (day: number, slot: MealSlot) => void;
   onOpen: (entry: PlanEntry) => void;
+  /** Add a dish just for these people (they're home but the meal's dish is for someone else). */
+  onAddFor: (day: number, slot: MealSlot, personIds: string[]) => void;
   onHome: () => void;
 }) {
   const { colors } = useTheme();
@@ -147,7 +150,16 @@ export function DayRows({
               }
               const recipe = main.recipe_id ? recipeById.get(main.recipe_id) : undefined;
               const awayNames = eaters.filter((p) => away.has(p.id)).map((p) => p.name);
+              // Main cooked for only some of the people home: say who.
+              const homeIds = eaterIds.filter((id) => !away.has(id));
+              const mainFor =
+                main.person_ids.length > 0 && homeIds.some((id) => !main.person_ids.includes(id))
+                  ? eaters.filter((p) => main.person_ids.includes(p.id)).map((p) => p.name)
+                  : [];
+              const uncovered = uncoveredEaters(entries, absences, day, slot, eaterIds);
+              const uncoveredNames = eaters.filter((p) => uncovered.includes(p.id)).map((p) => p.name);
               const meta = [
+                mainFor.length > 0 ? fmt(t.forNames, { names: mainFor.join(', ') }) : null,
                 awayNames.length > 0 ? fmt(d.plan.eatsAwayLine, { names: awayNames.join(', ') }) : null,
                 main.guest_count > 0
                   ? main.guest_count === 1
@@ -168,9 +180,31 @@ export function DayRows({
               const employee = [main, ...sides, ...plates.flatMap((p) => [p.dish, ...p.sides])].some(
                 (e) => e.assigned_cook === 'employee'
               );
+              const addFor =
+                uncovered.length > 0 && !past && !readOnly ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => onAddFor(day, slot, uncovered)}
+                    style={({ pressed }) => ({
+                      marginLeft: 64,
+                      minHeight: 44,
+                      borderRadius: radius.card,
+                      borderWidth: 1,
+                      borderStyle: 'dashed',
+                      borderColor: colors.border,
+                      justifyContent: 'center',
+                      paddingHorizontal: 12,
+                      backgroundColor: pressed ? colors.cardPressed : 'transparent',
+                    })}
+                  >
+                    <Text style={{ color: colors.accent, fontFamily: fonts.uiMedium, fontSize: fontSize.small }}>
+                      {fmt(t.addDishFor, { names: uncoveredNames.join(', ') })}
+                    </Text>
+                  </Pressable>
+                ) : null;
               return (
+                <View key={slot} style={{ gap: 4 }}>
                 <Pressable
-                  key={slot}
                   accessibilityRole="button"
                   accessibilityLabel={fmt(d.plan.editMealA11y, { title: titleOf(main) })}
                   onPress={() => onOpen(main)}
@@ -209,6 +243,8 @@ export function DayRows({
                     <Badge label={main.cook_part ? `${t.employee} · ${d.aiPlan.partBadge}` : t.employee} />
                   ) : null}
                 </Pressable>
+                {addFor}
+                </View>
               );
             })}
           </View>
