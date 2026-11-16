@@ -92,7 +92,7 @@ export function DayRows({
               </View>
             </Pressable>
             {WEEK_SLOTS.map((slot) => {
-              const { main, sides, leftovers } = splitSlot(entries, day, slot);
+              const { main, sides, plates, leftovers } = splitSlot(entries, day, slot);
               const away = awayIds(absences, day, slot);
               const out = everyoneAway(absences, day, slot, eaterIds);
               const label = (width = 64) => (
@@ -154,13 +154,20 @@ export function DayRows({
                     ? d.plan.guestsOne
                     : fmt(d.plan.guestsMany, { count: main.guest_count })
                   : null,
+                ...plates.map((p) => {
+                  const names = eaters.filter((e) => p.dish.person_ids.includes(e.id)).map((e) => e.name);
+                  const title = [p.dish, ...p.sides].map(titleOf).join(' + ');
+                  return fmt(t.plateRow, { names: names.join(', '), title });
+                }),
                 ...leftovers.map((l) => {
                   const source = entries.find((e) => e.id === l.leftover_of);
                   const names = eaters.filter((p) => l.person_ids.includes(p.id)).map((p) => p.name);
                   return fmt(d.routine.leftoverRow, { names: names.join(', '), title: source ? titleOf(source) : titleOf(l) });
                 }),
               ].filter(Boolean);
-              const employee = main.assigned_cook === 'employee' || sides.some((s) => s.assigned_cook === 'employee');
+              const employee = [main, ...sides, ...plates.flatMap((p) => [p.dish, ...p.sides])].some(
+                (e) => e.assigned_cook === 'employee'
+              );
               return (
                 <Pressable
                   key={slot}
@@ -193,7 +200,7 @@ export function DayRows({
                       ) : null}
                     </Text>
                     {meta.length > 0 ? (
-                      <Text numberOfLines={1} style={{ color: colors.textMuted, fontFamily: fonts.ui, fontSize: fontSize.meta }}>
+                      <Text numberOfLines={2} style={{ color: colors.textMuted, fontFamily: fonts.ui, fontSize: fontSize.meta }}>
                         {meta.join(' · ')}
                       </Text>
                     ) : null}

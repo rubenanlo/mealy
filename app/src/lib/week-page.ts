@@ -128,19 +128,139 @@ export function addSuggestions(input: {
   return { ideas, gaps, recent };
 }
 
-/** Main dish of a slot (lowest position) and the rest as sides. */
-export function splitSlot<T extends Pick<PlanEntry, 'day' | 'slot' | 'position'> & { leftover_of?: string | null }>(
+type SlotRow = Pick<PlanEntry, 'day' | 'slot' | 'position'> & {
+  leftover_of?: string | null;
+  person_ids?: string[];
+};
+
+/** Do two eater lists share anyone? Empty means the whole household. */
+export function eatersOverlap(a: readonly string[] = [], b: readonly string[] = []): boolean {
+  if (a.length === 0 || b.length === 0) return true;
+  return a.some((id) => b.includes(id));
+}
+
+export interface Plate<T> {
+  dish: T;
+  sides: T[];
+}
+
+/**
+ * Main dish of a slot (lowest position), its sides, the "plates" (a
+ * different dish for some people, design D1) and leftover rows.
+ *
+ * An extra cooked row is a side of the main when it feeds any of the main's
+ * eaters. A row whose eaters don't overlap the main's is its own plate (e.g.
+ * pasta for Marc while the others have salmon); later rows that feed a
+ * plate's eaters are that plate's sides. Rows with no person list (= the
+ * whole household) always overlap, so existing plans read exactly as before.
+ */
+export function splitSlot<T extends SlotRow>(
   entries: T[],
   day: number,
   slot: MealSlot
-): { main: T | null; sides: T[]; leftovers: T[] } {
+): { main: T | null; sides: T[]; plates: Plate<T>[]; leftovers: T[] } {
   const rows = slotEntries(entries, day, slot);
   // Leftover rows (someone eating last night's dinner) are never the main or a side.
   const cooked = rows.filter((r) => !r.leftover_of);
   const main = cooked[0] ?? rows[0] ?? null;
+  const sides: T[] = [];
+  const plates: Plate<T>[] = [];
+  for (const row of cooked.slice(1)) {
+    if (main && eatersOverlap(row.person_ids, main.person_ids)) {
+      sides.push(row);
+      continue;
+    }
+    const plate = plates.find((p) => eatersOverlap(row.person_ids, p.dish.person_ids));
+    if (plate) plate.sides.push(row);
+    else plates.push({ dish: row, sides: [] });
+  }
   return {
     main,
-    sides: cooked.slice(1),
+    sides,
+    plates,
     leftovers: rows.filter((r) => r.leftover_of && r !== main),
   };
+}
+
+export type PersonMeal<T> =
+  | { kind: 'away' }
+  | { kind: 'empty' }
+  | { kind: 'none'; main: T }
+  | { kind: 'leftover'; entry: T }
+  | { kind: 'dish'; entry: T; sides: T[]; isMain: boolean };
+
+/** What one person eats at a meal: away, a leftover plate, their own plate, the main, or nothing. */
+export function personMeal<T extends SlotRow>(
+  entries: T[],
+  absences: readonly PlanAbsence[],
+  day: number,
+  slot: MealSlot,
+  personId: string
+): PersonMeal<T> {
+  if (awayIds(absences, day, slot).has(personId)) return { kind: 'away' };
+  const { main, sides, plates, leftovers } = splitSlot(entries, day, slot);
+  const leftover = leftovers.find((l) => (l.person_ids ?? []).includes(personId));
+  if (leftover) return { kind: 'leftover', entry: leftover };
+  const plate = plates.find((p) => (p.dish.person_ids ?? []).includes(personId));
+  if (plate) return { kind: 'dish', entry: plate.dish, sides: plate.sides, isMain: false };
+  if (!main) return { kind: 'empty' };
+  const ids = main.person_ids ?? [];
+  if (ids.length === 0 || ids.includes(personId)) return { kind: 'dish', entry: main, sides, isMain: true };
+  return { kind: 'none', main };
+}
+
+export interface SlotChanges {
+  /** Rows whose person_ids change. */
+  update: { id: string; person_ids: string[] }[];
+  /** Rows to delete (a plate or leftover row nobody eats any more, with its sides). */
+  remove: string[];
+}
+
+/**
+ * Take one person off whatever they eat at a meal, so a new plate (or an
+ * absence) can take their place. "Everyone" lists on the main become the
+ * concrete household minus that person, so the main and the new plate never
+ * overlap. Empty plates and leftover rows are deleted with their sides.
+ * `join` puts the person back on the main instead of removing them.
+ */
+export function detachPerson<T extends SlotRow & { id: string }>(
+  entries: T[],
+  day: number,
+  slot: MealSlot,
+  personId: string,
+  householdIds: readonly string[],
+  away: ReadonlySet<string>,
+  opts: { join?: boolean } = {}
+): SlotChanges {
+  const { main, sides, plates, leftovers } = splitSlot(entries, day, slot);
+  const update: SlotChanges['update'] = [];
+  const remove: string[] = [];
+  const everyone = householdIds.filter((id) => !away.has(id));
+  if (main) {
+    const ids = main.person_ids ?? [];
+    let next: string[] | null = null;
+    if (opts.join) {
+      if (ids.length > 0 && !ids.includes(personId)) next = [...ids, personId];
+    } else if (ids.length === 0) {
+      next = everyone.filter((id) => id !== personId);
+    } else if (ids.includes(personId)) {
+      next = ids.filter((id) => id !== personId);
+    }
+    if (next) for (const row of [main, ...sides]) update.push({ id: row.id, person_ids: next });
+  }
+  for (const plate of plates) {
+    const ids = plate.dish.person_ids ?? [];
+    if (!ids.includes(personId)) continue;
+    const next = ids.filter((id) => id !== personId);
+    if (next.length === 0) remove.push(plate.dish.id, ...plate.sides.map((s) => s.id));
+    else for (const row of [plate.dish, ...plate.sides]) update.push({ id: row.id, person_ids: next });
+  }
+  for (const row of leftovers) {
+    const ids = row.person_ids ?? [];
+    if (!ids.includes(personId)) continue;
+    const next = ids.filter((id) => id !== personId);
+    if (next.length === 0) remove.push(row.id);
+    else update.push({ id: row.id, person_ids: next });
+  }
+  return { update, remove };
 }

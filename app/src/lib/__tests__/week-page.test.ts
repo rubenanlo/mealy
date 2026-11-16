@@ -1,8 +1,10 @@
 import {
   addSuggestions,
   chipWeeks,
+  detachPerson,
   everyoneAway,
   openMeals,
+  personMeal,
   splitSlot,
   weekProgress,
   type SuggestRecipe,
@@ -87,7 +89,7 @@ describe('week page helpers', () => {
     const { main, sides } = splitSlot(rows, 0, 'dinner');
     expect(main?.id).toBe('a');
     expect(sides.map((s) => s.id)).toEqual(['b']);
-    expect(splitSlot(rows, 2, 'lunch')).toEqual({ main: null, sides: [], leftovers: [] });
+    expect(splitSlot(rows, 2, 'lunch')).toEqual({ main: null, sides: [], plates: [], leftovers: [] });
   });
 
   it('keeps leftover rows out of the main dish and sides', () => {
@@ -103,5 +105,72 @@ describe('week page helpers', () => {
     const two = splitSlot(rows, 2, 'dinner');
     expect(two.main?.id).toBe('only');
     expect(two.leftovers).toEqual([]);
+  });
+
+  describe('different dishes per person (D1)', () => {
+    const household = ['r', 'p', 'm'];
+    const row = (id: string, position: number, person_ids: string[], extra: { leftover_of?: string } = {}) => ({
+      id,
+      ...e(0, 'dinner', position),
+      person_ids,
+      ...extra,
+    });
+
+    it('treats a row for people the main does not feed as its own plate', () => {
+      const rows = [row('salmon', 0, ['r', 'p']), row('greens', 1, ['r', 'p']), row('pasta', 2, ['m']), row('salad', 3, ['m'])];
+      const { main, sides, plates } = splitSlot(rows, 0, 'dinner');
+      expect(main?.id).toBe('salmon');
+      expect(sides.map((s) => s.id)).toEqual(['greens']);
+      expect(plates.map((p) => [p.dish.id, p.sides.map((s) => s.id)])).toEqual([['pasta', ['salad']]]);
+    });
+
+    it('keeps everyone-lists as sides, so old plans read the same', () => {
+      const rows = [row('rice', 0, []), row('pasta', 1, ['m'])];
+      expect(splitSlot(rows, 0, 'dinner').plates).toEqual([]);
+    });
+
+    it('says what one person eats', () => {
+      const rows = [row('salmon', 0, ['r', 'p']), row('pasta', 1, ['m'])];
+      const away = [{ day: 0, slot: 'dinner' as MealSlot, person_id: 'p' }];
+      expect(personMeal(rows, [], 0, 'dinner', 'm')).toMatchObject({ kind: 'dish', isMain: false, entry: { id: 'pasta' } });
+      expect(personMeal(rows, [], 0, 'dinner', 'r')).toMatchObject({ kind: 'dish', isMain: true, entry: { id: 'salmon' } });
+      expect(personMeal(rows, away, 0, 'dinner', 'p')).toEqual({ kind: 'away' });
+      expect(personMeal([row('salmon', 0, ['r'])], [], 0, 'dinner', 'p')).toMatchObject({ kind: 'none' });
+      expect(personMeal([], [], 0, 'dinner', 'p')).toEqual({ kind: 'empty' });
+      const left = [row('soup', 0, ['r', 'p']), row('salmon-left', 50, ['m'], { leftover_of: 'salmon' })];
+      expect(personMeal(left, [], 0, 'dinner', 'm')).toMatchObject({ kind: 'leftover', entry: { id: 'salmon-left' } });
+    });
+
+    it('takes a person off an everyone-main and its sides', () => {
+      const rows = [row('rice', 0, []), row('egg', 1, [])];
+      expect(detachPerson(rows, 0, 'dinner', 'm', household, new Set(['p']))).toEqual({
+        update: [
+          { id: 'rice', person_ids: ['r'] },
+          { id: 'egg', person_ids: ['r'] },
+        ],
+        remove: [],
+      });
+    });
+
+    it('deletes a plate and leftovers nobody eats any more', () => {
+      const rows = [
+        row('salmon', 0, ['r', 'p']),
+        row('pasta', 1, ['m']),
+        row('salad', 2, ['m']),
+        row('left', 50, ['m'], { leftover_of: 'x' }),
+      ];
+      expect(detachPerson(rows, 0, 'dinner', 'm', household, new Set())).toEqual({
+        update: [],
+        remove: ['pasta', 'salad', 'left'],
+      });
+    });
+
+    it('puts a person back on the main when joining', () => {
+      const rows = [row('salmon', 0, ['r', 'p']), row('pasta', 1, ['m'])];
+      expect(detachPerson(rows, 0, 'dinner', 'm', household, new Set(), { join: true })).toEqual({
+        update: [{ id: 'salmon', person_ids: ['r', 'p', 'm'] }],
+        remove: ['pasta'],
+      });
+    });
   });
 });
