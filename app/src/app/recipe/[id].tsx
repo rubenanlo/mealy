@@ -363,6 +363,9 @@ export default function RecipeSheetScreen() {
   const {
     id,
     planServings: planServingsParam,
+    planFor,
+    planShare: planShareParam,
+    planShareName,
     isNew: isNewParam,
     assignDay,
     assignSlot,
@@ -373,6 +376,11 @@ export default function RecipeSheetScreen() {
     id: string;
     /** Set when opened from the planner / "what's next": scale to this meal's servings. */
     planServings?: string;
+    /** Opened from one person's week tab: "Marc · Monday dinner" shown above the title. */
+    planFor?: string;
+    /** That person's portions of a shared dish; enables the Whole dish / share switch. */
+    planShare?: string;
+    planShareName?: string;
     /** '1' when this is a freshly created blank manual recipe (enables auto-delete + Done). */
     isNew?: string;
     /** Slot to auto-assign this recipe into on finish, when created from the planner. */
@@ -412,6 +420,8 @@ export default function RecipeSheetScreen() {
   >([]);
   /** Live "who eats this" servings for this week's plan (null = not planned). */
   const [livePlanServings, setLivePlanServings] = useState<number | null>(null);
+  /** Whole dish (false) or only the opening person's share (true), see planShare. */
+  const [shareOnly, setShareOnly] = useState(false);
   /** NYT-style unit conversion (display only), persisted across recipes. */
   const [unitSystem, setUnitSystem] = useState<UnitSystem>('original');
 
@@ -1254,8 +1264,11 @@ export default function RecipeSheetScreen() {
   // the meal updates the quantities on the next load. The route param is only
   // the fallback while the live value hasn't loaded. Display only — the
   // recipe's stored quantities always stay at its own base yield.
+  const sharePortions = planShareParam ? parseInt(planShareParam, 10) : null;
   const planServings =
-    livePlanServings ?? (planServingsParam ? parseInt(planServingsParam, 10) : null);
+    shareOnly && sharePortions
+      ? sharePortions
+      : (livePlanServings ?? (planServingsParam ? parseInt(planServingsParam, 10) : null));
   const planFactor =
     planServings != null ? servingsFactor(planServings, recipe.servings) : null;
   // Active-locale translation, used for DISPLAY only. Edits always operate on
@@ -1486,6 +1499,43 @@ export default function RecipeSheetScreen() {
                     />
                   </View>
                 ) : null}
+              </View>
+            ) : null}
+
+            {planFor ? (
+              <Text style={{ color: colors.textMuted, fontFamily: fonts.uiSemi, fontSize: fontSize.meta }}>{planFor}</Text>
+            ) : null}
+            {sharePortions && planShareName ? (
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                {[false, true].map((share) => {
+                  const selected = shareOnly === share;
+                  const label = share
+                    ? fmt(d.weekPage.shareN, { name: planShareName, n: sharePortions })
+                    : fmt(d.weekPage.wholeDishN, {
+                        n: livePlanServings ?? (planServingsParam ? parseInt(planServingsParam, 10) : 0),
+                      });
+                  return (
+                    <Pressable
+                      key={String(share)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                      onPress={() => setShareOnly(share)}
+                      style={({ pressed }) => ({
+                        minHeight: 36,
+                        paddingHorizontal: 14,
+                        borderRadius: 999,
+                        justifyContent: 'center',
+                        borderWidth: 1,
+                        borderColor: selected ? colors.text : colors.border,
+                        backgroundColor: selected ? colors.text : pressed ? colors.cardPressed : 'transparent',
+                      })}
+                    >
+                      <Text style={{ color: selected ? colors.bg : colors.text, fontFamily: fonts.uiMedium, fontSize: fontSize.small }}>
+                        {label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </View>
             ) : null}
 

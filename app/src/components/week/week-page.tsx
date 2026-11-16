@@ -13,10 +13,12 @@ import { AddToWeekSheet } from '@/components/add-to-week';
 import { LiveCard } from '@/components/ai-week-live';
 import { AiWeekPlanner, type PlannerContext } from '@/components/ai-week-planner';
 import { IdeaSheet } from '@/components/idea-sheet';
+import { PersonChip } from '@/components/person-chip';
 import { Button, Eyebrow, Loading, Title } from '@/components/ui';
 import { useWeekSummaries } from '@/components/week-chips';
 import { AddMealSheet, type AddPick, type AddRecipe } from '@/components/week/add-meal-sheet';
 import { DayRows } from '@/components/week/day-rows';
+import { PersonDayRows } from '@/components/week/person-day-rows';
 import { HomeSheet, type AwayChange } from '@/components/week/home-sheet';
 import { MealSheet, type MealPatch } from '@/components/week/meal-sheet';
 import { ReviewSheet, type ReviewItem } from '@/components/week/review-sheet';
@@ -63,7 +65,16 @@ import {
 import { localizedTitle } from '@/lib/translations';
 import { useCanonicalIndex } from '@/lib/use-canonical';
 import { parseRoutine } from '@/lib/plan-routine';
-import { addSuggestions, chipWeeks, openMeals, splitSlot, weekProgress } from '@/lib/week-page';
+import {
+  addSuggestions,
+  chipWeeks,
+  detachPerson,
+  openMeals,
+  splitSlot,
+  weekProgress,
+  type PersonMeal,
+  type SlotChanges,
+} from '@/lib/week-page';
 import type { IngredientRow as IngredientData } from '@/lib/worker';
 
 interface Person {
@@ -100,7 +111,9 @@ interface MealPlanRow {
 type AddTarget =
   | { mode: 'add'; day: number; slot: MealSlot }
   | { mode: 'side'; entry: PlanEntry }
-  | { mode: 'swap'; entry: PlanEntry };
+  | { mode: 'swap'; entry: PlanEntry }
+  /** A dish for one person only (design D1), replacing what they ate at this meal. */
+  | { mode: 'plate'; day: number; slot: MealSlot; personId: string };
 
 const PLAN_COLUMNS = 'id, week_start, status, employee_notes';
 
@@ -141,6 +154,8 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
   // Sheets
   const [addTarget, setAddTarget] = useState<AddTarget | null>(null);
   const [openEntryId, setOpenEntryId] = useState<string | null>(null);
+  /** Person tab (design D1): null = Everyone, else that person's week. */
+  const [viewPersonId, setViewPersonId] = useState<string | null>(null);
   const [homeOpen, setHomeOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
@@ -448,7 +463,25 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
     try {
       if (target.mode === 'swap') {
         await supabase.from('plan_entries').update(choice).eq('id', target.entry.id);
-        afterSheet(() => setOpenEntryId(target.entry.id));
+        if (!viewPerson) afterSheet(() => setOpenEntryId(target.entry.id));
+      } else if (target.mode === 'plate') {
+        const mealPlanId = await ensurePlan();
+        const away = awayIds(absences, target.day, target.slot);
+        await applySlotChanges(detachPerson(entries, target.day, target.slot, target.personId, eaterIds, away));
+        const rows = slotEntries(entries, target.day, target.slot).filter((r) => !r.leftover_of);
+        const position = Math.max(...rows.map((r) => r.position), 0) + 1;
+        await supabase.from('plan_entries').insert(
+          upsertEntryPayload({
+            mealPlanId,
+            day: target.day,
+            slot: target.slot,
+            ...('recipeId' in pick ? { recipeId: pick.recipeId } : { customTitle: pick.customTitle }),
+            personIds: [target.personId],
+            guestCount: 0,
+            assignedCook: 'family',
+            position,
+          })
+        );
       } else if (target.mode === 'side') {
         const rows = slotEntries(entries, target.entry.day, target.entry.slot);
         const position = Math.max(...rows.map((r) => r.position), 0) + 1;
@@ -494,8 +527,98 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
     await reload();
   };
 
+  /** Write the person_ids updates and deletes that detachPerson worked out. */
+  const applySlotChanges = async (changes: SlotChanges) => {
+    await Promise.all([
+      ...changes.update.map((u) => supabase.from('plan_entries').update({ person_ids: u.person_ids }).eq('id', u.id)),
+      changes.remove.length > 0
+        ? supabase.from('plan_entries').delete().in('id', changes.remove)
+        : Promise.resolve({ error: null }),
+    ]);
+  };
+
+  // ---------- per-person view (design D1) ----------
+  const viewPerson = eaters.find((p) => p.id === viewPersonId) ?? null;
+
+  /** Tap a dish in a person's tab: open the recipe sized for the meal, with their share one tap away. */
+  const openPersonDish = (entry: PlanEntry, day: number, slot: MealSlot) => {
+    if (!viewPerson) return;
+    if (!entry.recipe_id) {
+      const main = splitSlot(entries, day, slot).main;
+      setOpenEntryId(entry.leftover_of ? (main?.id ?? entry.id) : entry.id);
+      return;
+    }
+    const servings = entry.person_ids.length === 0 ? eaterIds.length + entry.guest_count : entry.person_ids.length + entry.guest_count;
+    router.push({
+      pathname: '/recipe/[id]',
+      params: {
+        id: entry.recipe_id,
+        planServings: String(servings),
+        planFor: `${viewPerson.name} · ${d.common.days[day]} ${slotLabel(slot).toLowerCase()}`,
+        ...(servings > 1 && !entry.leftover_of ? { planShareName: viewPerson.name, planShare: '1' } : {}),
+      },
+    });
+  };
+
+  const personMenu = (day: number, slot: MealSlot, meal: PersonMeal<PlanEntry>) => {
+    const person = viewPerson;
+    if (!person) return;
+    const away = awayIds(absences, day, slot);
+    const main = splitSlot(entries, day, slot).main;
+    const run = (fn: () => Promise<unknown>) => () =>
+      void (async () => {
+        try {
+          await fn();
+        } catch {
+          notify(d.common.genericError, '');
+        }
+        await reload();
+      })();
+    const options: { label: string; onPress: () => void; destructive?: boolean }[] = [];
+    if (meal.kind === 'away') {
+      options.push({
+        label: fmt(t.markHome, { name: person.name }),
+        onPress: () => void applyAway([{ day, slot, personId: person.id, away: false }]).then(() => invalidateLists('plan', 'groceries')),
+      });
+    } else {
+      options.push({
+        label: fmt(t.giveDifferent, { name: person.name }),
+        onPress: () => setAddTarget({ mode: 'plate', day, slot, personId: person.id }),
+      });
+      const onMain = meal.kind === 'dish' && meal.isMain;
+      if (main && !onMain && !main.leftover_of) {
+        options.push({
+          label: fmt(t.joinOthers, { title: titleOf(main) }),
+          onPress: run(() => applySlotChanges(detachPerson(entries, day, slot, person.id, eaterIds, away, { join: true }))),
+        });
+      }
+      if (main) {
+        options.push({ label: t.changeForEveryone, onPress: () => setAddTarget({ mode: 'swap', entry: main }) });
+        options.push({ label: t.mealDetails, onPress: () => setOpenEntryId(main.id) });
+      }
+      options.push({
+        label: fmt(t.markNotHome, { name: person.name }),
+        destructive: true,
+        onPress: run(async () => {
+          await applySlotChanges(detachPerson(entries, day, slot, person.id, eaterIds, away));
+          await applyAway([{ day, slot, personId: person.id, away: true }]);
+        }),
+      });
+    }
+    pickOption({
+      title: `${person.name} · ${d.common.days[day]} ${slotLabel(slot).toLowerCase()}`,
+      cancelLabel: d.common.cancel,
+      options,
+    });
+  };
+
   const openEntry = entries.find((e) => e.id === openEntryId) ?? null;
-  const openSides = openEntry ? splitSlot(entries, openEntry.day, openEntry.slot).sides : [];
+  const openSides = (() => {
+    if (!openEntry) return [];
+    const split = splitSlot(entries, openEntry.day, openEntry.slot);
+    if (split.main?.id === openEntry.id) return split.sides;
+    return split.plates.find((p) => p.dish.id === openEntry.id)?.sides ?? [];
+  })();
 
   const saveEntry = async (patch: MealPatch) => {
     const entry = openEntry;
@@ -736,10 +859,15 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
     if (!addTarget) return '';
     if (addTarget.mode === 'add') return `${d.common.days[addTarget.day]} · ${slotLabel(addTarget.slot)}`;
     if (addTarget.mode === 'side') return fmt(t.sideTitle, { title: titleOf(addTarget.entry) });
+    if (addTarget.mode === 'plate') {
+      const name = eaters.find((p) => p.id === addTarget.personId)?.name ?? '';
+      return `${fmt(t.plateTitle, { name })} · ${d.common.days[addTarget.day]} ${slotLabel(addTarget.slot).toLowerCase()}`;
+    }
     return fmt(t.swapTitle, { title: titleOf(addTarget.entry) });
   })();
   const addSubtitle = (() => {
     if (!addTarget) return undefined;
+    if (addTarget.mode === 'plate') return undefined;
     const day = addTarget.mode === 'add' ? addTarget.day : addTarget.entry.day;
     const slot = addTarget.mode === 'add' ? addTarget.slot : addTarget.entry.slot;
     const away = awayIds(absences, day, slot);
@@ -939,6 +1067,69 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
               </View>
             ) : null}
 
+            {eaters.length > 1 ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={{ marginHorizontal: -screenPadding }}
+                contentContainerStyle={{ gap: 8, paddingHorizontal: screenPadding, alignItems: 'center' }}
+              >
+                <Pill label={t.everyone} selected={viewPerson === null} onPress={() => setViewPersonId(null)} />
+                {eaters.map((p) => {
+                  const selected = viewPerson?.id === p.id;
+                  return (
+                    <Pressable
+                      key={p.id}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                      accessibilityLabel={fmt(t.personTabA11y, { name: p.name })}
+                      onPress={() => setViewPersonId(selected ? null : p.id)}
+                      style={({ pressed }) => ({
+                        minHeight: 40,
+                        paddingLeft: 4,
+                        paddingRight: 14,
+                        borderRadius: 999,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                        borderWidth: 1,
+                        borderColor: selected ? colors.text : colors.border,
+                        backgroundColor: selected ? colors.text : pressed ? colors.cardPressed : 'transparent',
+                      })}
+                    >
+                      <View pointerEvents="none">
+                        <PersonChip person={p} />
+                      </View>
+                      <Text
+                        style={{
+                          color: selected ? colors.bg : colors.text,
+                          fontFamily: fonts.uiMedium,
+                          fontSize: fontSize.small,
+                        }}
+                      >
+                        {p.name}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            ) : null}
+
+            {viewPerson ? (
+              <PersonDayRows
+                weekIso={weekIso}
+                person={viewPerson}
+                entries={entries}
+                absences={absences}
+                eaters={eaters}
+                recipeById={recipeById}
+                todayIndex={todayIndex}
+                readOnly={isPastWeek}
+                onAdd={(day, slot) => setAddTarget({ mode: 'add', day, slot })}
+                onOpenDish={openPersonDish}
+                onMore={personMenu}
+              />
+            ) : (
             <DayRows
               weekIso={weekIso}
               entries={entries}
@@ -951,6 +1142,7 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
               onOpen={(entry) => setOpenEntryId(entry.id)}
               onHome={() => setHomeOpen(true)}
             />
+            )}
           </>
         ) : null}
       </ScrollView>
@@ -1079,7 +1271,9 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
         onClose={() => {
           const target = addTarget;
           setAddTarget(null);
-          if (target && target.mode !== 'add') afterSheet(() => setOpenEntryId(target.entry.id));
+          if (target && target.mode !== 'add' && target.mode !== 'plate' && !viewPerson) {
+            afterSheet(() => setOpenEntryId(target.entry.id));
+          }
         }}
       />
 
