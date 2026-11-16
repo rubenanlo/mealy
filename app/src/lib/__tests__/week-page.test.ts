@@ -5,6 +5,7 @@ import {
   everyoneAway,
   openMeals,
   personMeal,
+  uncoveredEaters,
   splitSlot,
   weekProgress,
   type SuggestRecipe,
@@ -162,6 +163,17 @@ describe('week page helpers', () => {
       expect(detachPerson(rows, 0, 'dinner', 'm', household, new Set())).toEqual({
         update: [],
         remove: ['pasta', 'salad', 'left'],
+      });
+    });
+
+    it('finds who is home with no dish, and detaches several people at once', () => {
+      const rows = [row('rice', 0, ['m'])];
+      expect(uncoveredEaters(rows, [], 0, 'dinner', household)).toEqual(['r', 'p']);
+      const away = [{ day: 0, slot: 'dinner' as MealSlot, person_id: 'p' }];
+      expect(uncoveredEaters(rows, away, 0, 'dinner', household)).toEqual(['r']);
+      expect(detachPerson([row('rice', 0, [])], 0, 'dinner', ['r', 'p'], household, new Set())).toEqual({
+        update: [{ id: 'rice', person_ids: ['m'] }],
+        remove: [],
       });
     });
 

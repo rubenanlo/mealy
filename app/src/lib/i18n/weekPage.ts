@@ -94,6 +94,8 @@ const en = {
   leftoverOf: 'Leftovers of {title}',
   wholeDishN: 'Whole dish · {n}',
   shareN: '{name} · {n}',
+  forNames: 'For {names}',
+  addDishFor: '+ Add a dish for {names}',
 };
 
 const es: typeof en = {
@@ -185,6 +187,8 @@ const es: typeof en = {
   leftoverOf: 'Sobras de {title}',
   wholeDishN: 'Plato entero · {n}',
   shareN: '{name} · {n}',
+  forNames: 'Para {names}',
+  addDishFor: '+ Añadir un plato para {names}',
 };
 
 const fr: typeof en = {
@@ -276,6 +280,8 @@ const fr: typeof en = {
   leftoverOf: 'Restes de {title}',
   wholeDishN: 'Plat entier · {n}',
   shareN: '{name} · {n}',
+  forNames: 'Pour {names}',
+  addDishFor: '+ Ajouter un plat pour {names}',
 };
 
 const it: typeof en = {
@@ -367,6 +373,8 @@ const it: typeof en = {
   leftoverOf: 'Avanzi di {title}',
   wholeDishN: 'Piatto intero · {n}',
   shareN: '{name} · {n}',
+  forNames: 'Per {names}',
+  addDishFor: '+ Aggiungi un piatto per {names}',
 };
 
 export const weekPage = { en, es, fr, it };

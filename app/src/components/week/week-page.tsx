@@ -113,7 +113,7 @@ type AddTarget =
   | { mode: 'side'; entry: PlanEntry }
   | { mode: 'swap'; entry: PlanEntry }
   /** A dish for one person only (design D1), replacing what they ate at this meal. */
-  | { mode: 'plate'; day: number; slot: MealSlot; personId: string };
+  | { mode: 'plate'; day: number; slot: MealSlot; personIds: string[] };
 
 const PLAN_COLUMNS = 'id, week_start, status, employee_notes';
 
@@ -467,7 +467,7 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
       } else if (target.mode === 'plate') {
         const mealPlanId = await ensurePlan();
         const away = awayIds(absences, target.day, target.slot);
-        await applySlotChanges(detachPerson(entries, target.day, target.slot, target.personId, eaterIds, away));
+        await applySlotChanges(detachPerson(entries, target.day, target.slot, target.personIds, eaterIds, away));
         const rows = slotEntries(entries, target.day, target.slot).filter((r) => !r.leftover_of);
         const position = Math.max(...rows.map((r) => r.position), 0) + 1;
         await supabase.from('plan_entries').insert(
@@ -476,7 +476,7 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
             day: target.day,
             slot: target.slot,
             ...('recipeId' in pick ? { recipeId: pick.recipeId } : { customTitle: pick.customTitle }),
-            personIds: [target.personId],
+            personIds: target.personIds,
             guestCount: 0,
             assignedCook: 'family',
             position,
@@ -583,7 +583,7 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
     } else {
       options.push({
         label: fmt(t.giveDifferent, { name: person.name }),
-        onPress: () => setAddTarget({ mode: 'plate', day, slot, personId: person.id }),
+        onPress: () => setAddTarget({ mode: 'plate', day, slot, personIds: [person.id] }),
       });
       const onMain = meal.kind === 'dish' && meal.isMain;
       if (main && !onMain && !main.leftover_of) {
@@ -860,7 +860,10 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
     if (addTarget.mode === 'add') return `${d.common.days[addTarget.day]} · ${slotLabel(addTarget.slot)}`;
     if (addTarget.mode === 'side') return fmt(t.sideTitle, { title: titleOf(addTarget.entry) });
     if (addTarget.mode === 'plate') {
-      const name = eaters.find((p) => p.id === addTarget.personId)?.name ?? '';
+      const name = eaters
+        .filter((p) => addTarget.personIds.includes(p.id))
+        .map((p) => p.name)
+        .join(', ');
       return `${fmt(t.plateTitle, { name })} · ${d.common.days[addTarget.day]} ${slotLabel(addTarget.slot).toLowerCase()}`;
     }
     return fmt(t.swapTitle, { title: titleOf(addTarget.entry) });
@@ -1140,6 +1143,7 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
               readOnly={isPastWeek}
               onAdd={(day, slot) => setAddTarget({ mode: 'add', day, slot })}
               onOpen={(entry) => setOpenEntryId(entry.id)}
+              onAddFor={(day, slot, personIds) => setAddTarget({ mode: 'plate', day, slot, personIds })}
               onHome={() => setHomeOpen(true)}
             />
             )}

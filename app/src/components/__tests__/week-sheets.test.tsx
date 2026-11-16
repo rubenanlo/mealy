@@ -78,6 +78,7 @@ describe('week page sheets', () => {
         readOnly={false}
         onAdd={onAdd}
         onOpen={onOpen}
+        onAddFor={() => {}}
         onHome={() => {}}
       />
     );
@@ -90,6 +91,28 @@ describe('week page sheets', () => {
     expect(onAdd).toHaveBeenCalledWith(1, 'lunch');
     fireEvent.press(getByLabelText('Edit Salmon with dill'));
     expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: 'e1' }));
+  });
+
+  it('day rows say who a dish is for and offer a dish for the others', () => {
+    const onAddFor = jest.fn();
+    const { getByText } = wrap(
+      <DayRows
+        weekIso={WEEK}
+        entries={[entry({ person_ids: ['m'] })]}
+        absences={[]}
+        eaters={eaters}
+        recipeById={recipeById}
+        todayIndex={-1}
+        readOnly={false}
+        onAdd={() => {}}
+        onOpen={() => {}}
+        onAddFor={onAddFor}
+        onHome={() => {}}
+      />
+    );
+    expect(getByText('For Marc')).toBeTruthy();
+    fireEvent.press(getByText('+ Add a dish for Ruben'));
+    expect(onAddFor).toHaveBeenCalledWith(0, 'dinner', ['r']);
   });
 
   it('meal sheet opens the recipe at the right servings and saves a part-only hand-off', () => {
