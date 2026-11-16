@@ -1,45 +1,8 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { AiActionsSheet, FodmapChatSheet, VersionToggle } from '@/components/ai-sheet';
-import type { FodmapFlag } from '@/lib/fodmap';
+import { AiActionsSheet, VersionToggle } from '@/components/ai-sheet';
 import { ThemeProvider } from '@/lib/theme';
-
-const flag = (raw: string, tier: 'high' | 'moderate', groups: string[]): FodmapFlag => ({
-  name: raw,
-  raw,
-  tier,
-  groups,
-  portionG: null,
-  explanation: '',
-  swaps: [],
-});
-
-const row = (raw: string, name: string) => ({ raw, name, quantity: null, unit: null, group: null, fodmap: null });
-
-const result = {
-  swaps: [
-    { raw: '1 onion', replacement: row('4 spring onions, green parts', 'spring onion'), note: 'Greens are low.' },
-    { raw: '3 garlic cloves', replacement: row('2 tbsp garlic-infused oil', 'garlic oil'), note: '' },
-  ],
-  steps: ['Fry the spring onion.'],
-};
-
-const baseChat = {
-  visible: true,
-  recipeTitle: 'Chili',
-  checkedCount: 9,
-  servings: 4,
-  flags: [flag('1 onion', 'high', ['fructan']), flag('3 garlic cloves', 'high', ['fructan'])],
-  loading: false,
-  failed: false,
-  result,
-  saving: false,
-  saveError: false,
-  updatesExisting: false,
-  onRetry: jest.fn(),
-  onClose: jest.fn(),
-};
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 390, height: 844 },
@@ -63,61 +26,6 @@ describe('AiActionsSheet', () => {
     fireEvent.press(screen.getByText('Make it low-FODMAP'));
     for (const fn of Object.values(handlers)) expect(fn).toHaveBeenCalledTimes(1);
     expect(screen.queryByText('Soon')).toBeNull();
-  });
-});
-
-describe('FodmapChatSheet', () => {
-  it('lists the flagged lines with their tier and group', () => {
-    const screen = wrap(<FodmapChatSheet {...baseChat} onSave={jest.fn()} />);
-    expect(screen.getByText(/I checked 9 ingredients\. 2 high or moderate/)).toBeTruthy();
-    expect(screen.getAllByText('High · fructans')).toHaveLength(2);
-  });
-
-  it('saves only the swaps still ticked', () => {
-    const onSave = jest.fn();
-    const screen = wrap(<FodmapChatSheet {...baseChat} onSave={onSave} />);
-    fireEvent.press(screen.getAllByRole('checkbox')[1]);
-    fireEvent.press(screen.getByText('Save version (1)'));
-    expect(onSave).toHaveBeenCalledWith(new Set(['1 onion']));
-  });
-
-  it('offers a retry when the swaps request failed', () => {
-    const onRetry = jest.fn();
-    const screen = wrap(
-      <FodmapChatSheet {...baseChat} result={null} failed onRetry={onRetry} onSave={jest.fn()} />
-    );
-    fireEvent.press(screen.getByText('Try again'));
-    expect(onRetry).toHaveBeenCalled();
-  });
-
-  it('says there is nothing to change when nothing is flagged', () => {
-    const screen = wrap(<FodmapChatSheet {...baseChat} flags={[]} result={null} onSave={jest.fn()} />);
-    expect(screen.getByText(/found nothing high or moderate FODMAP/)).toBeTruthy();
-    expect(screen.queryByText(/Save version/)).toBeNull();
-  });
-
-  it('lists lines the table cannot judge and explains a hand-set tier', () => {
-    const screen = wrap(
-      <FodmapChatSheet
-        {...baseChat}
-        flags={[]}
-        result={null}
-        unknown={[{ ...flag('4 pièces Galettes', 'high', []), tier: 'check' }]}
-        manualTier="moderate"
-        onSave={jest.fn()}
-      />
-    );
-    expect(screen.getByText(/couldn’t verify 1/)).toBeTruthy();
-    expect(screen.getByText('• 4 pièces Galettes')).toBeTruthy();
-    expect(screen.getByText(/set by hand to “moderate”/)).toBeTruthy();
-  });
-
-  it('says so when the FODMAP table could not be loaded', () => {
-    const screen = wrap(
-      <FodmapChatSheet {...baseChat} flags={[]} result={null} tableReady={false} onSave={jest.fn()} />
-    );
-    expect(screen.getByText(/couldn’t load Mealy’s FODMAP table/)).toBeTruthy();
-    expect(screen.queryByText(/found nothing/)).toBeNull();
   });
 });
 

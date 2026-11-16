@@ -26,6 +26,14 @@ from .assist import (
 )
 from .auth import verify_token
 from .fodmap import SwapRequest, SwapResponse, suggest_swaps
+from .fodmap_list import (
+    AlternativesRequest,
+    AlternativesResponse,
+    ListMatchRequest,
+    ListMatchResponse,
+    match_lines,
+    suggest_alternatives,
+)
 from .images import fetch_validated_image
 from .ingest.media import ingest_images, ingest_pdf
 from .ingest.social import ingest_social
@@ -203,6 +211,22 @@ async def fodmap_swaps_route(
 ) -> SwapResponse:
     """Low-FODMAP substitution suggestions (spec Part 8)."""
     return await suggest_swaps(body)
+
+
+@app.post("/fodmap/list-match", response_model=ListMatchResponse)
+async def fodmap_list_match_route(
+    body: ListMatchRequest, _claims: dict = Depends(verify_token)
+) -> ListMatchResponse:
+    """Which entry of the household's FODMAP list each recipe line is."""
+    return await match_lines(body)
+
+
+@app.post("/fodmap/alternatives", response_model=AlternativesResponse)
+async def fodmap_alternatives_route(
+    body: AlternativesRequest, _claims: dict = Depends(verify_token)
+) -> AlternativesResponse:
+    """Chat about low-FODMAP alternatives for the flagged lines (proposal only)."""
+    return await suggest_alternatives(body)
 
 
 @app.post("/ai/edit", response_model=EditResponse)
