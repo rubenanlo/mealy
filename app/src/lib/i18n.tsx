@@ -8,6 +8,7 @@ import { auth } from '@/lib/i18n/auth';
 import { capture } from '@/lib/i18n/capture';
 import { common } from '@/lib/i18n/common';
 import { components } from '@/lib/i18n/components';
+import { fodmapCheck } from '@/lib/i18n/fodmapCheck';
 import { groceries } from '@/lib/i18n/groceries';
 import { library } from '@/lib/i18n/library';
 import { mealPrefs } from '@/lib/i18n/mealPrefs';
@@ -52,6 +53,7 @@ export const dictionaries = {
     mealPrefs: mealPrefs.en,
     components: components.en,
     ai: ai.en,
+    fodmapCheck: fodmapCheck.en,
     myFodmap: myFodmap.en,
     assist: assist.en,
     aiPlan: aiPlan.en,
@@ -74,6 +76,7 @@ export const dictionaries = {
     mealPrefs: mealPrefs.es,
     components: components.es,
     ai: ai.es,
+    fodmapCheck: fodmapCheck.es,
     myFodmap: myFodmap.es,
     assist: assist.es,
     aiPlan: aiPlan.es,
@@ -96,6 +99,7 @@ export const dictionaries = {
     mealPrefs: mealPrefs.fr,
     components: components.fr,
     ai: ai.fr,
+    fodmapCheck: fodmapCheck.fr,
     myFodmap: myFodmap.fr,
     assist: assist.fr,
     aiPlan: aiPlan.fr,
@@ -118,6 +122,7 @@ export const dictionaries = {
     mealPrefs: mealPrefs.it,
     components: components.it,
     ai: ai.it,
+    fodmapCheck: fodmapCheck.it,
     myFodmap: myFodmap.it,
     assist: assist.it,
     aiPlan: aiPlan.it,

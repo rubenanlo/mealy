@@ -711,3 +711,50 @@ export async function aiRoutineRule(body: {
     person_ids: Array.isArray(reply.person_ids) ? reply.person_ids : [],
   };
 }
+
+// ---- FODMAP list (migration 0040) -----------------------------------------
+
+/** Which list entry each line is (index into `entries`, or null). Null on failure. */
+export async function fodmapListMatch(
+  lines: { key: string; text: string }[],
+  entries: { i: number; name: string }[]
+): Promise<{ key: string; index: number | null }[] | null> {
+  const reply = await postAi<{ matches?: unknown }>('/fodmap/list-match', { lines, entries });
+  if (!reply || !Array.isArray(reply.matches)) return null;
+  return reply.matches as { key: string; index: number | null }[];
+}
+
+export interface FodmapAltOption {
+  line: string;
+  quantity: number | null;
+  unit: string | null;
+  name: string;
+  entry_index: number | null;
+  remove: boolean;
+  recommended: boolean;
+  note: string;
+}
+
+export interface FodmapAlternativesResult {
+  message: string;
+  alternatives: { for_raw: string; options: FodmapAltOption[] }[];
+}
+
+/** Chat turn about low-FODMAP alternatives for the flagged lines. Null on failure. */
+export async function fodmapAlternatives(body: AiRecipeContext & {
+  flagged: { raw: string; entry: string | null; detail: string }[];
+  entries: {
+    i: number;
+    name: string;
+    overall: string;
+    green_max: number | null;
+    red_qty: number | null;
+    unit: string;
+  }[];
+  question: string;
+  history: AiChatTurn[];
+}): Promise<FodmapAlternativesResult | null> {
+  const reply = await postAi<FodmapAlternativesResult>('/fodmap/alternatives', body);
+  if (!reply || typeof reply.message !== 'string' || !Array.isArray(reply.alternatives)) return null;
+  return reply;
+}

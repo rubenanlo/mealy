@@ -30,7 +30,7 @@ import {
 // Shared chat chrome
 // ---------------------------------------------------------------------------
 
-function Bubble({ children, mine }: { children: ReactNode; mine?: boolean }) {
+export function Bubble({ children, mine }: { children: ReactNode; mine?: boolean }) {
   const { colors } = useTheme();
   return (
     <View
@@ -51,7 +51,7 @@ function Bubble({ children, mine }: { children: ReactNode; mine?: boolean }) {
   );
 }
 
-function BubbleText({ children, mine }: { children: ReactNode; mine?: boolean }) {
+export function BubbleText({ children, mine }: { children: ReactNode; mine?: boolean }) {
   const { colors } = useTheme();
   return (
     <Text style={{ color: mine ? colors.bg : colors.text, fontSize: fontSize.small, lineHeight: 21, fontFamily: fonts.ui }}>
@@ -77,7 +77,7 @@ function SmallEyebrow({ children }: { children: ReactNode }) {
   );
 }
 
-function Chip({ label, onPress }: { label: string; onPress: () => void }) {
+export function Chip({ label, onPress }: { label: string; onPress: () => void }) {
   const { colors } = useTheme();
   return (
     <Pressable
@@ -100,7 +100,7 @@ function Chip({ label, onPress }: { label: string; onPress: () => void }) {
   );
 }
 
-function ChatHeader({ eyebrow, title, onClose }: { eyebrow: string; title: string; onClose: () => void }) {
+export function ChatHeader({ eyebrow, title, onClose }: { eyebrow: string; title: string; onClose: () => void }) {
   const { colors } = useTheme();
   const { d } = useI18n();
   return (
@@ -153,7 +153,7 @@ function ChatHeader({ eyebrow, title, onClose }: { eyebrow: string; title: strin
   );
 }
 
-function Composer({
+export function Composer({
   value,
   onChangeText,
   onSend,
