@@ -56,6 +56,7 @@ import { confirmDestructive, notify } from '@/lib/confirm';
 import { invalidateLists } from '@/lib/list-refresh';
 import { backOr } from '@/lib/nav';
 import { recordRecentlyViewed } from '@/lib/recently-viewed';
+import { shareRecipe } from '@/lib/recipe-share';
 import { anchorFromEvent, pickOption } from '@/lib/options';
 import {
   CATEGORY_LABELS,
@@ -181,6 +182,7 @@ function Hero({
   onEdit,
   onAi,
   language,
+  onShare,
 }: {
   path: string | null;
   saved: boolean;
@@ -192,6 +194,8 @@ function Hero({
   onAi?: () => void;
   /** Translate chip under the bookmark; opens the language sheet. */
   language?: { translated: boolean; name: string; onPress: () => void } | null;
+  /** Share chip, last in the column under the bookmark and translate chips. */
+  onShare?: () => void;
 }) {
   const { colors } = useTheme();
   const { d } = useI18n();
@@ -257,6 +261,33 @@ function Hero({
           // Under the bookmark when there is a photo, else in its corner.
           style={{ top: path ? 56 : 12, right: 12 }}
         />
+      ) : null}
+      {onShare ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={d.recipe.shareRecipeA11y}
+          onPress={onShare}
+          hitSlop={6}
+          style={({ pressed }) => [
+            {
+              position: 'absolute',
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              backgroundColor: colors.card,
+              borderWidth: 1,
+              borderColor: colors.border,
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: pressed ? 0.75 : 1,
+            },
+            // With a photo: next free place in the column. Without one the
+            // strip is short, so it sits beside the translate chip instead.
+            path ? { top: language ? 100 : 56, right: 12 } : { top: 12, right: language ? 56 : 12 },
+          ]}
+        >
+          <Ionicons name="share-outline" size={18} color={colors.text} />
+        </Pressable>
       ) : null}
       {/* Edit chip sits bottom-right, clear of the top-right bookmark chip. */}
       {path && onEdit ? (
@@ -1375,6 +1406,25 @@ export default function RecipeSheetScreen() {
       },
     });
   };
+  // Share the recipe as it reads on screen (active translation), at its own
+  // base yield: plan scaling and unit toggles are personal, not the recipe.
+  const onShare = () => {
+    void shareRecipe(
+      {
+        id: recipe.id,
+        title: displayTitle,
+        meta: [
+          recipe.servings ? fmt(d.recipe.servingsCount, { n: recipe.servings }) : null,
+          recipe.prep_minutes ? fmt(d.recipe.prepMin, { n: recipe.prep_minutes }) : null,
+          recipe.cook_minutes ? fmt(d.recipe.cookMin, { n: recipe.cook_minutes }) : null,
+        ].filter((p): p is string => p !== null),
+        ingredients: localized.ingredients,
+        steps: localized.steps,
+      },
+      { ingredients: d.recipe.ingredients, steps: d.recipe.steps, openInMealy: d.recipe.openInMealy },
+      d.recipe.recipeCopied
+    );
+  };
   const showPinnedBar = pinnedVisible;
   // Which ingredients each step names (display language, display amounts).
   const stepMap = mapStepIngredients(displaySteps, viewIngredients);
@@ -1410,6 +1460,7 @@ export default function RecipeSheetScreen() {
             focal={recipe.cover_focal}
             onEdit={() => setCoverMenuOpen(true)}
             onAi={isNew ? undefined : () => setAiOpen(true)}
+            onShare={isNew ? undefined : onShare}
             language={
               showLanguage
                 ? { translated: !!contentTranslation, name: activeLangName, onPress: () => setLanguageOpen(true) }
