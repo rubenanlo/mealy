@@ -1,4 +1,4 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 
 import { buildCells, type EntryRow } from '@/lib/meal-cells';
 import { ThemeProvider } from '@/lib/theme';
@@ -43,6 +43,9 @@ const cells = buildCells(
 );
 
 describe('Up next for a meal with several dishes (design G1)', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
   it('groups the meal into dishes, sides riding with their dish', () => {
     expect(cells[0]!.dishes).toEqual([
       { title: 'Pasta with tomato', cover: null, recipeId: 'pasta', servings: 1, eaters: ['Marc'], sides: [] },
@@ -73,7 +76,12 @@ describe('Up next for a meal with several dishes (design G1)', () => {
     expect(buttons).toHaveLength(2);
     fireEvent.press(buttons[1]!);
     expect(onOpenRecipe).toHaveBeenCalledWith('salmon', 2);
+    // No layout shift: the deck stays mounted underneath while split.
+    expect(getByText('See all 2 dishes', { includeHiddenElements: true })).toBeTruthy();
     fireEvent.press(getByText('Stack them again'));
+    act(() => {
+      jest.runAllTimers();
+    });
     expect(queryByText('Open recipe')).toBeNull();
   });
 
