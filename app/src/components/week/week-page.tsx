@@ -6,15 +6,16 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { Modal, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AddToWeekSheet } from '@/components/add-to-week';
 import { LiveCard } from '@/components/ai-week-live';
 import { AiWeekPlanner, type PlannerContext } from '@/components/ai-week-planner';
+import { ChangeMealPanel, PlannerPanel, type PanelIdea, type PanelPick, type PanelRecipe } from '@/components/change-meal-panel';
 import { IdeaSheet } from '@/components/idea-sheet';
 import { PersonChip } from '@/components/person-chip';
-import { Button, Eyebrow, Loading, Title } from '@/components/ui';
+import { Button, Eyebrow, Loading, Muted } from '@/components/ui';
 import { useWeekSummaries } from '@/components/week-chips';
 import { AddMealSheet, type AddPick, type AddRecipe } from '@/components/week/add-meal-sheet';
 import { DayRows } from '@/components/week/day-rows';
@@ -113,7 +114,6 @@ interface MealPlanRow {
 type AddTarget =
   | { mode: 'add'; day: number; slot: MealSlot }
   | { mode: 'side'; entry: PlanEntry }
-  | { mode: 'swap'; entry: PlanEntry }
   /** A dish for one person only (design D1), replacing what they ate at this meal. */
   | { mode: 'plate'; day: number; slot: MealSlot; personIds: string[] };
 
@@ -163,6 +163,13 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
   const [aiOpen, setAiOpen] = useState(false);
   const [ideaSheetOpen, setIdeaSheetOpen] = useState(false);
   const [ideaToPlan, setIdeaToPlan] = useState<PlanIdea | null>(null);
+  /** The dish being swapped in the change-meal panel (same panel as the ✦ planner). */
+  const [swapEntry, setSwapEntry] = useState<PlanEntry | null>(null);
+  /** Ideas parked for later weeks, loaded the first time the panel opens. */
+  const [laterIdeas, setLaterIdeas] = useState<PlanIdea[] | null>(null);
+  /** Swapping a dinner that feeds someone's leftovers: ask what they eat instead. */
+  const [chainAsk, setChainAsk] = useState<{ entry: PlanEntry; pick: PanelPick; leftovers: PlanEntry[] } | null>(null);
+  const [chainChoice, setChainChoice] = useState<'new' | 'off'>('new');
   const [liveSummary, setLiveSummary] = useState<{ meals: number; employee: number } | null>(null);
   const [toast, setToast] = useState<{ text: string; entryId: string } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -308,6 +315,19 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
         : week === addWeeks(currentWeek, -1)
           ? t.lastWeek
           : shortDate(week);
+  /** Header: "This week" over the week's dates ("16 – 22 Nov"). */
+  const weekEyebrow = [currentWeek, addWeeks(currentWeek, 1), addWeeks(currentWeek, -1)].includes(weekIso)
+    ? chipLabel(weekIso)
+    : t.title;
+  const weekRange = (() => {
+    const first = dayDate(weekIso, 0);
+    const last = dayDate(weekIso, 6);
+    const full = (date: Date) => date.toLocaleDateString(locale, { day: 'numeric', month: 'short' });
+    const dayOnly = (date: Date) => date.toLocaleDateString(locale, { day: 'numeric' });
+    if (first.getMonth() !== last.getMonth()) return `${full(first)} – ${full(last)}`;
+    // Name the month once, on the side the locale puts it ("Nov 9 – 15" or "9 – 15 nov").
+    return /^\d/.test(full(last)) ? `${dayOnly(first)} – ${full(last)}` : `${full(first)} – ${dayOnly(last)}`;
+  })();
   const chipSub = (week: string) => {
     const s = summaries.get(week);
     if (s && s.meals > 0) return fmt(t.chipMeals, { n: s.meals });
@@ -460,13 +480,9 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
     const target = addTarget;
     if (!target) return;
     setAddTarget(null);
-    const choice = 'recipeId' in pick ? { recipe_id: pick.recipeId, custom_title: null } : { recipe_id: null, custom_title: pick.customTitle };
     const pickedTitle = 'recipeId' in pick ? (recipeById.get(pick.recipeId)?.title ?? '') : pick.customTitle;
     try {
-      if (target.mode === 'swap') {
-        await supabase.from('plan_entries').update(choice).eq('id', target.entry.id);
-        if (!viewPerson) afterSheet(() => setOpenEntryId(target.entry.id));
-      } else if (target.mode === 'plate') {
+      if (target.mode === 'plate') {
         const mealPlanId = await ensurePlan();
         const away = awayIds(absences, target.day, target.slot);
         await applySlotChanges(detachPerson(entries, target.day, target.slot, target.personIds, eaterIds, away));
@@ -539,6 +555,99 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
     ]);
   };
 
+  // ---------- swap a dish (change-meal panel) ----------
+  const openSwap = (entry: PlanEntry) => {
+    setSwapEntry(entry);
+    if (laterIdeas === null) {
+      void supabase
+        .from('plan_ideas')
+        .select('*')
+        .eq('household_id', householdId)
+        .gt('week_start', weekIso)
+        .order('week_start')
+        .limit(30)
+        .then(({ data }) => setLaterIdeas((data as PlanIdea[]) ?? []));
+    }
+  };
+
+  /** A meal's own rows: the dish, its sides and any leftovers cooked from it. */
+  const mealRowIds = (entry: PlanEntry) => {
+    const split = splitSlot(entries, entry.day, entry.slot);
+    const sides =
+      split.main?.id === entry.id ? split.sides : (split.plates.find((p) => p.dish.id === entry.id)?.sides ?? []);
+    return [entry.id, ...sides.map((x) => x.id), ...entries.filter((e) => e.leftover_of === entry.id).map((e) => e.id)];
+  };
+
+  const applySwap = async (entry: PlanEntry, pick: PanelPick, leftovers: PlanEntry[], chain: 'new' | 'off') => {
+    const choice = pick.recipeId
+      ? { recipe_id: pick.recipeId, custom_title: null }
+      : { recipe_id: null, custom_title: pick.customTitle };
+    try {
+      await supabase.from('plan_entries').update(choice).eq('id', entry.id);
+      if (leftovers.length > 0) {
+        const ids = leftovers.map((l) => l.id);
+        if (chain === 'new') {
+          // The leftovers follow the new dish.
+          await supabase.from('plan_entries').update(choice).in('id', ids);
+        } else {
+          // No leftovers: they eat that meal's dish with the others.
+          await supabase.from('plan_entries').delete().in('id', ids);
+          for (const l of leftovers) {
+            const main = splitSlot(entries, l.day, l.slot).main;
+            if (!main || main.id === l.id || main.person_ids.length === 0) continue;
+            const missing = l.person_ids.filter((id) => !main.person_ids.includes(id));
+            if (missing.length === 0) continue;
+            await supabase
+              .from('plan_entries')
+              .update({ person_ids: [...main.person_ids, ...missing] })
+              .eq('id', main.id);
+          }
+        }
+      }
+      if (pick.ideaId) await supabase.from('plan_ideas').delete().eq('id', pick.ideaId);
+    } catch {
+      notify(d.common.genericError, '');
+    }
+    await reload();
+    if (!viewPerson) afterSheet(() => setOpenEntryId(entry.id));
+  };
+
+  const pickSwap = (pick: PanelPick) => {
+    const entry = swapEntry;
+    if (!entry) return;
+    setSwapEntry(null);
+    const leftovers = entries.filter((e) => e.leftover_of === entry.id);
+    if (leftovers.length > 0) {
+      setChainChoice('new');
+      setChainAsk({ entry, pick, leftovers });
+      return;
+    }
+    void applySwap(entry, pick, [], 'new');
+  };
+
+  const answerChain = () => {
+    const ask = chainAsk;
+    if (!ask) return;
+    setChainAsk(null);
+    void applySwap(ask.entry, ask.pick, ask.leftovers, chainChoice);
+  };
+
+  /** "Leave empty" / "Eating out" in the panel: the meal goes; eating out also marks everyone away. */
+  const clearSwapped = async (eatingOut: boolean) => {
+    const entry = swapEntry;
+    if (!entry) return;
+    setSwapEntry(null);
+    try {
+      await supabase.from('plan_entries').delete().in('id', mealRowIds(entry));
+      if (eatingOut) {
+        await applyAway(eaterIds.map((personId) => ({ day: entry.day, slot: entry.slot, personId, away: true })));
+      }
+    } catch {
+      notify(d.common.genericError, '');
+    }
+    await reload();
+  };
+
   // ---------- per-person view (design D1) ----------
   const viewPerson = eaters.find((p) => p.id === viewPersonId) ?? null;
 
@@ -607,7 +716,7 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
         });
       }
       if (main) {
-        options.push({ label: t.changeForEveryone, onPress: () => setAddTarget({ mode: 'swap', entry: main }) });
+        options.push({ label: t.changeForEveryone, onPress: () => openSwap(main) });
         options.push({ label: t.mealDetails, onPress: () => setOpenEntryId(main.id) });
       }
       options.push({
@@ -679,7 +788,7 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
           onChooseDish: (personIds) => leaveSheet(() => setAddTarget({ mode: 'plate', day, slot, personIds })),
           onChangeDish: (dishId) => {
             const entry = entries.find((x) => x.id === dishId);
-            if (entry) leaveSheet(() => setAddTarget({ mode: 'swap', entry }));
+            if (entry) leaveSheet(() => openSwap(entry));
           },
           onRemoveDish: (dishId) => {
             const plate = splitSlot(entries, day, slot).plates.find((p) => p.dish.id === dishId);
@@ -693,9 +802,10 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
       })()
     : undefined;
 
-  const saveEntry = async (patch: MealPatch) => {
+  /** Write a meal's details: as each one changes (close = false) and again on Done. */
+  const saveEntry = async (patch: MealPatch, close = true) => {
     const entry = openEntry;
-    setOpenEntryId(null);
+    if (close) setOpenEntryId(null);
     if (!entry) return;
     const unchanged =
       JSON.stringify(entry.person_ids) === JSON.stringify(patch.person_ids) &&
@@ -817,31 +927,47 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
     }
   };
 
-  const copyToCurrentWeek = async () => {
+  /** Copy this (past) week's meals to this week or next week, like the past-week sheet on Meal plans. */
+  const copyToWeek = () => {
     const source = entries;
     if (source.length === 0) return;
-    const { planId, count } = await weekEntryCount(householdId, currentWeek);
-    const run = async () => {
-      setBusy(true);
-      try {
-        if (!(await copyEntriesToWeek(householdId, source, currentWeek, planId))) return;
-        invalidateLists('plan', 'groceries');
-        setWeekIso(currentWeek);
-      } finally {
-        setBusy(false);
-      }
-    };
-    if (count > 0) {
-      confirmDestructive({
-        title: d.plan.replaceWeekTitle,
-        message: count === 1 ? d.plan.replaceWeekBodyOne : fmt(d.plan.replaceWeekBodyMany, { count }),
-        confirmLabel: d.plan.replace,
-        cancelLabel: d.common.cancel,
-        onConfirm: () => void run(),
-      });
-      return;
-    }
-    await run();
+    pickOption({
+      title: d.planHome.copyWhich,
+      cancelLabel: d.common.cancel,
+      options: [currentWeek, addWeeks(currentWeek, 1)].map((week) => ({
+        label: `${chipLabel(week)} · ${shortDate(week)}`,
+        onPress: () => {
+          void (async () => {
+            const { planId, count } = await weekEntryCount(householdId, week);
+            const run = async () => {
+              setBusy(true);
+              try {
+                if (!(await copyEntriesToWeek(householdId, source, week, planId))) {
+                  notify(d.common.genericError, '');
+                  return;
+                }
+                invalidateLists('plan', 'groceries');
+                setWeekIso(week);
+              } finally {
+                setBusy(false);
+              }
+            };
+            if (count === 0) {
+              await run();
+              return;
+            }
+            const name = chipLabel(week);
+            confirmDestructive({
+              title: fmt(d.planHome.replaceTitle, { week: name.toLowerCase() }),
+              message: fmt(d.planHome.replaceBody, { week: name, n: count }),
+              confirmLabel: d.plan.replace,
+              cancelLabel: d.common.cancel,
+              onConfirm: () => void run(),
+            });
+          })();
+        },
+      })),
+    });
   };
 
   const deleteWeek = () => {
@@ -944,19 +1070,62 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
     };
   };
 
+  // ---------- change-meal panel data ----------
+  const panelRecipes: PanelRecipe[] = swapEntry
+    ? mains.map((r) => {
+        const total = r.prep_minutes == null && r.cook_minutes == null ? null : (r.prep_minutes ?? 0) + (r.cook_minutes ?? 0);
+        const since = weeksSince(r.id);
+        return {
+          id: r.id,
+          title: r.title,
+          ingredients: (r.ingredients ?? []).map((i) => i.name),
+          meta: [
+            ...(total !== null ? [fmt(t.minutes, { n: total })] : []),
+            ...(since === null ? [t.neverHad] : since > 0 ? [fmt(t.weeksAgo, { n: since })] : []),
+          ],
+        };
+      })
+    : [];
+  const panelIdeasWeek: PanelIdea[] = ideas.map((i) => ({
+    ideaId: i.id,
+    recipeId: i.recipe_id,
+    customTitle: i.custom_title,
+    sub: i.note?.trim() || null,
+  }));
+  const panelIdeasLater: PanelIdea[] = (laterIdeas ?? []).map((i) => ({
+    ideaId: i.id,
+    recipeId: i.recipe_id,
+    customTitle: i.custom_title,
+    sub: fmt(d.routine.ideaFor, { date: shortDate(i.week_start) }),
+  }));
+  /** Dishes that fill what the week is still short of, minus the one being swapped. */
+  const panelSuggestions = swapEntry
+    ? addSuggestions({
+        recipes: addRecipes,
+        ideaRecipeIds: [],
+        plannedRecipeIds: new Set(entries.map((e) => e.recipe_id).filter((id): id is string => !!id)),
+        missing,
+      })
+        .gaps.filter((id) => id !== swapEntry.recipe_id)
+        .slice(0, 4)
+    : [];
+  const chainNames = chainAsk
+    ? eaters
+        .filter((p) => chainAsk.leftovers.some((l) => l.person_ids.includes(p.id)))
+        .map((p) => p.name)
+        .join(', ')
+    : '';
+
   // ---------- derived UI bits ----------
   const addTitle = (() => {
     if (!addTarget) return '';
     if (addTarget.mode === 'add') return `${d.common.days[addTarget.day]} · ${slotLabel(addTarget.slot)}`;
     if (addTarget.mode === 'side') return fmt(t.sideTitle, { title: titleOf(addTarget.entry) });
-    if (addTarget.mode === 'plate') {
-      const name = eaters
-        .filter((p) => addTarget.personIds.includes(p.id))
-        .map((p) => p.name)
-        .join(', ');
-      return `${fmt(t.plateTitle, { name })} · ${d.common.days[addTarget.day]} ${slotLabel(addTarget.slot).toLowerCase()}`;
-    }
-    return fmt(t.swapTitle, { title: titleOf(addTarget.entry) });
+    const name = eaters
+      .filter((p) => addTarget.personIds.includes(p.id))
+      .map((p) => p.name)
+      .join(', ');
+    return `${fmt(t.plateTitle, { name })} · ${d.common.days[addTarget.day]} ${slotLabel(addTarget.slot).toLowerCase()}`;
   })();
   const addSubtitle = (() => {
     if (!addTarget) return undefined;
@@ -984,6 +1153,62 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
   const showFill = !isPastWeek && loaded && open.length > 0;
   const showReview = loaded && entries.length > 0 && !isPastWeek;
   const showBar = showFill || showReview;
+  /** One primary action: AI while several meals are open, then the review. */
+  const fillPrimary = showFill && (open.length >= 3 || !showReview);
+  const outPeople = new Set(absences.map((a) => a.person_id).filter((id) => eaterIds.includes(id))).size;
+  const openIdeas = () => {
+    if (recipeIdeas.length === 1) {
+      setIdeaToPlan(recipeIdeas[0]!);
+      return;
+    }
+    pickOption({
+      title: t.ideasSection,
+      cancelLabel: d.common.cancel,
+      options: recipeIdeas.map((idea) => ({ label: ideaTitle(idea), onPress: () => setIdeaToPlan(idea) })),
+    });
+  };
+  const barButton = ({
+    label,
+    icon,
+    tone,
+    wide = false,
+    a11y,
+    onPress,
+  }: {
+    label?: string;
+    icon?: keyof typeof Ionicons.glyphMap;
+    tone: 'dark' | 'accent' | 'quiet';
+    wide?: boolean;
+    a11y?: string;
+    onPress: () => void;
+  }) => {
+    const fg = tone === 'dark' ? colors.bg : tone === 'accent' ? colors.accentText : colors.text;
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={a11y ?? label}
+        onPress={onPress}
+        style={({ pressed }) => ({
+          flex: wide ? 1 : undefined,
+          minWidth: 50,
+          minHeight: 50,
+          paddingHorizontal: label ? 16 : 0,
+          borderRadius: 12,
+          backgroundColor: tone === 'dark' ? colors.text : tone === 'accent' ? colors.accent : colors.bg,
+          borderWidth: tone === 'quiet' ? 1 : 0,
+          borderColor: colors.border,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 8,
+          opacity: pressed ? 0.85 : 1,
+        })}
+      >
+        {icon ? <Ionicons name={icon} size={18} color={fg} /> : null}
+        {label ? <Text style={{ color: fg, fontFamily: fonts.uiSemi, fontSize: fontSize.base }}>{label}</Text> : null}
+      </Pressable>
+    );
+  };
   const recipeIdeas = ideas.filter((i) => i.recipe_id || i.custom_title);
 
   const iconButton = (icon: keyof typeof Ionicons.glyphMap, label: string, onPress: () => void) => (
@@ -1026,12 +1251,41 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
             </Pressable>
           ) : null}
           <View style={{ flex: 1, gap: 2 }}>
-            <Eyebrow>
-              {new Date().toLocaleDateString(locale, { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()}
-            </Eyebrow>
-            <Title>{t.title}</Title>
+            <Eyebrow>{weekEyebrow.toUpperCase()}</Eyebrow>
+            <Text
+              accessibilityRole="header"
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.7}
+              style={{ color: colors.text, fontFamily: fonts.display, fontSize: fontSize.sectionHead, letterSpacing: -0.3 }}
+            >
+              {weekRange}
+            </Text>
           </View>
-          {!isPastWeek ? iconButton('people-outline', t.homeA11y, () => setHomeOpen(true)) : null}
+          {!isPastWeek ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={outPeople > 0 ? `${t.homeTitle}, ${fmt(t.outCount, { n: outPeople })}` : t.homeTitle}
+              onPress={() => setHomeOpen(true)}
+              hitSlop={4}
+              style={({ pressed }) => ({
+                minHeight: 40,
+                paddingHorizontal: 12,
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: colors.border,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                backgroundColor: pressed ? colors.cardPressed : 'transparent',
+              })}
+            >
+              <Ionicons name="people-outline" size={18} color={colors.text} />
+              <Text style={{ color: colors.text, fontFamily: fonts.uiMedium, fontSize: fontSize.meta }}>
+                {outPeople > 0 ? fmt(t.outCount, { n: outPeople }) : t.eatingOut}
+              </Text>
+            </Pressable>
+          ) : null}
           {iconButton('bulb-outline', t.saveIdeaA11y, () => setIdeaSheetOpen(true))}
         </View>
 
@@ -1091,50 +1345,56 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
 
         {loaded ? (
           <>
-            {/* Progress and balance */}
-            <View style={{ gap: 8 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Text style={{ flex: 1, color: colors.text, fontFamily: fonts.uiSemi, fontSize: fontSize.small }}>
-                  {fmt(t.progress, { planned: progress.planned, total: progress.total })}
+            {/* Status: progress, balance and plan state on one line; ideas on the next */}
+            <View style={{ gap: 4 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                <View
+                  style={{ width: 36, height: 6, borderRadius: 3, backgroundColor: colors.bgGrouped, overflow: 'hidden' }}
+                >
+                  <View
+                    style={{
+                      width: `${progress.total > 0 ? Math.round((progress.planned / progress.total) * 100) : 0}%`,
+                      height: 6,
+                      backgroundColor: colors.text,
+                    }}
+                  />
+                </View>
+                <Text
+                  accessibilityLabel={fmt(t.progress, { planned: progress.planned, total: progress.total })}
+                  style={{ color: colors.text, fontFamily: fonts.uiSemi, fontSize: fontSize.small, marginRight: 2 }}
+                >
+                  {fmt(t.progressShort, { planned: progress.planned, total: progress.total })}
                 </Text>
+                {quotaChips.map((q) => (
+                  <Badge
+                    key={q.category}
+                    label={`${categoryName(q.category)} ${q.planned}/${q.target}`}
+                    accent={!isPastWeek && q.planned < q.target}
+                  />
+                ))}
                 {plan ? <Badge label={approved ? t.approved : t.draft} /> : null}
               </View>
-              <View style={{ height: 6, borderRadius: 3, backgroundColor: colors.bgGrouped, overflow: 'hidden' }}>
-                <View
-                  style={{
-                    width: `${progress.total > 0 ? Math.round((progress.planned / progress.total) * 100) : 0}%`,
-                    height: 6,
-                    backgroundColor: colors.text,
-                  }}
-                />
-              </View>
-              {quotaChips.length > 0 ? (
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                  {quotaChips.map((q) => (
-                    <Badge
-                      key={q.category}
-                      label={`${categoryName(q.category)} ${q.planned}/${q.target}`}
-                      accent={!isPastWeek && q.planned < q.target}
-                    />
-                  ))}
-                </View>
-              ) : null}
               {!isPastWeek && recipeIdeas.length > 0 ? (
-                <View style={{ gap: 6 }}>
-                  <Text style={{ color: colors.textMuted, fontFamily: fonts.uiSemi, fontSize: fontSize.meta }}>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={openIdeas}
+                  style={({ pressed }) => ({
+                    minHeight: 40,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 8,
+                    borderRadius: 8,
+                    backgroundColor: pressed ? colors.cardPressed : 'transparent',
+                  })}
+                >
+                  <Text numberOfLines={1} style={{ flex: 1, color: colors.text, fontFamily: fonts.uiSemi, fontSize: fontSize.meta }}>
                     {recipeIdeas.length === 1 ? t.ideaOne : fmt(t.ideaMany, { n: recipeIdeas.length })}
+                    <Text style={{ color: colors.textMuted, fontFamily: fonts.ui }}>
+                      {` · ${recipeIdeas.map(ideaTitle).join(', ')}`}
+                    </Text>
                   </Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                    {recipeIdeas.map((idea) => (
-                      <Pill
-                        key={idea.id}
-                        label={ideaTitle(idea)}
-                        accessibilityLabel={fmt(d.plan.planIdeaA11y, { title: ideaTitle(idea) })}
-                        onPress={() => setIdeaToPlan(idea)}
-                      />
-                    ))}
-                  </View>
-                </View>
+                  <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+                </Pressable>
               ) : null}
             </View>
 
@@ -1150,9 +1410,9 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
             {isPastWeek && entries.length > 0 ? (
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 <Button
-                  label={d.plan.copyToThisWeek}
+                  label={d.planHome.copyToWeek}
                   kind="secondary"
-                  onPress={() => void copyToCurrentWeek()}
+                  onPress={copyToWeek}
                   loading={busy}
                   style={{ flex: 1 }}
                 />
@@ -1294,58 +1554,26 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
             }),
           }}
         >
-          {showFill ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setAiOpen(true)}
-              style={({ pressed }) => ({
-                flex: 1,
-                minHeight: 50,
-                borderRadius: 12,
-                backgroundColor: colors.text,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8,
-                opacity: pressed ? 0.85 : 1,
-              })}
-            >
-              <Ionicons name="sparkles-outline" size={18} color={colors.bg} />
-              <Text style={{ color: colors.bg, fontFamily: fonts.uiSemi, fontSize: fontSize.base }}>
-                {fmt(t.fillWithAi, { n: open.length })}
-              </Text>
-            </Pressable>
-          ) : null}
-          {showReview ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setReviewOpen(true)}
-              style={({ pressed }) => ({
-                flex: 1,
-                minHeight: 50,
-                borderRadius: 12,
-                backgroundColor: approved ? colors.bg : colors.accent,
-                borderWidth: approved ? 1 : 0,
-                borderColor: colors.border,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6,
-                opacity: pressed ? 0.85 : 1,
-              })}
-            >
-              {approved ? <Ionicons name="checkmark-circle" size={18} color={colors.text} /> : null}
-              <Text
-                style={{
-                  color: approved ? colors.text : colors.accentText,
-                  fontFamily: fonts.uiSemi,
-                  fontSize: fontSize.base,
-                }}
-              >
-                {approved ? t.approved : t.review}
-              </Text>
-            </Pressable>
-          ) : null}
+          {approved ? (
+            <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', gap: 10 }}>
+              {barButton({ label: t.approved, icon: 'checkmark-circle', tone: 'quiet', onPress: () => setReviewOpen(true) })}
+              {showFill
+                ? barButton({ icon: 'sparkles-outline', tone: 'quiet', a11y: fmt(t.fillWithAi, { n: open.length }), onPress: () => setAiOpen(true) })
+                : null}
+            </View>
+          ) : fillPrimary ? (
+            <>
+              {barButton({ label: fmt(t.fillWithAi, { n: open.length }), icon: 'sparkles-outline', tone: 'dark', wide: true, onPress: () => setAiOpen(true) })}
+              {showReview ? barButton({ label: t.reviewShort, tone: 'quiet', a11y: t.review, onPress: () => setReviewOpen(true) }) : null}
+            </>
+          ) : (
+            <>
+              {barButton({ label: t.review, tone: 'accent', wide: true, onPress: () => setReviewOpen(true) })}
+              {showFill
+                ? barButton({ icon: 'sparkles-outline', tone: 'quiet', a11y: fmt(t.fillWithAi, { n: open.length }), onPress: () => setAiOpen(true) })
+                : null}
+            </>
+          )}
         </View>
       ) : null}
 
@@ -1362,15 +1590,101 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
         }
         ideaIdByRecipe={addTarget?.mode === 'side' ? new Map() : ideaIdByRecipe}
         gapsLabel={addTarget?.mode === 'side' ? t.sides : undefined}
+        leftovers={addTarget !== null && addTarget.mode !== 'side'}
         onPick={(pick) => void onPick(pick)}
         onClose={() => {
           const target = addTarget;
           setAddTarget(null);
-          if (target && target.mode !== 'add' && target.mode !== 'plate' && !viewPerson) {
+          if (target && target.mode === 'side' && !viewPerson) {
             afterSheet(() => setOpenEntryId(target.entry.id));
           }
         }}
       />
+
+      <Modal
+        visible={swapEntry !== null || chainAsk !== null}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          setSwapEntry(null);
+          setChainAsk(null);
+        }}
+      >
+        <View style={{ flex: 1 }}>
+          {swapEntry ? (
+            <ChangeMealPanel
+              title={`${d.common.days[swapEntry.day]} · ${slotLabel(swapEntry.slot)}`}
+              currentTitle={titleOf(swapEntry)}
+              recipes={panelRecipes}
+              ideasWeek={panelIdeasWeek}
+              ideasLater={panelIdeasLater}
+              suggestions={panelSuggestions}
+              suggestionsLabel={t.gapsSection}
+              leftovers={{ label: t.leftovers, hint: t.leftoversHint }}
+              onPick={pickSwap}
+              onLeaveEmpty={() => void clearSwapped(false)}
+              onEatingOut={() => void clearSwapped(true)}
+              onClose={() => {
+                const entry = swapEntry;
+                setSwapEntry(null);
+                if (!viewPerson) afterSheet(() => setOpenEntryId(entry.id));
+              }}
+            />
+          ) : null}
+          {chainAsk ? (
+            <PlannerPanel
+              title={fmt(d.routine.chainQ, {
+                name: chainNames,
+                title: titleOf(chainAsk.entry),
+                day: d.common.days[chainAsk.leftovers[0]!.day]!,
+              })}
+              onClose={() => setChainAsk(null)}
+              footer={<Button label={d.routine.replace} onPress={answerChain} />}
+            >
+              {(
+                [
+                  [
+                    'new',
+                    fmt(d.routine.chainNew, {
+                      name: chainNames,
+                      title:
+                        (chainAsk.pick.recipeId ? recipeById.get(chainAsk.pick.recipeId)?.title : chainAsk.pick.customTitle) ??
+                        d.plan.recipeFallback,
+                    }),
+                    d.routine.chainNewHint,
+                  ],
+                  ['off', fmt(d.routine.chainOff, { name: chainNames }), d.routine.chainOffHint],
+                ] as const
+              ).map(([value, label, hint]) => {
+                const selected = chainChoice === value;
+                return (
+                  <Pressable
+                    key={value}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected }}
+                    onPress={() => setChainChoice(value)}
+                    style={{
+                      flexDirection: 'row',
+                      gap: 10,
+                      alignItems: 'flex-start',
+                      padding: 12,
+                      borderRadius: 14,
+                      borderWidth: selected ? 2 : 1,
+                      borderColor: selected ? colors.text : colors.border,
+                    }}
+                  >
+                    <Ionicons name={selected ? 'radio-button-on' : 'radio-button-off'} size={22} color={colors.text} />
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text style={{ color: colors.text, fontFamily: fonts.uiMedium, fontSize: fontSize.base }}>{label}</Text>
+                      <Muted>{hint}</Muted>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </PlannerPanel>
+          ) : null}
+        </View>
+      </Modal>
 
       <MealSheet
         visible={openEntry !== null}
@@ -1393,7 +1707,7 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
           if (!openEntry) return;
           const entry = openEntry;
           setOpenEntryId(null);
-          afterSheet(() => setAddTarget({ mode: 'swap', entry }));
+          afterSheet(() => openSwap(entry));
         }}
         onAddSide={() => {
           if (!openEntry) return;
@@ -1403,6 +1717,7 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
         }}
         onRemoveSide={(id) => void removeSide(id)}
         onSave={(patch) => void saveEntry(patch)}
+        onChange={(patch) => void saveEntry(patch, false)}
         onRemove={() => void removeMeal()}
         onClose={() => setOpenEntryId(null)}
         dishes={openDishes}
@@ -1415,6 +1730,7 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
         eaters={eaters}
         absences={absences}
         schoolChild={schoolChild}
+        initialPersonId={viewPerson?.id ?? null}
         onChange={(changes) => void applyAway(changes)}
         loadLastWeek={loadLastWeekAbsences}
         onClose={() => {

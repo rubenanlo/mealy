@@ -121,7 +121,7 @@ describe('PlanHome', () => {
     await waitFor(() => expect(getByText('Last week · Nov 2–8')).toBeTruthy());
     fireEvent.press(getByText('Last week · Nov 2–8'));
     expect(getByText('Week of Nov 2')).toBeTruthy();
-    expect(getByText('Instructions that week')).toBeTruthy();
+    expect(getByText('Other tasks that week')).toBeTruthy();
     expect(getByText('Clean the oven')).toBeTruthy();
     expect(getByText('Copy to a week')).toBeTruthy();
   });

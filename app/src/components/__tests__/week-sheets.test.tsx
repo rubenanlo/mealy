@@ -6,6 +6,7 @@ import { ThemeProvider } from '@/lib/theme';
 import { SCHOOL_LUNCH_DAYS } from '@/lib/ai-week';
 import type { PlanAbsence, PlanEntry } from '@/lib/plan';
 
+import { ChangeMealPanel } from '../change-meal-panel';
 import { AddMealSheet } from '../week/add-meal-sheet';
 import { DayRows } from '../week/day-rows';
 import { HomeSheet } from '../week/home-sheet';
@@ -143,6 +144,101 @@ describe('week page sheets', () => {
     expect(getByText('For Marc')).toBeTruthy();
     fireEvent.press(getByText('+ Add a dish for Ruben'));
     expect(onAddFor).toHaveBeenCalledWith(0, 'dinner', ['r']);
+  });
+
+  it('tapping a dish opens its recipe, ··· opens its details, and who is out shows on that meal', () => {
+    const onOpenDish = jest.fn();
+    const onOpen = jest.fn();
+    const { getByLabelText, getAllByText } = wrap(
+      <DayRows
+        weekIso={WEEK}
+        entries={[entry({})]}
+        absences={[{ day: 0, slot: 'dinner', person_id: 'm' }]}
+        eaters={eaters}
+        recipeById={recipeById}
+        todayIndex={-1}
+        readOnly={false}
+        onAdd={() => {}}
+        onOpen={onOpen}
+        onAddFor={() => {}}
+        onOpenDish={onOpenDish}
+        onHome={() => {}}
+      />
+    );
+    fireEvent.press(getByLabelText('Open recipe: Salmon with dill'));
+    expect(onOpenDish).toHaveBeenCalledWith(expect.objectContaining({ id: 'e1' }));
+    expect(onOpen).not.toHaveBeenCalled();
+    fireEvent.press(getByLabelText('Edit Salmon with dill'));
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: 'e1' }));
+    // Marc's hollow face sits on Monday dinner only, not on the day line.
+    expect(getAllByText('M').length).toBe(1);
+  });
+
+  it('meal sheet saves each change as it is made and keeps Remove', () => {
+    const onChange = jest.fn();
+    const onRemove = jest.fn();
+    const { getByText, getByPlaceholderText } = wrap(
+      <MealSheet
+        visible
+        entry={entry({})}
+        sides={[]}
+        heading="Monday · Dinner"
+        title="Salmon with dill"
+        coverPath={null}
+        hasRecipe
+        eaters={eaters}
+        away={new Set()}
+        employeeName="Rosa"
+        sideTitle={() => ''}
+        onOpenRecipe={() => {}}
+        onSwap={() => {}}
+        onAddSide={() => {}}
+        onRemoveSide={() => {}}
+        onSave={() => {}}
+        onChange={onChange}
+        onRemove={onRemove}
+        onClose={() => {}}
+      />
+    );
+    expect(getByText('The dish')).toBeTruthy();
+    expect(getByText('More')).toBeTruthy();
+    fireEvent.press(getByText('Rosa'));
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ assigned_cook: 'employee', cook_part: false }));
+    // The cook's note stays folded until asked for.
+    fireEvent.press(getByText('Instructions for the cook'));
+    expect(getByPlaceholderText(/./)).toBeTruthy();
+    fireEvent.press(getByText('Remove this meal'));
+    expect(onRemove).toHaveBeenCalled();
+  });
+
+  it('swap panel: ideas, dishes that fill the gaps, leave empty and eating out', () => {
+    const onPick = jest.fn();
+    const onLeaveEmpty = jest.fn();
+    const onEatingOut = jest.fn();
+    const { getByText, getByLabelText } = wrap(
+      <ChangeMealPanel
+        title="Monday · Dinner"
+        currentTitle="Salmon with dill"
+        recipes={[{ id: 'hake', title: 'Hake in salsa verde', ingredients: ['hake'], meta: ['35 min'] }]}
+        ideasWeek={[{ ideaId: 'i1', recipeId: null, customTitle: 'Ceviche', sub: null }]}
+        ideasLater={[]}
+        suggestions={['hake']}
+        suggestionsLabel="Fills the gaps"
+        onPick={onPick}
+        onLeaveEmpty={onLeaveEmpty}
+        onEatingOut={onEatingOut}
+        onClose={() => {}}
+      />
+    );
+    expect(getByText('FILLS THE GAPS')).toBeTruthy();
+    fireEvent.press(getByLabelText('Use Hake in salsa verde'));
+    expect(onPick).toHaveBeenCalledWith({ recipeId: 'hake', customTitle: null });
+    fireEvent.press(getByLabelText('Use Ceviche'));
+    expect(onPick).toHaveBeenLastCalledWith({ recipeId: null, customTitle: 'Ceviche', ideaId: 'i1' });
+    fireEvent.press(getByText('Leave it empty'));
+    expect(onLeaveEmpty).toHaveBeenCalled();
+    fireEvent.press(getByText('We’re eating out'));
+    expect(onEatingOut).toHaveBeenCalled();
   });
 
   it('meal sheet opens the recipe at the right servings and saves a part-only hand-off', () => {
@@ -324,6 +420,43 @@ describe('week page sheets', () => {
     fireEvent.changeText(getByPlaceholderText('Search or type a meal'), 'Pizza night');
     fireEvent.press(getByText('Add “Pizza night” as a meal'));
     expect(onPick).toHaveBeenLastCalledWith({ customTitle: 'Pizza night' });
+  });
+
+  it('add sheet: a Leftovers row adds a leftovers meal in one tap', () => {
+    const onPick = jest.fn();
+    const { getByLabelText, getByText, queryByText, rerender } = wrap(
+      <AddMealSheet
+        visible
+        leftovers
+        title="Wednesday · Dinner"
+        recipes={[]}
+        suggestions={{ ideas: [], gaps: [], recent: [] }}
+        customIdeas={[]}
+        ideaIdByRecipe={new Map()}
+        onPick={onPick}
+        onClose={() => {}}
+      />
+    );
+    expect(getByText('Eat what\'s already in the fridge')).toBeTruthy();
+    fireEvent.press(getByLabelText('Add Leftovers'));
+    expect(onPick).toHaveBeenCalledWith({ customTitle: 'Leftovers' });
+    rerender(
+      <SafeAreaProvider initialMetrics={metrics}>
+        <ThemeProvider>
+          <AddMealSheet
+            visible
+            title="Sides"
+            recipes={[]}
+            suggestions={{ ideas: [], gaps: [], recent: [] }}
+            customIdeas={[]}
+            ideaIdByRecipe={new Map()}
+            onPick={onPick}
+            onClose={() => {}}
+          />
+        </ThemeProvider>
+      </SafeAreaProvider>
+    );
+    expect(queryByText('Leftovers')).toBeNull();
   });
 
   it('review sheet lists her dishes and tasks and approves', () => {

@@ -49,8 +49,11 @@ describe('WeekPage', () => {
         </ThemeProvider>
       </SafeAreaProvider>
     );
-    expect(getByText('Meal plans')).toBeTruthy();
-    await waitFor(() => expect(getByText('0 of 14 meals planned')).toBeTruthy());
+    // The header names the week being planned.
+    expect(getByText('THIS WEEK')).toBeTruthy();
+    expect(getAllByText('Nov 9 – 15').length).toBeGreaterThan(0);
+    expect(getByText('Eating out')).toBeTruthy();
+    await waitFor(() => expect(getByText('0 of 14')).toBeTruthy());
     expect(getByText('This week')).toBeTruthy();
     expect(getByText('Last week')).toBeTruthy();
     // Sunday: only today's two meals are left this week.

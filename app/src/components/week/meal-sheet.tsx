@@ -47,9 +47,10 @@ export interface DishActions {
 }
 
 /**
- * Meal details (design A): open the recipe, swap it, and set who eats,
- * guests, who cooks (whole dish or only part), the cook's note and sides,
- * all on one short sheet. "Done" saves.
+ * Meal details (design A), in three groups: the dish (recipe, swap, same or
+ * different dishes), who cooks (whole dish or only part, with the note), and
+ * more (who eats, guests, sides, remove). Each change saves as it's made
+ * through `onChange`; "Done" saves whatever is left and closes.
  */
 export function MealSheet({
   visible,
@@ -68,6 +69,7 @@ export function MealSheet({
   onAddSide,
   onRemoveSide,
   onSave,
+  onChange,
   onRemove,
   onClose,
   dishes = [],
@@ -91,6 +93,8 @@ export function MealSheet({
   onAddSide: () => void;
   onRemoveSide: (id: string) => void;
   onSave: (patch: MealPatch) => void;
+  /** Save a change right away, keeping the sheet open. */
+  onChange?: (patch: MealPatch) => void;
   onRemove: () => void;
   onClose: () => void;
   /** Every dish of this meal (main + one per group of people), for design B2/B3. */
@@ -111,6 +115,8 @@ export function MealSheet({
   /** The person whose "Move to" menu is open (design B3). */
   const [moving, setMoving] = useState<string | null>(null);
   const [confirmMerge, setConfirmMerge] = useState(false);
+  /** The cook's note is folded to one line until it's needed. */
+  const [noteOpen, setNoteOpen] = useState(false);
 
   // Re-seed the draft when a different meal opens (not on every reload).
   const entryId = visible ? (entry?.id ?? null) : null;
@@ -124,6 +130,7 @@ export function MealSheet({
     setDraft(null);
     setMoving(null);
     setConfirmMerge(false);
+    setNoteOpen(!!entry.instructions);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entryId]);
 
@@ -146,20 +153,33 @@ export function MealSheet({
     const current = personIds.length === 0 ? home.map((p) => p.id) : personIds;
     const next = current.includes(id) ? current.filter((p) => p !== id) : [...current, id];
     // Everyone home selected again = "whole household" ([]).
-    setPersonIds(next.length === home.length && home.every((p) => next.includes(p.id)) ? [] : next);
+    const ids = next.length === home.length && home.every((p) => next.includes(p.id)) ? [] : next;
+    setPersonIds(ids);
+    onChange?.(patchOf({ personIds: ids }));
   };
 
   const splitOn = split && !!dishActions && !entry?.leftover_of;
-  const save = () => {
-    onSave({
+  /** The sheet's values as a patch, with any just-changed value passed in. */
+  const patchOf = (
+    next: { personIds?: string[]; guests?: number; cook?: CookChoice } = {}
+  ): MealPatch => {
+    const nextCook = next.cook ?? cook;
+    return {
       // Different dishes: who eats what was already saved by the moves.
-      person_ids: splitOn && entry ? entry.person_ids : effective,
-      guest_count: guests,
-      assigned_cook: cook === 'family' ? 'family' : 'employee',
-      cook_part: cook === 'part',
+      person_ids:
+        splitOn && entry
+          ? entry.person_ids
+          : next.personIds
+            ? effectivePersonIds(next.personIds, eaterIds, away)
+            : effective,
+      guest_count: next.guests ?? guests,
+      assigned_cook: nextCook === 'family' ? 'family' : 'employee',
+      cook_part: nextCook === 'part',
       instructions: note.trim() || null,
-    });
+    };
   };
+  const save = () => onSave(patchOf());
+  const noteShown = noteOpen || cook === 'part' || note.trim().length > 0;
 
   const cookOptions: [CookChoice, string][] = employeeName
     ? [
@@ -181,12 +201,10 @@ export function MealSheet({
         )
       }
       footer={
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Button label={t.remove} kind="secondary" onPress={onRemove} style={{ flex: 1 }} />
-          <Button label={t.done} onPress={save} style={{ flex: 2 }} />
-        </View>
+        <Button label={t.done} onPress={save} />
       }
     >
+      {hasRecipe || dishActions ? <Eyebrow>{t.groupDish}</Eyebrow> : null}
       {hasRecipe ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <RecipeImage path={coverPath} style={{ width: 64, height: 64, borderRadius: radius.thumb }} iconSize={20} />
@@ -287,6 +305,64 @@ export function MealSheet({
         />
       ) : null}
 
+      {cookOptions.length > 0 ? (
+        <View style={{ gap: 8 }}>
+          <Eyebrow>{d.plan.whoCooks}</Eyebrow>
+          <View style={{ flexDirection: 'row', backgroundColor: colors.bgGrouped, borderRadius: 10, padding: 3 }}>
+            {cookOptions.map(([value, label]) => {
+              const selected = cook === value;
+              return (
+                <Pressable
+                  key={value}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  onPress={() => {
+                    setCook(value);
+                    onChange?.(patchOf({ cook: value }));
+                  }}
+                  style={{
+                    flex: 1,
+                    minHeight: 40,
+                    borderRadius: 8,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: selected ? colors.bg : 'transparent',
+                  }}
+                >
+                  <Text
+                    numberOfLines={1}
+                    style={{
+                      color: colors.text,
+                      fontFamily: selected ? fonts.uiSemi : fonts.uiMedium,
+                      fontSize: fontSize.small,
+                    }}
+                  >
+                    {label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
+
+      {noteShown ? (
+        <View style={{ gap: 8 }}>
+          <Eyebrow>{d.plan.cookNote}</Eyebrow>
+          <Field
+            value={note}
+            onChangeText={setNote}
+            onBlur={() => onChange?.(patchOf())}
+            autoFocus={noteOpen && !entry?.instructions}
+            placeholder={cook === 'part' ? t.partPlaceholder : d.plan.cookNotePlaceholder}
+            multiline
+            style={{ minHeight: 56, textAlignVertical: 'top' }}
+          />
+        </View>
+      ) : null}
+
+      <Eyebrow>{t.groupMore}</Eyebrow>
+
       <View style={{ gap: 6 }}>
         {splitOn ? null : (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
@@ -319,75 +395,53 @@ export function MealSheet({
         <Text style={{ flex: 1, color: colors.text, fontFamily: fonts.uiSemi, fontSize: fontSize.small }}>
           {d.plan.guests}
         </Text>
-        <GuestStepper value={guests} onChange={setGuests} />
-      </View>
-
-      {cookOptions.length > 0 ? (
-        <View style={{ gap: 8 }}>
-          <Text style={{ color: colors.text, fontFamily: fonts.uiSemi, fontSize: fontSize.small }}>
-            {d.plan.whoCooks}
-          </Text>
-          <View style={{ flexDirection: 'row', backgroundColor: colors.bgGrouped, borderRadius: 10, padding: 3 }}>
-            {cookOptions.map(([value, label]) => {
-              const selected = cook === value;
-              return (
-                <Pressable
-                  key={value}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  onPress={() => setCook(value)}
-                  style={{
-                    flex: 1,
-                    minHeight: 40,
-                    borderRadius: 8,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: selected ? colors.bg : 'transparent',
-                  }}
-                >
-                  <Text
-                    numberOfLines={1}
-                    style={{
-                      color: colors.text,
-                      fontFamily: selected ? fonts.uiSemi : fonts.uiMedium,
-                      fontSize: fontSize.small,
-                    }}
-                  >
-                    {label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-      ) : null}
-
-      <View style={{ gap: 8 }}>
-        <Eyebrow>{d.plan.cookNote}</Eyebrow>
-        <Field
-          value={note}
-          onChangeText={setNote}
-          placeholder={cook === 'part' ? t.partPlaceholder : d.plan.cookNotePlaceholder}
-          multiline
-          style={{ minHeight: 56, textAlignVertical: 'top' }}
+        <GuestStepper
+          value={guests}
+          onChange={(n) => {
+            setGuests(n);
+            onChange?.(patchOf({ guests: n }));
+          }}
         />
       </View>
 
-      <View style={{ gap: 8 }}>
-        <Text style={{ color: colors.text, fontFamily: fonts.uiSemi, fontSize: fontSize.small }}>{t.sides}</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {sides.map((side) => (
-            <Pill
-              key={side.id}
-              label={`${sideTitle(side)}  ×`}
-              selected
-              accessibilityLabel={fmt(t.removeSideA11y, { title: sideTitle(side) })}
-              onPress={() => onRemoveSide(side.id)}
-            />
-          ))}
-          <Pill label={t.addSide} tone="accent" onPress={onAddSide} />
-        </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+        <Text style={{ color: colors.text, fontFamily: fonts.uiSemi, fontSize: fontSize.small, marginRight: 4 }}>
+          {t.sides}
+        </Text>
+        {sides.map((side) => (
+          <Pill
+            key={side.id}
+            label={`${sideTitle(side)}  ×`}
+            selected
+            accessibilityLabel={fmt(t.removeSideA11y, { title: sideTitle(side) })}
+            onPress={() => onRemoveSide(side.id)}
+          />
+        ))}
+        <Pill label={t.addSide} tone="accent" onPress={onAddSide} />
       </View>
+
+      {noteShown ? null : (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => setNoteOpen(true)}
+          style={({ pressed }) => ({
+            minHeight: minTapTarget,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+            borderRadius: radius.control,
+            backgroundColor: pressed ? colors.cardPressed : 'transparent',
+          })}
+        >
+          <Text style={{ flex: 1, color: colors.text, fontFamily: fonts.uiSemi, fontSize: fontSize.small }}>
+            {d.plan.cookNote}
+          </Text>
+          <Text style={{ color: colors.textMuted, fontFamily: fonts.ui, fontSize: fontSize.small }}>{t.noteAdd}</Text>
+          <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+        </Pressable>
+      )}
+
+      <LinkButton label={t.removeMeal} onPress={onRemove} textStyle={{ fontSize: fontSize.small, color: colors.danger }} />
     </WeekSheet>
   );
 }
