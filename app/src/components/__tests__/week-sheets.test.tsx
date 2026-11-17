@@ -21,6 +21,8 @@ const wrap = (ui: React.ReactElement) =>
   );
 
 const WEEK = '2026-11-16';
+/** A week that never turns past, so every meal stays tappable. */
+const FUTURE_WEEK = '2099-01-05';
 const eaters = [
   { id: 'r', name: 'Ruben' },
   { id: 'm', name: 'Marc' },
@@ -251,10 +253,10 @@ describe('week page sheets', () => {
 
   it('school chip marks the child away for the usual school lunches', () => {
     const onChange = jest.fn();
-    const { getByRole } = wrap(
+    const { getByText } = wrap(
       <HomeSheet
         visible
-        weekIso={WEEK}
+        weekIso={FUTURE_WEEK}
         eaters={eaters}
         absences={[]}
         schoolChild={eaters[1]!}
@@ -262,10 +264,39 @@ describe('week page sheets', () => {
         onClose={() => {}}
       />
     );
-    fireEvent.press(getByRole('switch'));
+    fireEvent.press(getByText('Marc'));
+    fireEvent.press(getByText('Marc at school (Mon Tue Thu Fri)'));
     expect(onChange).toHaveBeenCalledWith(
       SCHOOL_LUNCH_DAYS.map((day) => ({ day, slot: 'lunch', personId: 'm', away: true }))
     );
+  });
+
+  it('eating out sheet: one person per tab, tap a meal, and a summary for everyone', () => {
+    const onChange = jest.fn();
+    const absences: PlanAbsence[] = [
+      { day: 5, slot: 'dinner', person_id: 'r' },
+      { day: 6, slot: 'lunch', person_id: 'r' },
+      { day: 6, slot: 'lunch', person_id: 'm' },
+    ];
+    const { getByText, getByLabelText } = wrap(
+      <HomeSheet
+        visible
+        weekIso={FUTURE_WEEK}
+        eaters={eaters}
+        absences={absences}
+        schoolChild={null}
+        onChange={onChange}
+        onClose={() => {}}
+      />
+    );
+    // Opens on the first person: Ruben's own week.
+    expect(getByText(/Ruben · out for 2 of 14 meals/)).toBeTruthy();
+    fireEvent.press(getByLabelText('Ruben, Sunday Dinner: home'));
+    expect(onChange).toHaveBeenCalledWith([{ day: 6, slot: 'dinner', personId: 'r', away: true }]);
+    fireEvent.press(getByText('Everyone'));
+    expect(getByText('Sat dinner · Sun lunch')).toBeTruthy();
+    expect(getByText('Sat dinner · only Marc')).toBeTruthy();
+    expect(getByText('Sun lunch · everyone out')).toBeTruthy();
   });
 
   it('add sheet: ideas first, one tap picks, typing adds a free-text meal', () => {
