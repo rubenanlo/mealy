@@ -68,6 +68,7 @@ function UpNextSingle({
       accessibilityLabel={`${t.upNext}: ${when}, ${cell.titles.join(', ')}`}
       onPress={onPress}
       style={({ pressed }) => ({
+        flex: 1,
         borderRadius: radius.card * 2,
         borderWidth: 1,
         borderColor: colors.border,
@@ -85,7 +86,7 @@ function UpNextSingle({
       </View>
       <View style={{ padding: 14, gap: 6, flex: 1 }}>
         <Eyebrow>{when}</Eyebrow>
-        <Text style={{ color: colors.text, fontFamily: fonts.displaySemi, fontSize: fontSize.cardTitle + 3, lineHeight: 26 }}>
+        <Text numberOfLines={2} style={{ color: colors.text, fontFamily: fonts.displaySemi, fontSize: fontSize.cardTitle + 3, lineHeight: 26 }}>
           {main}
           {sides.length > 0 ? (
             <Text style={{ color: colors.textMuted, fontFamily: fonts.ui, fontSize: fontSize.base }}>
@@ -137,7 +138,7 @@ function UpNextStack({
 
   if (fanned) {
     return (
-      <View style={{ gap: 10 }}>
+      <View style={{ flex: 1, gap: 10 }}>
         <Eyebrow>{`${when} · ${fmt(t.nDishes, { n: dishes.length })}`}</Eyebrow>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
           {dishes.map((dish, i) => (
@@ -154,9 +155,9 @@ function UpNextStack({
                 transform: [{ rotate: dishes.length === 2 ? (i === 0 ? '-1.2deg' : '1.2deg') : '0deg' }],
               }}
             >
-              <RecipeImage path={dish.cover} style={{ width: '100%', height: 100 }} iconSize={22} />
+              <RecipeImage path={dish.cover} style={{ width: '100%', height: 90 }} iconSize={22} />
               <View style={{ padding: 10, gap: 4, flex: 1 }}>
-                <Text numberOfLines={3} style={{ color: colors.text, fontFamily: fonts.uiSemi, fontSize: fontSize.base, lineHeight: 20 }}>
+                <Text numberOfLines={2} style={{ color: colors.text, fontFamily: fonts.uiSemi, fontSize: fontSize.base, lineHeight: 20 }}>
                   {dish.title}
                   {dish.sides.length > 0 ? (
                     <Text style={{ color: colors.textMuted, fontFamily: fonts.ui, fontSize: fontSize.small }}>
@@ -164,7 +165,7 @@ function UpNextStack({
                     </Text>
                   ) : null}
                 </Text>
-                <Muted numberOfLines={2}>{[who(dish), serves(dish)].filter(Boolean).join(' · ')}</Muted>
+                <Muted numberOfLines={1}>{[who(dish), serves(dish)].filter(Boolean).join(' · ')}</Muted>
                 {dish.recipeId ? (
                   <Button
                     label={t.openRecipe}
@@ -184,13 +185,15 @@ function UpNextStack({
     );
   }
 
+  const shown = dishes.slice(0, 2);
   return (
-    <View>
+    <View style={{ flex: 1 }}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={fmt(t.dishesA11y, { when, n: dishes.length, titles: dishes.map((x) => x.title).join(', ') })}
         onPress={toggle}
         style={({ pressed }) => ({
+          flex: 1,
           borderRadius: radius.card * 2,
           borderWidth: 1,
           borderColor: colors.border,
@@ -211,17 +214,19 @@ function UpNextStack({
             <Badge label={fmt(t.nDishes, { n: dishes.length })} />
           </View>
         </View>
-        <View style={{ padding: 14, gap: 8 }}>
+        <View style={{ padding: 14, gap: 8, flex: 1 }}>
           <Eyebrow>{when}</Eyebrow>
-          {dishes.map((dish, i) => (
+          {/* One line per dish so the deck stays as short as a single-dish card. */}
+          {shown.map((dish, i) => (
             <View key={`${dish.title}-${i}`} style={{ gap: 2 }}>
-              <Text numberOfLines={2} style={{ color: colors.text, fontFamily: fonts.displaySemi, fontSize: fontSize.cardTitle + 1, lineHeight: 23 }}>
+              <Text numberOfLines={1} style={{ color: colors.text, fontFamily: fonts.displaySemi, fontSize: fontSize.cardTitle + 1, lineHeight: 23 }}>
                 {dish.title}
               </Text>
               <Muted numberOfLines={1}>{[who(dish), serves(dish)].filter(Boolean).join(' · ')}</Muted>
             </View>
           ))}
-          <Button label={fmt(t.seeDishes, { n: dishes.length })} kind="secondary" onPress={toggle} style={{ marginTop: 4 }} />
+          {dishes.length > shown.length ? <Muted>{fmt(t.moreDishes, { n: dishes.length - shown.length })}</Muted> : null}
+          <Button label={fmt(t.seeDishes, { n: dishes.length })} kind="secondary" onPress={toggle} style={{ marginTop: 'auto' }} />
         </View>
       </Pressable>
       {/* The deck: two card edges peeking out under the top card. */}
