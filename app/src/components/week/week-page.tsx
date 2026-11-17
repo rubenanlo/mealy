@@ -1590,6 +1590,7 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
         }
         ideaIdByRecipe={addTarget?.mode === 'side' ? new Map() : ideaIdByRecipe}
         gapsLabel={addTarget?.mode === 'side' ? t.sides : undefined}
+        leftovers={addTarget !== null && addTarget.mode !== 'side'}
         onPick={(pick) => void onPick(pick)}
         onClose={() => {
           const target = addTarget;
@@ -1619,6 +1620,7 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
               ideasLater={panelIdeasLater}
               suggestions={panelSuggestions}
               suggestionsLabel={t.gapsSection}
+              leftovers={{ label: t.leftovers, hint: t.leftoversHint }}
               onPick={pickSwap}
               onLeaveEmpty={() => void clearSwapped(false)}
               onEatingOut={() => void clearSwapped(true)}

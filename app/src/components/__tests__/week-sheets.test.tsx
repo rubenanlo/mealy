@@ -422,6 +422,43 @@ describe('week page sheets', () => {
     expect(onPick).toHaveBeenLastCalledWith({ customTitle: 'Pizza night' });
   });
 
+  it('add sheet: a Leftovers row adds a leftovers meal in one tap', () => {
+    const onPick = jest.fn();
+    const { getByLabelText, getByText, queryByText, rerender } = wrap(
+      <AddMealSheet
+        visible
+        leftovers
+        title="Wednesday · Dinner"
+        recipes={[]}
+        suggestions={{ ideas: [], gaps: [], recent: [] }}
+        customIdeas={[]}
+        ideaIdByRecipe={new Map()}
+        onPick={onPick}
+        onClose={() => {}}
+      />
+    );
+    expect(getByText('Eat what\'s already in the fridge')).toBeTruthy();
+    fireEvent.press(getByLabelText('Add Leftovers'));
+    expect(onPick).toHaveBeenCalledWith({ customTitle: 'Leftovers' });
+    rerender(
+      <SafeAreaProvider initialMetrics={metrics}>
+        <ThemeProvider>
+          <AddMealSheet
+            visible
+            title="Sides"
+            recipes={[]}
+            suggestions={{ ideas: [], gaps: [], recent: [] }}
+            customIdeas={[]}
+            ideaIdByRecipe={new Map()}
+            onPick={onPick}
+            onClose={() => {}}
+          />
+        </ThemeProvider>
+      </SafeAreaProvider>
+    );
+    expect(queryByText('Leftovers')).toBeNull();
+  });
+
   it('review sheet lists her dishes and tasks and approves', () => {
     const onApprove = jest.fn();
     const onTasksChange = jest.fn();

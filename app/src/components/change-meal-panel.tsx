@@ -103,6 +103,7 @@ export function ChangeMealPanel({
   ideasLater,
   suggestions,
   suggestionsLabel,
+  leftovers,
   onPick,
   onLeaveEmpty,
   onEatingOut,
@@ -110,6 +111,8 @@ export function ChangeMealPanel({
 }: {
   /** Heading over `suggestions`; default "Fits your routine". */
   suggestionsLabel?: string;
+  /** Offer a one-tap "Leftovers" meal as the first row. */
+  leftovers?: { label: string; hint: string };
   title: string;
   currentTitle: string | null;
   recipes: PanelRecipe[];
@@ -270,6 +273,7 @@ export function ChangeMealPanel({
         </View>
       ) : (
         <>
+          {leftovers ? row('leftovers', leftovers.label, leftovers.hint, { recipeId: null, customTitle: leftovers.label }) : null}
           {ideasWeek.length > 0 ? (
             <View>
               {label(t.ideasWeek)}

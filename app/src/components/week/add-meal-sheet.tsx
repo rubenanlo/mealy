@@ -46,6 +46,7 @@ export function AddMealSheet({
   customIdeas,
   ideaIdByRecipe,
   gapsLabel,
+  leftovers = false,
   onPick,
   onClose,
 }: {
@@ -60,6 +61,8 @@ export function AddMealSheet({
   ideaIdByRecipe: ReadonlyMap<string, string>;
   /** Overrides the "Fills the gaps" heading (side mode). */
   gapsLabel?: string;
+  /** Offer a one-tap "Leftovers" meal as the first row. */
+  leftovers?: boolean;
   onPick: (pick: AddPick) => void;
   onClose: () => void;
 }) {
@@ -191,6 +194,51 @@ export function AddMealSheet({
         </>
       ) : (
         <>
+          {leftovers ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={fmt(t.addA11y, { title: t.leftovers })}
+              onPress={() => onPick({ customTitle: t.leftovers })}
+              style={({ pressed }) => ({
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 12,
+                minHeight: 56,
+                borderRadius: radius.card,
+                backgroundColor: pressed ? colors.cardPressed : 'transparent',
+              })}
+            >
+              <View
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: radius.thumb,
+                  backgroundColor: colors.bgGrouped,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="refresh-outline" size={20} color={colors.textMuted} />
+              </View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={{ color: colors.text, fontFamily: fonts.uiMedium, fontSize: fontSize.base }}>{t.leftovers}</Text>
+                <Muted numberOfLines={1}>{t.leftoversHint}</Muted>
+              </View>
+              <View
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="add" size={22} color={colors.accent} />
+              </View>
+            </Pressable>
+          ) : null}
           {suggestions.ideas.length > 0 || customIdeas.length > 0 ? (
             <View style={{ gap: 4 }}>
               <Eyebrow>{t.ideasSection}</Eyebrow>
