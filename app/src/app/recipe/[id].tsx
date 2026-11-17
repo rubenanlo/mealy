@@ -182,6 +182,7 @@ function Hero({
   onEdit,
   onAi,
   language,
+  onShare,
 }: {
   path: string | null;
   saved: boolean;
@@ -193,6 +194,8 @@ function Hero({
   onAi?: () => void;
   /** Translate chip under the bookmark; opens the language sheet. */
   language?: { translated: boolean; name: string; onPress: () => void } | null;
+  /** Share chip, last in the column under the bookmark and translate chips. */
+  onShare?: () => void;
 }) {
   const { colors } = useTheme();
   const { d } = useI18n();
@@ -258,6 +261,33 @@ function Hero({
           // Under the bookmark when there is a photo, else in its corner.
           style={{ top: path ? 56 : 12, right: 12 }}
         />
+      ) : null}
+      {onShare ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={d.recipe.shareRecipeA11y}
+          onPress={onShare}
+          hitSlop={6}
+          style={({ pressed }) => [
+            {
+              position: 'absolute',
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              backgroundColor: colors.card,
+              borderWidth: 1,
+              borderColor: colors.border,
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: pressed ? 0.75 : 1,
+            },
+            // With a photo: next free place in the column. Without one the
+            // strip is short, so it sits beside the translate chip instead.
+            path ? { top: language ? 100 : 56, right: 12 } : { top: 12, right: language ? 56 : 12 },
+          ]}
+        >
+          <Ionicons name="share-outline" size={18} color={colors.text} />
+        </Pressable>
       ) : null}
       {/* Edit chip sits bottom-right, clear of the top-right bookmark chip. */}
       {path && onEdit ? (
@@ -1430,6 +1460,7 @@ export default function RecipeSheetScreen() {
             focal={recipe.cover_focal}
             onEdit={() => setCoverMenuOpen(true)}
             onAi={isNew ? undefined : () => setAiOpen(true)}
+            onShare={isNew ? undefined : onShare}
             language={
               showLanguage
                 ? { translated: !!contentTranslation, name: activeLangName, onPress: () => setLanguageOpen(true) }
@@ -1470,22 +1501,6 @@ export default function RecipeSheetScreen() {
                 >
                   {displayTitle}
                 </Text>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={d.recipe.shareRecipeA11y}
-                  onPress={onShare}
-                  hitSlop={8}
-                  style={({ pressed }) => ({
-                    width: minTapTarget - 8,
-                    height: minTapTarget - 8,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderRadius: (minTapTarget - 8) / 2,
-                    backgroundColor: pressed ? colors.cardPressed : 'transparent',
-                  })}
-                >
-                  <Ionicons name="share-outline" size={20} color={colors.textMuted} />
-                </Pressable>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={d.recipe.editTitleA11y}
