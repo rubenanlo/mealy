@@ -60,7 +60,7 @@ export default function UpcomingMealsScreen() {
     }
     const { data: entryRows } = await supabase
       .from('plan_entries')
-      .select('meal_plan_id, day, slot, recipe_id, custom_title, assigned_cook, person_ids, guest_count')
+      .select('meal_plan_id, day, slot, recipe_id, custom_title, assigned_cook, person_ids, guest_count, position, leftover_of')
       .eq('meal_plan_id', plan.id);
     const entries = (entryRows as EntryRow[]) ?? [];
     const recipeIds = [

@@ -3,6 +3,7 @@
 
 import { entryServings } from '@/lib/servings';
 import type { MealSlot } from '@/lib/plan';
+import { splitSlot } from '@/lib/week-page';
 
 export interface EntryRow {
   meal_plan_id: string;
@@ -15,6 +16,21 @@ export interface EntryRow {
   person_ids: string[];
   /** Non-family guests eating this meal (migration 0017). */
   guest_count: number;
+  /** Order in the slot; the lowest is the main dish. */
+  position?: number;
+  /** Set on a leftover row (someone eating an earlier meal again). */
+  leftover_of?: string | null;
+}
+
+/** One dish of a meal for some (or all) of the household, with its sides (design G1). */
+export interface CellDish {
+  title: string;
+  cover: string | null;
+  recipeId: string | null;
+  servings: number | null;
+  /** Eater names; empty ⇒ whole household. */
+  eaters: string[];
+  sides: string[];
 }
 
 export interface RecipeLite {
@@ -38,6 +54,12 @@ export interface MealCell {
   dishRecipeIds: (string | null)[];
   /** Per dish, parallel to titles: servings, or null for custom meals. */
   dishServings: (number | null)[];
+  /**
+   * The meal's dishes at the same level: the main dish, then a dish per
+   * group of people eating something else, then leftover plates. Sides
+   * ride with their dish. One entry for an ordinary meal.
+   */
+  dishes: CellDish[];
 }
 
 /** Group a week's entries into ordered meal cells (day asc, lunch first). */
@@ -63,6 +85,7 @@ export function buildCells(
         eaters: [],
         dishRecipeIds: [],
         dishServings: [],
+        dishes: [],
       };
     const names = entry.person_ids
       .map((pid) => personNameById.get(pid))
@@ -85,6 +108,28 @@ export function buildCells(
       cell.dishServings.push(null);
     }
     byKey.set(key, cell);
+  }
+  // Group each meal into dishes (main, plates for other people, leftovers).
+  const titleOf = (e: EntryRow) =>
+    e.recipe_id ? (recipesById.get(e.recipe_id)?.title ?? recipeFallback) : (e.custom_title ?? recipeFallback);
+  const rows = entries
+    .filter((e) => e.recipe_id || e.custom_title)
+    .map((e) => ({ ...e, position: e.position ?? 0 }));
+  for (const cell of byKey.values()) {
+    const { main, sides, plates, leftovers } = splitSlot(rows, cell.day, cell.slot);
+    const groups = [
+      ...(main ? [{ dish: main, sides: main.leftover_of ? [] : sides }] : []),
+      ...plates,
+      ...leftovers.filter((l) => l !== main).map((l) => ({ dish: l, sides: [] as typeof rows })),
+    ];
+    cell.dishes = groups.map(({ dish, sides: extra }) => ({
+      title: titleOf(dish),
+      cover: dish.recipe_id ? (recipesById.get(dish.recipe_id)?.cover_image_path ?? null) : null,
+      recipeId: dish.recipe_id,
+      servings: dish.recipe_id ? entryServings(dish.person_ids, dish.guest_count, eaterCount) : null,
+      eaters: dish.person_ids.map((pid) => personNameById.get(pid)).filter((n): n is string => !!n),
+      sides: extra.map(titleOf),
+    }));
   }
   return [...byKey.values()].sort(
     (a, b) => a.day - b.day || (a.slot === b.slot ? 0 : a.slot === 'lunch' ? -1 : 1)
