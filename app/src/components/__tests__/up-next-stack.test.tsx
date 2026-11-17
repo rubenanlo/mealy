@@ -76,4 +76,18 @@ describe('Up next for a meal with several dishes (design G1)', () => {
     fireEvent.press(getByText('Stack them again'));
     expect(queryByText('Open recipe')).toBeNull();
   });
+
+  it('keeps the deck short: one line per dish, two dishes, then "+N more"', () => {
+    const three = { ...cells[0]!, dishes: [...cells[0]!.dishes, { ...cells[0]!.dishes[0]!, title: 'Leftover soup', eaters: ['Marc'] }] };
+    const { getByText, queryByText } = render(
+      <ThemeProvider>
+        <UpNextCard cell={three} when="Today · Dinner" onOpenRecipe={() => {}} onPress={() => {}} />
+      </ThemeProvider>
+    );
+    expect(getByText('Pasta with tomato').props.numberOfLines).toBe(1);
+    expect(queryByText('Leftover soup')).toBeNull();
+    expect(getByText('+1 more')).toBeTruthy();
+    fireEvent.press(getByText('See all 3 dishes'));
+    expect(getByText('Leftover soup')).toBeTruthy();
+  });
 });
