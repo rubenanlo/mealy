@@ -94,7 +94,7 @@ describe('week page sheets', () => {
     expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: 'e1' }));
   });
 
-  it('day rows list every dish of a split meal and open the tapped one', () => {
+  it('day rows show a card per dish of a split meal and open the tapped one', () => {
     const onOpenDish = jest.fn();
     const onOpen = jest.fn();
     const { getByLabelText, getByText } = wrap(

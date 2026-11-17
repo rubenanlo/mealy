@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { PersonChip, type PersonLike } from '@/components/person-chip';
 import { RecipeImage } from '@/components/recipe-cards';
@@ -207,9 +207,10 @@ export function DayRows({
                   </Pressable>
                 ) : null;
               if (plates.length > 0) {
-                // Several dishes for different people (design E2): one row per
-                // dish, the eaters' initials first, tap = that dish's recipe.
+                // Several dishes for different people (design E3): side-by-side
+                // cards (photo, title, eaters); tap = that dish's recipe, ··· = details.
                 const dishes = [{ entry: main, sides }, ...plates.map((p) => ({ entry: p.dish, sides: p.sides }))];
+                const scroll = dishes.length > 2;
                 const extra = [
                   awayNames.length > 0 ? fmt(d.plan.eatsAwayLine, { names: awayNames.join(', ') }) : null,
                   ...leftovers.map((l) => {
@@ -218,69 +219,75 @@ export function DayRows({
                     return fmt(d.routine.leftoverRow, { names: names.join(', '), title: source ? titleOf(source) : titleOf(l) });
                   }),
                 ].filter(Boolean);
+                const cards = dishes.map(({ entry: dish, sides: dishSides }) => {
+                  const ids = dish.person_ids.length === 0 ? homeIds : dish.person_ids;
+                  const who = eaters.filter((p) => ids.includes(p.id) && !away.has(p.id));
+                  const cover = dish.recipe_id ? (recipeById.get(dish.recipe_id)?.cover_image_path ?? null) : null;
+                  const title = [dish, ...dishSides].map(titleOf).join(' + ');
+                  return (
+                    <View key={dish.id} style={scroll ? { width: 150 } : { flex: 1 }}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={fmt(t.openDishA11y, { title, names: who.map((p) => p.name).join(', ') })}
+                        onPress={() => onOpenDish(dish)}
+                        onLongPress={readOnly ? undefined : () => onOpen(dish)}
+                        style={({ pressed }) => ({
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          borderRadius: radius.card,
+                          overflow: 'hidden',
+                          backgroundColor: pressed ? colors.cardPressed : colors.card,
+                        })}
+                      >
+                        <RecipeImage path={cover} style={{ width: '100%', height: 72 }} iconSize={18} />
+                        <View style={{ padding: 8, gap: 6 }}>
+                          <Text numberOfLines={2} style={{ color: colors.text, fontFamily: fonts.uiMedium, fontSize: fontSize.meta, minHeight: 32 }}>
+                            {title}
+                          </Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+                            {who.map((p) => (
+                              <PersonChip key={p.id} person={p} />
+                            ))}
+                            {dish.assigned_cook === 'employee' ? <Badge label={t.employee} /> : null}
+                          </View>
+                        </View>
+                      </Pressable>
+                      {readOnly ? null : (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={fmt(d.plan.editMealA11y, { title: titleOf(dish) })}
+                          onPress={() => onOpen(dish)}
+                          hitSlop={6}
+                          style={({ pressed }) => ({
+                            position: 'absolute',
+                            top: 6,
+                            right: 6,
+                            width: 32,
+                            height: 32,
+                            borderRadius: 16,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            backgroundColor: pressed ? colors.cardPressed : colors.card,
+                          })}
+                        >
+                          <Ionicons name="ellipsis-horizontal" size={16} color={colors.text} />
+                        </Pressable>
+                      )}
+                    </View>
+                  );
+                });
                 return (
                   <View key={slot} style={{ gap: 4 }}>
                     <View style={{ flexDirection: 'row', gap: 10, paddingVertical: 4 }}>
-                      <View style={{ paddingTop: 20 }}>{label(54)}</View>
-                      <View style={{ flex: 1, gap: 2, borderLeftWidth: 3, borderLeftColor: colors.border, paddingLeft: 8 }}>
-                        {dishes.map(({ entry: dish, sides: dishSides }) => {
-                          const ids = dish.person_ids.length === 0 ? homeIds : dish.person_ids;
-                          const who = eaters.filter((p) => ids.includes(p.id) && !away.has(p.id));
-                          const cover = dish.recipe_id ? recipeById.get(dish.recipe_id)?.cover_image_path ?? null : null;
-                          const title = [dish, ...dishSides].map(titleOf).join(' + ');
-                          return (
-                            <View key={dish.id} style={{ flexDirection: 'row', alignItems: 'center' }}>
-                              <Pressable
-                                accessibilityRole="button"
-                                accessibilityLabel={fmt(t.openDishA11y, { title, names: who.map((p) => p.name).join(', ') })}
-                                onPress={() => onOpenDish(dish)}
-                                style={({ pressed }) => ({
-                                  flex: 1,
-                                  flexDirection: 'row',
-                                  alignItems: 'center',
-                                  gap: 8,
-                                  minHeight: 52,
-                                  paddingVertical: 4,
-                                  paddingHorizontal: 4,
-                                  borderRadius: radius.card,
-                                  backgroundColor: pressed ? colors.cardPressed : 'transparent',
-                                })}
-                              >
-                                <View style={{ flexDirection: 'row', gap: 2, minWidth: 34 }}>
-                                  {who.map((p) => (
-                                    <PersonChip key={p.id} person={p} />
-                                  ))}
-                                </View>
-                                <RecipeImage path={cover} style={{ width: 36, height: 36, borderRadius: radius.thumb }} iconSize={14} />
-                                <Text
-                                  numberOfLines={2}
-                                  style={{ flex: 1, color: colors.text, fontFamily: fonts.uiMedium, fontSize: fontSize.small }}
-                                >
-                                  {title}
-                                </Text>
-                                {dish.assigned_cook === 'employee' ? <Badge label={t.employee} /> : null}
-                              </Pressable>
-                              {readOnly ? null : (
-                                <Pressable
-                                  accessibilityRole="button"
-                                  accessibilityLabel={fmt(d.plan.editMealA11y, { title: titleOf(dish) })}
-                                  onPress={() => onOpen(dish)}
-                                  hitSlop={4}
-                                  style={({ pressed }) => ({
-                                    width: 40,
-                                    height: 44,
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    borderRadius: 20,
-                                    backgroundColor: pressed ? colors.cardPressed : 'transparent',
-                                  })}
-                                >
-                                  <Ionicons name="ellipsis-horizontal" size={18} color={colors.textMuted} />
-                                </Pressable>
-                              )}
-                            </View>
-                          );
-                        })}
+                      <View style={{ paddingTop: 8 }}>{label(54)}</View>
+                      <View style={{ flex: 1, gap: 6 }}>
+                        {scroll ? (
+                          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                            {cards}
+                          </ScrollView>
+                        ) : (
+                          <View style={{ flexDirection: 'row', gap: 8 }}>{cards}</View>
+                        )}
                         {extra.length > 0 ? (
                           <Text style={{ color: colors.textMuted, fontFamily: fonts.ui, fontSize: fontSize.meta, paddingLeft: 4 }}>
                             {extra.join(' · ')}
