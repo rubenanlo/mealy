@@ -700,6 +700,23 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
     }
   };
 
+  /** Who was out last week ("Same as last week" in the eating-out sheet). */
+  const loadLastWeekAbsences = async (): Promise<PlanAbsence[]> => {
+    if (!householdId) return [];
+    const { data: lastPlan } = await supabase
+      .from('meal_plans')
+      .select('id')
+      .eq('household_id', householdId)
+      .eq('week_start', addWeeks(weekIso, -1))
+      .maybeSingle();
+    if (!lastPlan) return [];
+    const { data } = await supabase
+      .from('plan_absences')
+      .select('day, slot, person_id')
+      .eq('meal_plan_id', (lastPlan as { id: string }).id);
+    return (data as PlanAbsence[]) ?? [];
+  };
+
   const saveTasks = async (next: string[]) => {
     const id = await ensurePlan();
     setPlan((p) => (p ? { ...p, employee_notes: next } : p));
@@ -1323,6 +1340,7 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
         absences={absences}
         schoolChild={schoolChild}
         onChange={(changes) => void applyAway(changes)}
+        loadLastWeek={loadLastWeekAbsences}
         onClose={() => {
           setHomeOpen(false);
           invalidateLists('plan', 'groceries');
