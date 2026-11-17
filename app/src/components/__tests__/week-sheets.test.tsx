@@ -79,6 +79,7 @@ describe('week page sheets', () => {
         onAdd={onAdd}
         onOpen={onOpen}
         onAddFor={() => {}}
+        onOpenDish={() => {}}
         onHome={() => {}}
       />
     );
@@ -89,6 +90,32 @@ describe('week page sheets', () => {
     expect(getAllByText('+ Add dinner').length).toBe(5);
     fireEvent.press(getAllByText('+ Add lunch')[0]!);
     expect(onAdd).toHaveBeenCalledWith(1, 'lunch');
+    fireEvent.press(getByLabelText('Edit Salmon with dill'));
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: 'e1' }));
+  });
+
+  it('day rows list every dish of a split meal and open the tapped one', () => {
+    const onOpenDish = jest.fn();
+    const onOpen = jest.fn();
+    const { getByLabelText, getByText } = wrap(
+      <DayRows
+        weekIso={WEEK}
+        entries={[entry({ person_ids: ['r'] }), entry({ id: 'rice', recipe_id: null, custom_title: 'Fried rice', person_ids: ['m'], position: 1 })]}
+        absences={[]}
+        eaters={eaters}
+        recipeById={recipeById}
+        todayIndex={-1}
+        readOnly={false}
+        onAdd={() => {}}
+        onOpen={onOpen}
+        onAddFor={() => {}}
+        onOpenDish={onOpenDish}
+        onHome={() => {}}
+      />
+    );
+    expect(getByText('Fried rice')).toBeTruthy();
+    fireEvent.press(getByLabelText('Open Fried rice, for Marc'));
+    expect(onOpenDish).toHaveBeenCalledWith(expect.objectContaining({ id: 'rice' }));
     fireEvent.press(getByLabelText('Edit Salmon with dill'));
     expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: 'e1' }));
   });
@@ -107,6 +134,7 @@ describe('week page sheets', () => {
         onAdd={() => {}}
         onOpen={() => {}}
         onAddFor={onAddFor}
+        onOpenDish={() => {}}
         onHome={() => {}}
       />
     );

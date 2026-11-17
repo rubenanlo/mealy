@@ -96,6 +96,7 @@ const en = {
   shareN: '{name} · {n}',
   forNames: 'For {names}',
   addDishFor: '+ Add a dish for {names}',
+  openDishA11y: 'Open {title}, for {names}',
 };
 
 const es: typeof en = {
@@ -189,6 +190,7 @@ const es: typeof en = {
   shareN: '{name} · {n}',
   forNames: 'Para {names}',
   addDishFor: '+ Añadir un plato para {names}',
+  openDishA11y: 'Abrir {title}, para {names}',
 };
 
 const fr: typeof en = {
@@ -282,6 +284,7 @@ const fr: typeof en = {
   shareN: '{name} · {n}',
   forNames: 'Pour {names}',
   addDishFor: '+ Ajouter un plat pour {names}',
+  openDishA11y: 'Ouvrir {title}, pour {names}',
 };
 
 const it: typeof en = {
@@ -375,6 +378,7 @@ const it: typeof en = {
   shareN: '{name} · {n}',
   forNames: 'Per {names}',
   addDishFor: '+ Aggiungi un piatto per {names}',
+  openDishA11y: 'Apri {title}, per {names}',
 };
 
 export const weekPage = { en, es, fr, it };

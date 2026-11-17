@@ -560,6 +560,18 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
     });
   };
 
+  /** A dish in a meal with several dishes (Everyone view): its recipe, sized for its eaters. */
+  const openDishRecipe = (entry: PlanEntry) => {
+    if (!entry.recipe_id) {
+      setOpenEntryId(entry.id);
+      return;
+    }
+    const away = awayIds(absences, entry.day, entry.slot);
+    const eaterCount = effectivePersonIds(entry.person_ids, eaterIds, away);
+    const servings = (eaterCount.length === 0 ? eaterIds.length : eaterCount.length) + entry.guest_count;
+    router.push({ pathname: '/recipe/[id]', params: { id: entry.recipe_id, planServings: String(servings) } });
+  };
+
   const personMenu = (day: number, slot: MealSlot, meal: PersonMeal<PlanEntry>) => {
     const person = viewPerson;
     if (!person) return;
@@ -1144,6 +1156,7 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
               onAdd={(day, slot) => setAddTarget({ mode: 'add', day, slot })}
               onOpen={(entry) => setOpenEntryId(entry.id)}
               onAddFor={(day, slot, personIds) => setAddTarget({ mode: 'plate', day, slot, personIds })}
+              onOpenDish={openDishRecipe}
               onHome={() => setHomeOpen(true)}
             />
             )}
