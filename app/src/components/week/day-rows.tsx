@@ -1,4 +1,5 @@
-import { Pressable, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { PersonChip, type PersonLike } from '@/components/person-chip';
 import { RecipeImage } from '@/components/recipe-cards';
@@ -31,6 +32,7 @@ export function DayRows({
   onAdd,
   onOpen,
   onAddFor,
+  onOpenDish,
   onHome,
 }: {
   weekIso: string;
@@ -44,6 +46,8 @@ export function DayRows({
   onOpen: (entry: PlanEntry) => void;
   /** Add a dish just for these people (they're home but the meal's dish is for someone else). */
   onAddFor: (day: number, slot: MealSlot, personIds: string[]) => void;
+  /** A dish in a meal with several dishes (one per group of people): open its recipe. */
+  onOpenDish: (entry: PlanEntry) => void;
   onHome: () => void;
 }) {
   const { colors } = useTheme();
@@ -202,6 +206,99 @@ export function DayRows({
                     </Text>
                   </Pressable>
                 ) : null;
+              if (plates.length > 0) {
+                // Several dishes for different people (design E3): side-by-side
+                // cards (photo, title, eaters); tap = that dish's recipe, ··· = details.
+                const dishes = [{ entry: main, sides }, ...plates.map((p) => ({ entry: p.dish, sides: p.sides }))];
+                const scroll = dishes.length > 2;
+                const extra = [
+                  awayNames.length > 0 ? fmt(d.plan.eatsAwayLine, { names: awayNames.join(', ') }) : null,
+                  ...leftovers.map((l) => {
+                    const source = entries.find((e) => e.id === l.leftover_of);
+                    const names = eaters.filter((p) => l.person_ids.includes(p.id)).map((p) => p.name);
+                    return fmt(d.routine.leftoverRow, { names: names.join(', '), title: source ? titleOf(source) : titleOf(l) });
+                  }),
+                ].filter(Boolean);
+                const cards = dishes.map(({ entry: dish, sides: dishSides }) => {
+                  const ids = dish.person_ids.length === 0 ? homeIds : dish.person_ids;
+                  const who = eaters.filter((p) => ids.includes(p.id) && !away.has(p.id));
+                  const cover = dish.recipe_id ? (recipeById.get(dish.recipe_id)?.cover_image_path ?? null) : null;
+                  const title = [dish, ...dishSides].map(titleOf).join(' + ');
+                  return (
+                    <View key={dish.id} style={scroll ? { width: 150 } : { flex: 1 }}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={fmt(t.openDishA11y, { title, names: who.map((p) => p.name).join(', ') })}
+                        onPress={() => onOpenDish(dish)}
+                        onLongPress={readOnly ? undefined : () => onOpen(dish)}
+                        style={({ pressed }) => ({
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          borderRadius: radius.card,
+                          overflow: 'hidden',
+                          backgroundColor: pressed ? colors.cardPressed : colors.card,
+                        })}
+                      >
+                        <RecipeImage path={cover} style={{ width: '100%', height: 72 }} iconSize={18} />
+                        <View style={{ padding: 8, gap: 6 }}>
+                          <Text numberOfLines={2} style={{ color: colors.text, fontFamily: fonts.uiMedium, fontSize: fontSize.meta, minHeight: 32 }}>
+                            {title}
+                          </Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+                            {who.map((p) => (
+                              <PersonChip key={p.id} person={p} />
+                            ))}
+                            {dish.assigned_cook === 'employee' ? <Badge label={t.employee} /> : null}
+                          </View>
+                        </View>
+                      </Pressable>
+                      {readOnly ? null : (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={fmt(d.plan.editMealA11y, { title: titleOf(dish) })}
+                          onPress={() => onOpen(dish)}
+                          hitSlop={6}
+                          style={({ pressed }) => ({
+                            position: 'absolute',
+                            top: 6,
+                            right: 6,
+                            width: 32,
+                            height: 32,
+                            borderRadius: 16,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            backgroundColor: pressed ? colors.cardPressed : colors.card,
+                          })}
+                        >
+                          <Ionicons name="ellipsis-horizontal" size={16} color={colors.text} />
+                        </Pressable>
+                      )}
+                    </View>
+                  );
+                });
+                return (
+                  <View key={slot} style={{ gap: 4 }}>
+                    <View style={{ flexDirection: 'row', gap: 10, paddingVertical: 4 }}>
+                      <View style={{ paddingTop: 8 }}>{label(54)}</View>
+                      <View style={{ flex: 1, gap: 6 }}>
+                        {scroll ? (
+                          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                            {cards}
+                          </ScrollView>
+                        ) : (
+                          <View style={{ flexDirection: 'row', gap: 8 }}>{cards}</View>
+                        )}
+                        {extra.length > 0 ? (
+                          <Text style={{ color: colors.textMuted, fontFamily: fonts.ui, fontSize: fontSize.meta, paddingLeft: 4 }}>
+                            {extra.join(' · ')}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+                    {addFor}
+                  </View>
+                );
+              }
               return (
                 <View key={slot} style={{ gap: 4 }}>
                 <Pressable

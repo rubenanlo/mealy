@@ -79,6 +79,7 @@ describe('week page sheets', () => {
         onAdd={onAdd}
         onOpen={onOpen}
         onAddFor={() => {}}
+        onOpenDish={() => {}}
         onHome={() => {}}
       />
     );
@@ -89,6 +90,32 @@ describe('week page sheets', () => {
     expect(getAllByText('+ Add dinner').length).toBe(5);
     fireEvent.press(getAllByText('+ Add lunch')[0]!);
     expect(onAdd).toHaveBeenCalledWith(1, 'lunch');
+    fireEvent.press(getByLabelText('Edit Salmon with dill'));
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: 'e1' }));
+  });
+
+  it('day rows show a card per dish of a split meal and open the tapped one', () => {
+    const onOpenDish = jest.fn();
+    const onOpen = jest.fn();
+    const { getByLabelText, getByText } = wrap(
+      <DayRows
+        weekIso={WEEK}
+        entries={[entry({ person_ids: ['r'] }), entry({ id: 'rice', recipe_id: null, custom_title: 'Fried rice', person_ids: ['m'], position: 1 })]}
+        absences={[]}
+        eaters={eaters}
+        recipeById={recipeById}
+        todayIndex={-1}
+        readOnly={false}
+        onAdd={() => {}}
+        onOpen={onOpen}
+        onAddFor={() => {}}
+        onOpenDish={onOpenDish}
+        onHome={() => {}}
+      />
+    );
+    expect(getByText('Fried rice')).toBeTruthy();
+    fireEvent.press(getByLabelText('Open Fried rice, for Marc'));
+    expect(onOpenDish).toHaveBeenCalledWith(expect.objectContaining({ id: 'rice' }));
     fireEvent.press(getByLabelText('Edit Salmon with dill'));
     expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: 'e1' }));
   });
@@ -107,6 +134,7 @@ describe('week page sheets', () => {
         onAdd={() => {}}
         onOpen={() => {}}
         onAddFor={onAddFor}
+        onOpenDish={() => {}}
         onHome={() => {}}
       />
     );
@@ -152,6 +180,73 @@ describe('week page sheets', () => {
       cook_part: true,
       instructions: 'Marinate it',
     });
+  });
+
+  it('meal sheet splits a meal into dish cards and moves people between them', () => {
+    const actions = {
+      onMovePerson: jest.fn(),
+      onMoveAway: jest.fn(),
+      onChooseDish: jest.fn(),
+      onChangeDish: jest.fn(),
+      onRemoveDish: jest.fn(),
+      onSameForEveryone: jest.fn(),
+      onOpenDish: jest.fn(),
+    };
+    const props = {
+      visible: true,
+      sides: [],
+      heading: 'Monday · Dinner',
+      title: 'Salmon with dill',
+      coverPath: null,
+      hasRecipe: true,
+      eaters,
+      away: new Set<string>(),
+      employeeName: null,
+      sideTitle: () => '',
+      onOpenRecipe: () => {},
+      onSwap: () => {},
+      onAddSide: () => {},
+      onRemoveSide: () => {},
+      onSave: () => {},
+      onRemove: () => {},
+      onClose: () => {},
+      dishActions: actions,
+    };
+    // One dish: switching to "Different dishes" adds an empty draft dish.
+    const one = wrap(
+      <MealSheet
+        {...props}
+        entry={entry({})}
+        dishes={[{ id: 'e1', title: 'Salmon with dill', coverPath: null, personIds: ['r', 'm'], isMain: true }]}
+      />
+    );
+    fireEvent.press(one.getByText('Different dishes'));
+    expect(one.getByText('DISH 2')).toBeTruthy();
+    fireEvent.press(one.getByLabelText('Move Marc to another dish'));
+    fireEvent.press(one.getByText('Dish 2 · A new dish'));
+    fireEvent.press(one.getByText('+ Choose a dish'));
+    expect(actions.onChooseDish).toHaveBeenCalledWith(['m']);
+    one.unmount();
+
+    // Two saved dishes: moving Marc saves right away; "Same for everyone" asks first.
+    const two = wrap(
+      <MealSheet
+        {...props}
+        entry={entry({ person_ids: ['r'] })}
+        dishes={[
+          { id: 'e1', title: 'Salmon with dill', coverPath: null, personIds: ['r'], isMain: true },
+          { id: 'e2', title: 'Pasta', coverPath: null, personIds: ['m'], isMain: false },
+        ]}
+      />
+    );
+    fireEvent.press(two.getByLabelText('Move Marc to another dish'));
+    fireEvent.press(two.getByText('Dish 1 · Salmon with dill'));
+    expect(actions.onMovePerson).toHaveBeenCalledWith('m', 'e1');
+    fireEvent.press(two.getAllByText('Remove')[0]);
+    expect(actions.onRemoveDish).toHaveBeenCalledWith('e2');
+    fireEvent.press(two.getByText('Same for everyone'));
+    fireEvent.press(two.getByText('Yes, one dish for everyone'));
+    expect(actions.onSameForEveryone).toHaveBeenCalled();
   });
 
   it('school chip marks the child away for the usual school lunches', () => {
