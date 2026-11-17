@@ -20,7 +20,7 @@ import { AddMealSheet, type AddPick, type AddRecipe } from '@/components/week/ad
 import { DayRows } from '@/components/week/day-rows';
 import { PersonDayRows } from '@/components/week/person-day-rows';
 import { HomeSheet, type AwayChange } from '@/components/week/home-sheet';
-import { MealSheet, type MealPatch } from '@/components/week/meal-sheet';
+import { MealSheet, type DishActions, type MealPatch, type SheetDish } from '@/components/week/meal-sheet';
 import { ReviewSheet, type ReviewItem } from '@/components/week/review-sheet';
 import { Badge, Pill } from '@/components/week/sheet';
 import { findSchoolChild, isSalad, sideSuggestions } from '@/lib/ai-week';
@@ -69,6 +69,8 @@ import {
   addSuggestions,
   chipWeeks,
   detachPerson,
+  mergeSlot,
+  movePeople,
   openMeals,
   splitSlot,
   weekProgress,
@@ -631,6 +633,65 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
     if (split.main?.id === openEntry.id) return split.sides;
     return split.plates.find((p) => p.dish.id === openEntry.id)?.sides ?? [];
   })();
+
+  /** Every dish of the open meal, for the "Different dishes" cards (design B2). */
+  const openDishes: SheetDish[] = (() => {
+    if (!openEntry || openEntry.leftover_of) return [];
+    const { main, plates } = splitSlot(entries, openEntry.day, openEntry.slot);
+    if (!main || main.leftover_of) return [];
+    const away = awayIds(absences, openEntry.day, openEntry.slot);
+    const home = eaterIds.filter((id) => !away.has(id));
+    return [main, ...plates.map((p) => p.dish)].map((dish) => ({
+      id: dish.id,
+      title: titleOf(dish),
+      coverPath: dish.recipe_id ? (recipeById.get(dish.recipe_id)?.cover_image_path ?? null) : null,
+      personIds: dish.person_ids.length === 0 ? home : dish.person_ids.filter((id) => !away.has(id)),
+      isMain: dish.id === main.id,
+    }));
+  })();
+
+  /** Design B3: moves in the meal sheet save right away, then reload. */
+  const dishActions: DishActions | undefined = openEntry
+    ? (() => {
+        const { day, slot } = openEntry;
+        const away = awayIds(absences, day, slot);
+        const run = (fn: () => Promise<unknown>) =>
+          void (async () => {
+            try {
+              await fn();
+            } catch {
+              notify(d.common.genericError, '');
+            }
+            await reload();
+          })();
+        const leaveSheet = (next: () => void) => {
+          setOpenEntryId(null);
+          afterSheet(next);
+        };
+        return {
+          onMovePerson: (personId, dishId) =>
+            run(() => applySlotChanges(movePeople(entries, day, slot, [personId], dishId, eaterIds, away))),
+          onMoveAway: (personId) =>
+            run(async () => {
+              await applySlotChanges(detachPerson(entries, day, slot, personId, eaterIds, away));
+              await applyAway([{ day, slot, personId, away: true }]);
+            }),
+          onChooseDish: (personIds) => leaveSheet(() => setAddTarget({ mode: 'plate', day, slot, personIds })),
+          onChangeDish: (dishId) => {
+            const entry = entries.find((x) => x.id === dishId);
+            if (entry) leaveSheet(() => setAddTarget({ mode: 'swap', entry }));
+          },
+          onRemoveDish: (dishId) => {
+            const plate = splitSlot(entries, day, slot).plates.find((p) => p.dish.id === dishId);
+            if (!plate) return;
+            if (openEntryId === dishId) setOpenEntryId(splitSlot(entries, day, slot).main?.id ?? null);
+            run(() => applySlotChanges(detachPerson(entries, day, slot, plate.dish.person_ids, eaterIds, away, { join: true })));
+          },
+          onSameForEveryone: () => run(() => applySlotChanges(mergeSlot(entries, day, slot))),
+          onOpenDish: (dishId) => setOpenEntryId(dishId),
+        };
+      })()
+    : undefined;
 
   const saveEntry = async (patch: MealPatch) => {
     const entry = openEntry;
@@ -1327,6 +1388,8 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
         onSave={(patch) => void saveEntry(patch)}
         onRemove={() => void removeMeal()}
         onClose={() => setOpenEntryId(null)}
+        dishes={openDishes}
+        dishActions={viewPerson ? undefined : dishActions}
       />
 
       <HomeSheet

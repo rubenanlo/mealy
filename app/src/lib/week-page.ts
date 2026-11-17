@@ -278,3 +278,53 @@ export function detachPerson<T extends SlotRow & { id: string }>(
   }
   return { update, remove };
 }
+
+/**
+ * Move people from whatever they eat at a meal onto another dish of the same
+ * meal (design B3, "tap a person, move them"). The target's sides follow it.
+ * Moving someone onto a dish they already eat changes nothing.
+ */
+export function movePeople<T extends SlotRow & { id: string }>(
+  entries: T[],
+  day: number,
+  slot: MealSlot,
+  people: readonly string[],
+  targetId: string,
+  householdIds: readonly string[],
+  away: ReadonlySet<string>
+): SlotChanges {
+  const { main, sides, plates } = splitSlot(entries, day, slot);
+  const target =
+    main?.id === targetId
+      ? { dish: main, sides }
+      : plates.find((p) => p.dish.id === targetId);
+  if (!target) return { update: [], remove: [] };
+  const targetIds = target.dish.person_ids ?? [];
+  const moving = people.filter((id) => targetIds.length > 0 && !targetIds.includes(id));
+  if (moving.length === 0) return { update: [], remove: [] };
+  const changes = detachPerson(entries, day, slot, moving, householdIds, away);
+  // The target's own list after the detach (a target is never emptied: it keeps its eaters).
+  const current = changes.update.find((u) => u.id === target.dish.id)?.person_ids ?? targetIds;
+  const next = [...current, ...moving.filter((id) => !current.includes(id))];
+  const touched = new Set([target.dish.id, ...target.sides.map((s) => s.id)]);
+  return {
+    update: [
+      ...changes.update.filter((u) => !touched.has(u.id)),
+      ...[...touched].map((id) => ({ id, person_ids: next })),
+    ],
+    remove: changes.remove.filter((id) => !touched.has(id)),
+  };
+}
+
+/**
+ * "Same for everyone" (design B2): drop every plate of a meal and put the
+ * whole household back on the main dish and its sides.
+ */
+export function mergeSlot<T extends SlotRow & { id: string }>(entries: T[], day: number, slot: MealSlot): SlotChanges {
+  const { main, sides, plates } = splitSlot(entries, day, slot);
+  if (!main) return { update: [], remove: [] };
+  return {
+    update: [main, ...sides].map((row) => ({ id: row.id, person_ids: [] })),
+    remove: plates.flatMap((p) => [p.dish.id, ...p.sides.map((s) => s.id)]),
+  };
+}

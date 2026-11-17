@@ -2,6 +2,8 @@ import {
   addSuggestions,
   chipWeeks,
   detachPerson,
+  mergeSlot,
+  movePeople,
   everyoneAway,
   openMeals,
   personMeal,
@@ -182,6 +184,37 @@ describe('week page helpers', () => {
       expect(detachPerson(rows, 0, 'dinner', 'm', household, new Set(), { join: true })).toEqual({
         update: [{ id: 'salmon', person_ids: ['r', 'p', 'm'] }],
         remove: ['pasta'],
+      });
+    });
+
+    it('moves a person between dishes, sides following the target', () => {
+      const rows = [row('salmon', 0, ['r', 'p']), row('greens', 1, ['r', 'p']), row('pasta', 2, ['m'])];
+      expect(movePeople(rows, 0, 'dinner', ['p'], 'pasta', household, new Set())).toEqual({
+        update: [
+          { id: 'salmon', person_ids: ['r'] },
+          { id: 'greens', person_ids: ['r'] },
+          { id: 'pasta', person_ids: ['m', 'p'] },
+        ],
+        remove: [],
+      });
+      expect(movePeople(rows, 0, 'dinner', ['m'], 'salmon', household, new Set())).toEqual({
+        update: [
+          { id: 'salmon', person_ids: ['r', 'p', 'm'] },
+          { id: 'greens', person_ids: ['r', 'p', 'm'] },
+        ],
+        remove: ['pasta'],
+      });
+      expect(movePeople(rows, 0, 'dinner', ['m'], 'pasta', household, new Set())).toEqual({ update: [], remove: [] });
+    });
+
+    it('merges a split meal back to one dish for everyone', () => {
+      const rows = [row('salmon', 0, ['r', 'p']), row('greens', 1, ['r']), row('pasta', 2, ['m']), row('sauce', 3, ['m'])];
+      expect(mergeSlot(rows, 0, 'dinner')).toEqual({
+        update: [
+          { id: 'salmon', person_ids: [] },
+          { id: 'greens', person_ids: [] },
+        ],
+        remove: ['pasta', 'sauce'],
       });
     });
   });
