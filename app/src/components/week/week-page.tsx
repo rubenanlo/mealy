@@ -14,7 +14,7 @@ import { LiveCard } from '@/components/ai-week-live';
 import { AiWeekPlanner, type PlannerContext } from '@/components/ai-week-planner';
 import { IdeaSheet } from '@/components/idea-sheet';
 import { PersonChip } from '@/components/person-chip';
-import { Button, Eyebrow, Loading, Title } from '@/components/ui';
+import { Button, Eyebrow, Loading } from '@/components/ui';
 import { useWeekSummaries } from '@/components/week-chips';
 import { AddMealSheet, type AddPick, type AddRecipe } from '@/components/week/add-meal-sheet';
 import { DayRows } from '@/components/week/day-rows';
@@ -308,6 +308,19 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
         : week === addWeeks(currentWeek, -1)
           ? t.lastWeek
           : shortDate(week);
+  /** Header: "This week" over the week's dates ("16 – 22 Nov"). */
+  const weekEyebrow = [currentWeek, addWeeks(currentWeek, 1), addWeeks(currentWeek, -1)].includes(weekIso)
+    ? chipLabel(weekIso)
+    : t.title;
+  const weekRange = (() => {
+    const first = dayDate(weekIso, 0);
+    const last = dayDate(weekIso, 6);
+    const full = (date: Date) => date.toLocaleDateString(locale, { day: 'numeric', month: 'short' });
+    const dayOnly = (date: Date) => date.toLocaleDateString(locale, { day: 'numeric' });
+    if (first.getMonth() !== last.getMonth()) return `${full(first)} – ${full(last)}`;
+    // Name the month once, on the side the locale puts it ("Nov 9 – 15" or "9 – 15 nov").
+    return /^\d/.test(full(last)) ? `${dayOnly(first)} – ${full(last)}` : `${full(first)} – ${dayOnly(last)}`;
+  })();
   const chipSub = (week: string) => {
     const s = summaries.get(week);
     if (s && s.meals > 0) return fmt(t.chipMeals, { n: s.meals });
@@ -693,9 +706,10 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
       })()
     : undefined;
 
-  const saveEntry = async (patch: MealPatch) => {
+  /** Write a meal's details: as each one changes (close = false) and again on Done. */
+  const saveEntry = async (patch: MealPatch, close = true) => {
     const entry = openEntry;
-    setOpenEntryId(null);
+    if (close) setOpenEntryId(null);
     if (!entry) return;
     const unchanged =
       JSON.stringify(entry.person_ids) === JSON.stringify(patch.person_ids) &&
@@ -984,6 +998,62 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
   const showFill = !isPastWeek && loaded && open.length > 0;
   const showReview = loaded && entries.length > 0 && !isPastWeek;
   const showBar = showFill || showReview;
+  /** One primary action: AI while several meals are open, then the review. */
+  const fillPrimary = showFill && (open.length >= 3 || !showReview);
+  const outPeople = new Set(absences.map((a) => a.person_id).filter((id) => eaterIds.includes(id))).size;
+  const openIdeas = () => {
+    if (recipeIdeas.length === 1) {
+      setIdeaToPlan(recipeIdeas[0]!);
+      return;
+    }
+    pickOption({
+      title: t.ideasSection,
+      cancelLabel: d.common.cancel,
+      options: recipeIdeas.map((idea) => ({ label: ideaTitle(idea), onPress: () => setIdeaToPlan(idea) })),
+    });
+  };
+  const barButton = ({
+    label,
+    icon,
+    tone,
+    wide = false,
+    a11y,
+    onPress,
+  }: {
+    label?: string;
+    icon?: keyof typeof Ionicons.glyphMap;
+    tone: 'dark' | 'accent' | 'quiet';
+    wide?: boolean;
+    a11y?: string;
+    onPress: () => void;
+  }) => {
+    const fg = tone === 'dark' ? colors.bg : tone === 'accent' ? colors.accentText : colors.text;
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={a11y ?? label}
+        onPress={onPress}
+        style={({ pressed }) => ({
+          flex: wide ? 1 : undefined,
+          minWidth: 50,
+          minHeight: 50,
+          paddingHorizontal: label ? 16 : 0,
+          borderRadius: 12,
+          backgroundColor: tone === 'dark' ? colors.text : tone === 'accent' ? colors.accent : colors.bg,
+          borderWidth: tone === 'quiet' ? 1 : 0,
+          borderColor: colors.border,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 8,
+          opacity: pressed ? 0.85 : 1,
+        })}
+      >
+        {icon ? <Ionicons name={icon} size={18} color={fg} /> : null}
+        {label ? <Text style={{ color: fg, fontFamily: fonts.uiSemi, fontSize: fontSize.base }}>{label}</Text> : null}
+      </Pressable>
+    );
+  };
   const recipeIdeas = ideas.filter((i) => i.recipe_id || i.custom_title);
 
   const iconButton = (icon: keyof typeof Ionicons.glyphMap, label: string, onPress: () => void) => (
@@ -1026,12 +1096,41 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
             </Pressable>
           ) : null}
           <View style={{ flex: 1, gap: 2 }}>
-            <Eyebrow>
-              {new Date().toLocaleDateString(locale, { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()}
-            </Eyebrow>
-            <Title>{t.title}</Title>
+            <Eyebrow>{weekEyebrow.toUpperCase()}</Eyebrow>
+            <Text
+              accessibilityRole="header"
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.7}
+              style={{ color: colors.text, fontFamily: fonts.display, fontSize: fontSize.sectionHead, letterSpacing: -0.3 }}
+            >
+              {weekRange}
+            </Text>
           </View>
-          {!isPastWeek ? iconButton('people-outline', t.homeA11y, () => setHomeOpen(true)) : null}
+          {!isPastWeek ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={outPeople > 0 ? `${t.homeTitle}, ${fmt(t.outCount, { n: outPeople })}` : t.homeTitle}
+              onPress={() => setHomeOpen(true)}
+              hitSlop={4}
+              style={({ pressed }) => ({
+                minHeight: 40,
+                paddingHorizontal: 12,
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: colors.border,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                backgroundColor: pressed ? colors.cardPressed : 'transparent',
+              })}
+            >
+              <Ionicons name="people-outline" size={18} color={colors.text} />
+              <Text style={{ color: colors.text, fontFamily: fonts.uiMedium, fontSize: fontSize.meta }}>
+                {outPeople > 0 ? fmt(t.outCount, { n: outPeople }) : t.eatingOut}
+              </Text>
+            </Pressable>
+          ) : null}
           {iconButton('bulb-outline', t.saveIdeaA11y, () => setIdeaSheetOpen(true))}
         </View>
 
@@ -1091,50 +1190,56 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
 
         {loaded ? (
           <>
-            {/* Progress and balance */}
-            <View style={{ gap: 8 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Text style={{ flex: 1, color: colors.text, fontFamily: fonts.uiSemi, fontSize: fontSize.small }}>
-                  {fmt(t.progress, { planned: progress.planned, total: progress.total })}
+            {/* Status: progress, balance and plan state on one line; ideas on the next */}
+            <View style={{ gap: 4 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                <View
+                  style={{ width: 36, height: 6, borderRadius: 3, backgroundColor: colors.bgGrouped, overflow: 'hidden' }}
+                >
+                  <View
+                    style={{
+                      width: `${progress.total > 0 ? Math.round((progress.planned / progress.total) * 100) : 0}%`,
+                      height: 6,
+                      backgroundColor: colors.text,
+                    }}
+                  />
+                </View>
+                <Text
+                  accessibilityLabel={fmt(t.progress, { planned: progress.planned, total: progress.total })}
+                  style={{ color: colors.text, fontFamily: fonts.uiSemi, fontSize: fontSize.small, marginRight: 2 }}
+                >
+                  {fmt(t.progressShort, { planned: progress.planned, total: progress.total })}
                 </Text>
+                {quotaChips.map((q) => (
+                  <Badge
+                    key={q.category}
+                    label={`${categoryName(q.category)} ${q.planned}/${q.target}`}
+                    accent={!isPastWeek && q.planned < q.target}
+                  />
+                ))}
                 {plan ? <Badge label={approved ? t.approved : t.draft} /> : null}
               </View>
-              <View style={{ height: 6, borderRadius: 3, backgroundColor: colors.bgGrouped, overflow: 'hidden' }}>
-                <View
-                  style={{
-                    width: `${progress.total > 0 ? Math.round((progress.planned / progress.total) * 100) : 0}%`,
-                    height: 6,
-                    backgroundColor: colors.text,
-                  }}
-                />
-              </View>
-              {quotaChips.length > 0 ? (
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                  {quotaChips.map((q) => (
-                    <Badge
-                      key={q.category}
-                      label={`${categoryName(q.category)} ${q.planned}/${q.target}`}
-                      accent={!isPastWeek && q.planned < q.target}
-                    />
-                  ))}
-                </View>
-              ) : null}
               {!isPastWeek && recipeIdeas.length > 0 ? (
-                <View style={{ gap: 6 }}>
-                  <Text style={{ color: colors.textMuted, fontFamily: fonts.uiSemi, fontSize: fontSize.meta }}>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={openIdeas}
+                  style={({ pressed }) => ({
+                    minHeight: 40,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 8,
+                    borderRadius: 8,
+                    backgroundColor: pressed ? colors.cardPressed : 'transparent',
+                  })}
+                >
+                  <Text numberOfLines={1} style={{ flex: 1, color: colors.text, fontFamily: fonts.uiSemi, fontSize: fontSize.meta }}>
                     {recipeIdeas.length === 1 ? t.ideaOne : fmt(t.ideaMany, { n: recipeIdeas.length })}
+                    <Text style={{ color: colors.textMuted, fontFamily: fonts.ui }}>
+                      {` · ${recipeIdeas.map(ideaTitle).join(', ')}`}
+                    </Text>
                   </Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                    {recipeIdeas.map((idea) => (
-                      <Pill
-                        key={idea.id}
-                        label={ideaTitle(idea)}
-                        accessibilityLabel={fmt(d.plan.planIdeaA11y, { title: ideaTitle(idea) })}
-                        onPress={() => setIdeaToPlan(idea)}
-                      />
-                    ))}
-                  </View>
-                </View>
+                  <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+                </Pressable>
               ) : null}
             </View>
 
@@ -1294,58 +1399,26 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
             }),
           }}
         >
-          {showFill ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setAiOpen(true)}
-              style={({ pressed }) => ({
-                flex: 1,
-                minHeight: 50,
-                borderRadius: 12,
-                backgroundColor: colors.text,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8,
-                opacity: pressed ? 0.85 : 1,
-              })}
-            >
-              <Ionicons name="sparkles-outline" size={18} color={colors.bg} />
-              <Text style={{ color: colors.bg, fontFamily: fonts.uiSemi, fontSize: fontSize.base }}>
-                {fmt(t.fillWithAi, { n: open.length })}
-              </Text>
-            </Pressable>
-          ) : null}
-          {showReview ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setReviewOpen(true)}
-              style={({ pressed }) => ({
-                flex: 1,
-                minHeight: 50,
-                borderRadius: 12,
-                backgroundColor: approved ? colors.bg : colors.accent,
-                borderWidth: approved ? 1 : 0,
-                borderColor: colors.border,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6,
-                opacity: pressed ? 0.85 : 1,
-              })}
-            >
-              {approved ? <Ionicons name="checkmark-circle" size={18} color={colors.text} /> : null}
-              <Text
-                style={{
-                  color: approved ? colors.text : colors.accentText,
-                  fontFamily: fonts.uiSemi,
-                  fontSize: fontSize.base,
-                }}
-              >
-                {approved ? t.approved : t.review}
-              </Text>
-            </Pressable>
-          ) : null}
+          {approved ? (
+            <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', gap: 10 }}>
+              {barButton({ label: t.approved, icon: 'checkmark-circle', tone: 'quiet', onPress: () => setReviewOpen(true) })}
+              {showFill
+                ? barButton({ icon: 'sparkles-outline', tone: 'quiet', a11y: fmt(t.fillWithAi, { n: open.length }), onPress: () => setAiOpen(true) })
+                : null}
+            </View>
+          ) : fillPrimary ? (
+            <>
+              {barButton({ label: fmt(t.fillWithAi, { n: open.length }), icon: 'sparkles-outline', tone: 'dark', wide: true, onPress: () => setAiOpen(true) })}
+              {showReview ? barButton({ label: t.reviewShort, tone: 'quiet', a11y: t.review, onPress: () => setReviewOpen(true) }) : null}
+            </>
+          ) : (
+            <>
+              {barButton({ label: t.review, tone: 'accent', wide: true, onPress: () => setReviewOpen(true) })}
+              {showFill
+                ? barButton({ icon: 'sparkles-outline', tone: 'quiet', a11y: fmt(t.fillWithAi, { n: open.length }), onPress: () => setAiOpen(true) })
+                : null}
+            </>
+          )}
         </View>
       ) : null}
 
@@ -1403,6 +1476,7 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
         }}
         onRemoveSide={(id) => void removeSide(id)}
         onSave={(patch) => void saveEntry(patch)}
+        onChange={(patch) => void saveEntry(patch, false)}
         onRemove={() => void removeMeal()}
         onClose={() => setOpenEntryId(null)}
         dishes={openDishes}
@@ -1415,6 +1489,7 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
         eaters={eaters}
         absences={absences}
         schoolChild={schoolChild}
+        initialPersonId={viewPerson?.id ?? null}
         onChange={(changes) => void applyAway(changes)}
         loadLastWeek={loadLastWeekAbsences}
         onClose={() => {

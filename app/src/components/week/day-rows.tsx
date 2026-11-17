@@ -19,7 +19,9 @@ interface RecipeLike {
 /**
  * The week as seven compact day blocks (design A): a day line, then one row
  * per meal with a thumbnail, the dish (+ sides) and who cooks. Empty meals
- * are a dashed "+ Add" row; going-out meals say so instead.
+ * are a dashed "+ Add" row; going-out meals say so instead. Tapping a dish
+ * opens its recipe and its ··· opens the meal's details; people eating out
+ * show as hollow faces on that meal.
  */
 export function DayRows({
   weekIso,
@@ -64,9 +66,6 @@ export function DayRows({
         const date = dayDate(weekIso, day);
         const past = isPastDay(weekIso, day);
         const isToday = day === todayIndex;
-        const awayToday = eaters.filter((p) =>
-          WEEK_SLOTS.some((slot) => awayIds(absences, day, slot).has(p.id))
-        );
         return (
           <View
             key={day}
@@ -92,16 +91,22 @@ export function DayRows({
                   </Text>
                 ) : null}
               </Text>
-              <View style={{ flexDirection: 'row', gap: 4 }}>
-                {awayToday.map((p) => (
-                  <PersonChip key={p.id} person={p} hollow />
-                ))}
-              </View>
             </Pressable>
             {WEEK_SLOTS.map((slot) => {
               const { main, sides, plates, leftovers } = splitSlot(entries, day, slot);
               const away = awayIds(absences, day, slot);
               const out = everyoneAway(absences, day, slot, eaterIds);
+              /** Who's eating out at this meal, as hollow faces on its row. */
+              const awayFaces =
+                away.size > 0 && !out ? (
+                  <View style={{ flexDirection: 'row', gap: 2 }}>
+                    {eaters
+                      .filter((p) => away.has(p.id))
+                      .map((p) => (
+                        <PersonChip key={p.id} person={p} hollow />
+                      ))}
+                  </View>
+                ) : null;
               const label = (width = 64) => (
                 <Text
                   style={{
@@ -149,6 +154,7 @@ export function DayRows({
                         {fmt(t.addSlot, { slot: slotLabel(slot).toLowerCase() })}
                       </Text>
                     </Pressable>
+                    {awayFaces ? <View style={{ marginLeft: 6 }}>{awayFaces}</View> : null}
                   </View>
                 );
               }
@@ -301,11 +307,14 @@ export function DayRows({
               }
               return (
                 <View key={slot} style={{ gap: 4 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={fmt(d.plan.editMealA11y, { title: titleOf(main) })}
-                  onPress={() => onOpen(main)}
+                  accessibilityLabel={recipe ? fmt(t.openRecipeA11y, { title: titleOf(main) }) : titleOf(main)}
+                  onPress={() => onOpenDish(main)}
+                  onLongPress={() => onOpen(main)}
                   style={({ pressed }) => ({
+                    flex: 1,
                     flexDirection: 'row',
                     alignItems: 'center',
                     gap: 10,
@@ -336,10 +345,30 @@ export function DayRows({
                       </Text>
                     ) : null}
                   </View>
+                  {awayFaces}
                   {employee ? (
                     <Badge label={main.cook_part ? `${t.employee} · ${d.aiPlan.partBadge}` : t.employee} />
                   ) : null}
                 </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={fmt(d.plan.editMealA11y, { title: titleOf(main) })}
+                  onPress={() => onOpen(main)}
+                  hitSlop={6}
+                  style={({ pressed }) => ({
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: pressed ? colors.cardPressed : 'transparent',
+                  })}
+                >
+                  <Ionicons name="ellipsis-horizontal" size={16} color={colors.text} />
+                </Pressable>
+                </View>
                 {addFor}
                 </View>
               );

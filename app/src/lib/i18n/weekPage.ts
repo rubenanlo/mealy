@@ -130,6 +130,15 @@ const en = {
   mergeTitle: "Everyone eats {title}?",
   mergeConfirm: "Yes, one dish for everyone",
   mergeMessage: "The other dishes of this meal are removed.",
+  // Week tidy-up (2026-11-17)
+  progressShort: "{planned} of {total}",
+  eatingOut: "Eating out",
+  reviewShort: "Review",
+  groupDish: "The dish",
+  groupMore: "More",
+  noteAdd: "Add",
+  removeMeal: "Remove this meal",
+  openRecipeA11y: "Open recipe: {title}",
 };
 
 const es: typeof en = {
@@ -257,6 +266,15 @@ const es: typeof en = {
   mergeTitle: "¿Todos comen {title}?",
   mergeConfirm: "Sí, un plato para todos",
   mergeMessage: "Se quitan los otros platos de esta comida.",
+  // Week tidy-up (2026-11-17)
+  progressShort: "{planned} de {total}",
+  eatingOut: "Comen fuera",
+  reviewShort: "Revisar",
+  groupDish: "El plato",
+  groupMore: "Más",
+  noteAdd: "Añadir",
+  removeMeal: "Quitar esta comida",
+  openRecipeA11y: "Abrir receta: {title}",
 };
 
 const fr: typeof en = {
@@ -384,6 +402,15 @@ const fr: typeof en = {
   mergeTitle: "Tout le monde mange {title} ?",
   mergeConfirm: "Oui, un plat pour tous",
   mergeMessage: "Les autres plats de ce repas sont retirés.",
+  // Week tidy-up (2026-11-17)
+  progressShort: "{planned} sur {total}",
+  eatingOut: "Repas dehors",
+  reviewShort: "Vérifier",
+  groupDish: "Le plat",
+  groupMore: "Plus",
+  noteAdd: "Ajouter",
+  removeMeal: "Retirer ce repas",
+  openRecipeA11y: "Ouvrir la recette : {title}",
 };
 
 const it: typeof en = {
@@ -511,6 +538,15 @@ const it: typeof en = {
   mergeTitle: "Tutti mangiano {title}?",
   mergeConfirm: "Sì, un piatto per tutti",
   mergeMessage: "Gli altri piatti di questo pasto vengono tolti.",
+  // Week tidy-up (2026-11-17)
+  progressShort: "{planned} di {total}",
+  eatingOut: "Fuori casa",
+  reviewShort: "Rivedi",
+  groupDish: "Il piatto",
+  groupMore: "Altro",
+  noteAdd: "Aggiungi",
+  removeMeal: "Togli questo pasto",
+  openRecipeA11y: "Apri la ricetta: {title}",
 };
 
 export const weekPage = { en, es, fr, it };

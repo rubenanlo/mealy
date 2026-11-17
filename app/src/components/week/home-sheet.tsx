@@ -36,10 +36,13 @@ export function HomeSheet({
   eaters,
   absences,
   schoolChild,
+  initialPersonId,
   onChange,
   onClose,
   loadLastWeek,
 }: {
+  /** The tab to open on (the person whose week is showing); default the first person. */
+  initialPersonId?: string | null;
   visible: boolean;
   weekIso: string;
   eaters: PersonLike[];
@@ -63,7 +66,7 @@ export function HomeSheet({
   const [hint, setHint] = useState<string | null>(null);
   useEffect(() => {
     if (visible) {
-      setTab(eaters[0]?.id ?? 'all');
+      setTab((initialPersonId && eaters.some((p) => p.id === initialPersonId) ? initialPersonId : eaters[0]?.id) ?? 'all');
       setHint(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

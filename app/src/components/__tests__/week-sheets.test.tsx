@@ -145,6 +145,71 @@ describe('week page sheets', () => {
     expect(onAddFor).toHaveBeenCalledWith(0, 'dinner', ['r']);
   });
 
+  it('tapping a dish opens its recipe, ··· opens its details, and who is out shows on that meal', () => {
+    const onOpenDish = jest.fn();
+    const onOpen = jest.fn();
+    const { getByLabelText, getAllByText } = wrap(
+      <DayRows
+        weekIso={WEEK}
+        entries={[entry({})]}
+        absences={[{ day: 0, slot: 'dinner', person_id: 'm' }]}
+        eaters={eaters}
+        recipeById={recipeById}
+        todayIndex={-1}
+        readOnly={false}
+        onAdd={() => {}}
+        onOpen={onOpen}
+        onAddFor={() => {}}
+        onOpenDish={onOpenDish}
+        onHome={() => {}}
+      />
+    );
+    fireEvent.press(getByLabelText('Open recipe: Salmon with dill'));
+    expect(onOpenDish).toHaveBeenCalledWith(expect.objectContaining({ id: 'e1' }));
+    expect(onOpen).not.toHaveBeenCalled();
+    fireEvent.press(getByLabelText('Edit Salmon with dill'));
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: 'e1' }));
+    // Marc's hollow face sits on Monday dinner only, not on the day line.
+    expect(getAllByText('M').length).toBe(1);
+  });
+
+  it('meal sheet saves each change as it is made and keeps Remove', () => {
+    const onChange = jest.fn();
+    const onRemove = jest.fn();
+    const { getByText, getByPlaceholderText } = wrap(
+      <MealSheet
+        visible
+        entry={entry({})}
+        sides={[]}
+        heading="Monday · Dinner"
+        title="Salmon with dill"
+        coverPath={null}
+        hasRecipe
+        eaters={eaters}
+        away={new Set()}
+        employeeName="Rosa"
+        sideTitle={() => ''}
+        onOpenRecipe={() => {}}
+        onSwap={() => {}}
+        onAddSide={() => {}}
+        onRemoveSide={() => {}}
+        onSave={() => {}}
+        onChange={onChange}
+        onRemove={onRemove}
+        onClose={() => {}}
+      />
+    );
+    expect(getByText('The dish')).toBeTruthy();
+    expect(getByText('More')).toBeTruthy();
+    fireEvent.press(getByText('Rosa'));
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ assigned_cook: 'employee', cook_part: false }));
+    // The cook's note stays folded until asked for.
+    fireEvent.press(getByText('Instructions for the cook'));
+    expect(getByPlaceholderText(/./)).toBeTruthy();
+    fireEvent.press(getByText('Remove this meal'));
+    expect(onRemove).toHaveBeenCalled();
+  });
+
   it('meal sheet opens the recipe at the right servings and saves a part-only hand-off', () => {
     const onSave = jest.fn();
     const onOpenRecipe = jest.fn();
