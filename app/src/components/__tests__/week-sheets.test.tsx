@@ -422,6 +422,31 @@ describe('week page sheets', () => {
     expect(onPick).toHaveBeenLastCalledWith({ customTitle: 'Pizza night' });
   });
 
+  it('add sheet: Recently cooked shows photo cards that add in one tap', () => {
+    const onPick = jest.fn();
+    const recipes = [
+      { id: 'tacos', title: 'Easy Chicken Tacos', cover_image_path: null, category: 'meat', isSalad: false, weeksSince: 2, totalMinutes: 25 },
+      { id: 'rice', title: 'Shrimp Fried Rice', cover_image_path: null, category: 'fish', isSalad: false, weeksSince: 4, totalMinutes: 20 },
+    ];
+    const { getByText, getByLabelText } = wrap(
+      <AddMealSheet
+        visible
+        title="Thursday · Lunch"
+        recipes={recipes}
+        suggestions={{ ideas: [], gaps: [], recent: ['tacos', 'rice'] }}
+        customIdeas={[]}
+        ideaIdByRecipe={new Map()}
+        onPick={onPick}
+        onClose={() => {}}
+      />
+    );
+    expect(getByText('Recently cooked')).toBeTruthy();
+    expect(getByText('Meat · 2 wk ago')).toBeTruthy();
+    expect(getByText('Fish · 4 wk ago')).toBeTruthy();
+    fireEvent.press(getByLabelText('Add Shrimp Fried Rice'));
+    expect(onPick).toHaveBeenCalledWith({ recipeId: 'rice', ideaId: undefined });
+  });
+
   it('add sheet: a Leftovers row adds a leftovers meal in one tap', () => {
     const onPick = jest.fn();
     const { getByLabelText, getByText, queryByText, rerender } = wrap(

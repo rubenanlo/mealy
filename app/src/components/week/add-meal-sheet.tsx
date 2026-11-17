@@ -1,12 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { RecipeImage } from '@/components/recipe-cards';
 import { Eyebrow, Field, Muted } from '@/components/ui';
 import { Pill, WeekSheet } from '@/components/week/sheet';
 import { fmt, useI18n } from '@/lib/i18n';
-import { fonts, fontSize, radius, useTheme } from '@/lib/theme';
+import { fonts, fontSize, radius, screenPadding, useTheme } from '@/lib/theme';
 import type { AddSuggestions } from '@/lib/week-page';
 
 export interface AddRecipe {
@@ -23,6 +23,9 @@ export interface CustomIdea {
   id: string;
   title: string;
 }
+
+/** Width of a "Recently cooked" photo card: about 2½ fit across a phone. */
+const RECENT_CARD_WIDTH = 128;
 
 export type AddPick = { recipeId: string; ideaId?: string } | { customTitle: string; ideaId?: string };
 
@@ -151,6 +154,74 @@ export function AddMealSheet({
     );
   };
 
+  /** Photo card for "Recently cooked" (Home carousel style); tapping adds it, like a row. */
+  const recentCard = (r: AddRecipe) => {
+    const category = categoryName(r);
+    const dot = r.isSalad
+      ? colors.spineVeg
+      : r.category === 'fish'
+        ? colors.spineFish
+        : r.category === 'meat'
+          ? colors.spineMeat
+          : r.category === 'vegetarian'
+            ? colors.spineVeg
+            : r.category === 'legume'
+              ? colors.spineLegume
+              : null;
+    const meta = [category, r.weeksSince !== null && r.weeksSince >= 1 ? fmt(t.weeksAgoShort, { n: r.weeksSince }) : null]
+      .filter(Boolean)
+      .join(' · ');
+    return (
+      <Pressable
+        key={r.id}
+        accessibilityRole="button"
+        accessibilityLabel={fmt(t.addA11y, { title: r.title })}
+        onPress={() => onPick({ recipeId: r.id, ideaId: ideaIdByRecipe.get(r.id) })}
+        style={({ pressed }) => ({ width: RECENT_CARD_WIDTH, opacity: pressed ? 0.7 : 1 })}
+      >
+        <View>
+          <RecipeImage
+            path={r.cover_image_path}
+            style={{ width: RECENT_CARD_WIDTH, height: 92, borderRadius: radius.card }}
+            iconSize={24}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: 6,
+              right: 6,
+              width: 28,
+              height: 28,
+              borderRadius: 14,
+              backgroundColor: colors.card,
+              opacity: 0.94,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Ionicons name="add" size={18} color={colors.accent} />
+          </View>
+        </View>
+        <View style={{ paddingTop: 7, gap: 3 }}>
+          <Text
+            numberOfLines={2}
+            style={{ color: colors.text, fontFamily: fonts.displaySemi, fontSize: 15, lineHeight: 19 }}
+          >
+            {r.title}
+          </Text>
+          {meta ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+              {dot ? <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: dot }} /> : null}
+              <Muted numberOfLines={1} style={{ flexShrink: 1, fontSize: 12 }}>
+                {meta}
+              </Muted>
+            </View>
+          ) : null}
+        </View>
+      </Pressable>
+    );
+  };
+
   const typed = query.trim();
   return (
     <WeekSheet visible={visible} onClose={onClose} title={title} subtitle={subtitle} tall>
@@ -265,14 +336,19 @@ export function AddMealSheet({
           {suggestions.recent.length > 0 ? (
             <View style={{ gap: 8 }}>
               <Eyebrow>{t.recentSection}</Eyebrow>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                decelerationRate="fast"
+                snapToInterval={RECENT_CARD_WIDTH + 12}
+                style={{ marginHorizontal: -screenPadding }}
+                contentContainerStyle={{ paddingHorizontal: screenPadding, gap: 12 }}
+              >
                 {suggestions.recent
                   .map((id) => byId.get(id))
                   .filter((r): r is AddRecipe => !!r)
-                  .map((r) => (
-                    <Pill key={r.id} label={r.title} onPress={() => onPick({ recipeId: r.id })} />
-                  ))}
-              </View>
+                  .map((r) => recentCard(r))}
+              </ScrollView>
             </View>
           ) : null}
         </>
