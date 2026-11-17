@@ -136,7 +136,7 @@ export function PlanHome() {
       supabase
         .from('plan_entries')
         .select(
-          'id, meal_plan_id, day, slot, recipe_id, custom_title, assigned_cook, person_ids, guest_count, position, cook_part, instructions'
+          'id, meal_plan_id, day, slot, recipe_id, custom_title, assigned_cook, person_ids, guest_count, position, cook_part, instructions, leftover_of'
         )
         .in(
           'meal_plan_id',

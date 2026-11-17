@@ -15,6 +15,7 @@ function cell(over: Partial<UpcomingCell>): UpcomingCell {
     eaters: [[]],
     dishRecipeIds: ['r1'],
     dishServings: [2],
+    dishes: [],
     ...over,
   };
 }

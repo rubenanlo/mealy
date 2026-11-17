@@ -294,7 +294,7 @@ export default function HomeScreen() {
       const { data: weekRows } = await supabase
         .from("plan_entries")
         .select(
-          "meal_plan_id, day, slot, recipe_id, custom_title, assigned_cook, person_ids, guest_count",
+          "meal_plan_id, day, slot, recipe_id, custom_title, assigned_cook, person_ids, guest_count, position, leftover_of",
         )
         .in(
           "meal_plan_id",
