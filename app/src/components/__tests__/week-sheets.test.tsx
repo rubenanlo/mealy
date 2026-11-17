@@ -6,6 +6,7 @@ import { ThemeProvider } from '@/lib/theme';
 import { SCHOOL_LUNCH_DAYS } from '@/lib/ai-week';
 import type { PlanAbsence, PlanEntry } from '@/lib/plan';
 
+import { ChangeMealPanel } from '../change-meal-panel';
 import { AddMealSheet } from '../week/add-meal-sheet';
 import { DayRows } from '../week/day-rows';
 import { HomeSheet } from '../week/home-sheet';
@@ -208,6 +209,36 @@ describe('week page sheets', () => {
     expect(getByPlaceholderText(/./)).toBeTruthy();
     fireEvent.press(getByText('Remove this meal'));
     expect(onRemove).toHaveBeenCalled();
+  });
+
+  it('swap panel: ideas, dishes that fill the gaps, leave empty and eating out', () => {
+    const onPick = jest.fn();
+    const onLeaveEmpty = jest.fn();
+    const onEatingOut = jest.fn();
+    const { getByText, getByLabelText } = wrap(
+      <ChangeMealPanel
+        title="Monday · Dinner"
+        currentTitle="Salmon with dill"
+        recipes={[{ id: 'hake', title: 'Hake in salsa verde', ingredients: ['hake'], meta: ['35 min'] }]}
+        ideasWeek={[{ ideaId: 'i1', recipeId: null, customTitle: 'Ceviche', sub: null }]}
+        ideasLater={[]}
+        suggestions={['hake']}
+        suggestionsLabel="Fills the gaps"
+        onPick={onPick}
+        onLeaveEmpty={onLeaveEmpty}
+        onEatingOut={onEatingOut}
+        onClose={() => {}}
+      />
+    );
+    expect(getByText('FILLS THE GAPS')).toBeTruthy();
+    fireEvent.press(getByLabelText('Use Hake in salsa verde'));
+    expect(onPick).toHaveBeenCalledWith({ recipeId: 'hake', customTitle: null });
+    fireEvent.press(getByLabelText('Use Ceviche'));
+    expect(onPick).toHaveBeenLastCalledWith({ recipeId: null, customTitle: 'Ceviche', ideaId: 'i1' });
+    fireEvent.press(getByText('Leave it empty'));
+    expect(onLeaveEmpty).toHaveBeenCalled();
+    fireEvent.press(getByText('We’re eating out'));
+    expect(onEatingOut).toHaveBeenCalled();
   });
 
   it('meal sheet opens the recipe at the right servings and saves a part-only hand-off', () => {

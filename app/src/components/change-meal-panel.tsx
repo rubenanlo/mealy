@@ -102,11 +102,14 @@ export function ChangeMealPanel({
   ideasWeek,
   ideasLater,
   suggestions,
+  suggestionsLabel,
   onPick,
   onLeaveEmpty,
   onEatingOut,
   onClose,
 }: {
+  /** Heading over `suggestions`; default "Fits your routine". */
+  suggestionsLabel?: string;
   title: string;
   currentTitle: string | null;
   recipes: PanelRecipe[];
@@ -281,7 +284,7 @@ export function ChangeMealPanel({
           ) : null}
           {suggestions.length > 0 ? (
             <View>
-              {label(t.fitsRoutine)}
+              {label(suggestionsLabel ?? t.fitsRoutine)}
               {suggestions
                 .map((id) => byId.get(id))
                 .filter((r): r is PanelRecipe => !!r)
