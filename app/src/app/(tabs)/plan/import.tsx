@@ -11,9 +11,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Button, Eyebrow, Muted } from '@/components/ui';
+import { RecipeImage } from '@/components/recipe-cards';
+import { Button, Eyebrow, Field, Muted } from '@/components/ui';
 import { Pill, WeekSheet } from '@/components/week/sheet';
-import { findSchoolChild, SCHOOL_LUNCH_DAYS } from '@/lib/ai-week';
+import { findSchoolChild, isSalad, SCHOOL_LUNCH_DAYS } from '@/lib/ai-week';
 import { useHousehold } from '@/lib/auth';
 import { notify } from '@/lib/confirm';
 import { fmt, useI18n } from '@/lib/i18n';
@@ -55,6 +56,31 @@ interface RecipeLite {
   id: string;
   title: string;
   original: string;
+  cover_image_path: string | null;
+  salad: boolean;
+  totalMinutes: number | null;
+}
+
+interface RecipeRow {
+  id: string;
+  title: string;
+  cover_image_path: string | null;
+  prep_minutes: number | null;
+  cook_minutes: number | null;
+  tags: string[] | null;
+  dish_type: string | null;
+  recipe_translations: { locale: string; title: string }[] | null;
+}
+
+/** Recipe indexes best match first, by search score (scoreRecipes returns one score per recipe). */
+function rankRecipes(scores: readonly number[] | null, limit: number): number[] {
+  if (!scores) return [];
+  return scores
+    .map((score, i) => ({ score, i }))
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score || a.i - b.i)
+    .slice(0, limit)
+    .map((x) => x.i);
 }
 
 type Phase = 'input' | 'reading' | 'preview';
@@ -98,7 +124,7 @@ export default function ImportPlanScreen() {
         supabase.from('persons').select('id, name, is_employee').eq('household_id', householdId).order('created_at'),
         supabase
           .from('recipes')
-          .select('id, title, recipe_translations(locale, title)')
+          .select('id, title, cover_image_path, prep_minutes, cook_minutes, tags, dish_type, recipe_translations(locale, title)')
           .eq('household_id', householdId)
           .order('title'),
         // Table from migration 0041; until it exists this just returns an error and nothing is remembered.
@@ -107,9 +133,14 @@ export default function ImportPlanScreen() {
       if (cancelled) return;
       setPersons((personRows as Person[]) ?? []);
       setRecipes(
-        ((recipeRows ?? []) as { id: string; title: string; recipe_translations: { locale: string; title: string }[] | null }[]).map(
-          (r) => ({ id: r.id, original: r.title, title: localizedTitle(r, locale) })
-        )
+        ((recipeRows ?? []) as RecipeRow[]).map((r) => ({
+          id: r.id,
+          original: r.title,
+          title: localizedTitle(r, locale),
+          cover_image_path: r.cover_image_path,
+          salad: isSalad(r),
+          totalMinutes: r.prep_minutes == null && r.cook_minutes == null ? null : (r.prep_minutes ?? 0) + (r.cook_minutes ?? 0),
+        }))
       );
       setMemory((matchRowsData as RememberedMatch[] | null) ?? []);
     })();
@@ -1050,7 +1081,10 @@ function FixMealSheet({
     draft.kind === 'out' ? 'out' : draft.kind === 'empty' || !draft.main ? (draft.missing ? 'quick' : 'empty') : draft.main.recipeId ? 'recipe' : 'quick';
   const [choice, setChoice] = useState<Choice>(initial);
   const [recipeId, setRecipeId] = useState<string | null>(draft.main?.recipeId ?? null);
-  const [query, setQuery] = useState(draft.main && !draft.main.recipeId ? draft.main.title : '');
+  // Start the search from the dish so the matched recipe (or close ones) shows straight away.
+  const [query, setQuery] = useState(
+    (draft.main?.recipeId ? recipes.find((r) => r.id === draft.main?.recipeId)?.title : null) ?? draft.main?.title ?? ''
+  );
   const [quickTitle, setQuickTitle] = useState(draft.main && !draft.main.recipeId ? draft.main.title : '');
   const [away, setAway] = useState<string[]>(draft.awayIds);
   const [cook, setCook] = useState<'none' | 'whole' | 'part'>(
@@ -1063,12 +1097,10 @@ function FixMealSheet({
     () => buildSearchIndex(recipes.map((r) => ({ titles: [r.title, r.original], ingredients: [] }))),
     [recipes]
   );
-  const results = useMemo(() => {
-    if (!query.trim()) return [] as RecipeLite[];
-    const order = scoreRecipes(index, query);
-    if (!order) return [] as RecipeLite[];
-    return order.slice(0, 6).map((i) => recipes[i]);
-  }, [index, query, recipes]);
+  const results = useMemo(
+    () => (query.trim() ? rankRecipes(scoreRecipes(index, query), 20).map((i) => recipes[i]) : []),
+    [index, query, recipes]
+  );
   const chosen = recipes.find((r) => r.id === recipeId) ?? null;
 
   const done = () => {
@@ -1184,26 +1216,82 @@ function FixMealSheet({
         {radio('recipe', t.recipe, chosen?.title)}
         {choice === 'recipe' ? (
           <View style={{ gap: 6 }}>
-            {input(query, setQuery, t.searchRecipes)}
-            {results.map((r) => (
+            <Field
+              icon="search-outline"
+              value={query}
+              onChangeText={setQuery}
+              placeholder={d.weekPage.searchPlaceholder}
+              accessibilityLabel={t.searchRecipes}
+              autoCapitalize="none"
+              returnKeyType="search"
+            />
+            {query.trim() ? (
               <Pressable
-                key={r.id}
                 accessibilityRole="button"
-                accessibilityState={{ selected: r.id === recipeId }}
-                onPress={() => setRecipeId(r.id)}
+                onPress={() => {
+                  setQuickTitle(query.trim());
+                  setChoice('quick');
+                }}
                 style={({ pressed }) => ({
                   flexDirection: 'row',
                   alignItems: 'center',
-                  minHeight: 44,
-                  paddingHorizontal: 12,
-                  borderRadius: radius.control,
-                  backgroundColor: pressed ? colors.cardPressed : 'transparent',
+                  gap: 10,
+                  minHeight: 48,
+                  opacity: pressed ? 0.6 : 1,
                 })}
               >
-                <Text style={{ flex: 1, color: colors.text, fontFamily: fonts.ui, fontSize: fontSize.small }}>{r.title}</Text>
-                {r.id === recipeId ? <Ionicons name="checkmark" size={18} color={colors.text} /> : null}
+                <Ionicons name="create-outline" size={20} color={colors.accent} />
+                <Text style={{ flex: 1, color: colors.accent, fontFamily: fonts.uiSemi, fontSize: fontSize.small }}>
+                  {fmt(d.weekPage.addTyped, { title: query.trim() })}
+                </Text>
               </Pressable>
-            ))}
+            ) : null}
+            {results.length > 0 ? <Eyebrow>{d.weekPage.resultsSection}</Eyebrow> : query.trim() ? <Muted>{d.weekPage.noMatches}</Muted> : null}
+            {results.map((r) => {
+              const picked = r.id === recipeId;
+              const meta = [r.salad ? d.weekPage.salad : null, r.totalMinutes ? fmt(d.weekPage.minutes, { n: r.totalMinutes }) : null]
+                .filter(Boolean)
+                .join(' · ');
+              return (
+                <Pressable
+                  key={r.id}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: picked }}
+                  accessibilityLabel={r.title}
+                  onPress={() => setRecipeId(r.id)}
+                  style={({ pressed }) => ({
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 12,
+                    minHeight: 56,
+                    borderRadius: radius.card,
+                    backgroundColor: pressed ? colors.cardPressed : 'transparent',
+                  })}
+                >
+                  <RecipeImage path={r.cover_image_path} style={{ width: 48, height: 48, borderRadius: radius.thumb }} iconSize={18} />
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text numberOfLines={2} style={{ color: colors.text, fontFamily: fonts.uiMedium, fontSize: fontSize.base }}>
+                      {r.title}
+                    </Text>
+                    {meta ? <Muted numberOfLines={1}>{meta}</Muted> : null}
+                  </View>
+                  <View
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 20,
+                      borderWidth: picked ? 0 : 1,
+                      borderColor: colors.border,
+                      backgroundColor: picked ? colors.text : 'transparent',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Ionicons name={picked ? 'checkmark' : 'add'} size={22} color={picked ? colors.bg : colors.accent} />
+                  </View>
+                </Pressable>
+              );
+            })}
           </View>
         ) : null}
         {radio('quick', t.quickMeal, choice === 'quick' ? undefined : quickTitle || undefined)}
