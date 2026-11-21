@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 
 import { supabase } from '@/lib/supabase';
-import type { ImportedMeal } from '@/lib/plan-import';
+import type { ImportedIdea, ImportedMeal } from '@/lib/plan-import';
 import { queueRecipeTranslation } from '@/lib/translations';
 import { workerUrl } from '@/lib/worker-url';
 
@@ -773,10 +773,10 @@ export async function aiImportPlan(body: {
   people: { id: string; name: string; employee: boolean }[];
   recipes: { id: string; title: string }[];
   remembered: { phrase: string; recipe_id: string | null; title: string | null }[];
-}): Promise<{ meals: ImportedMeal[] } | null> {
-  const reply = await postAi<{ meals: ImportedMeal[] }>('/ai/plan-import', body);
+}): Promise<{ meals: ImportedMeal[]; ideas: ImportedIdea[] } | null> {
+  const reply = await postAi<{ meals: ImportedMeal[]; ideas?: ImportedIdea[] }>('/ai/plan-import', body);
   if (!reply || !Array.isArray(reply.meals)) return null;
-  return reply;
+  return { meals: reply.meals, ideas: Array.isArray(reply.ideas) ? reply.ideas : [] };
 }
 
 /** Transcribe screenshots of a plan message, in order. Null on failure. */

@@ -20,15 +20,21 @@ import { backOr } from '@/lib/nav';
 import type { MealSlot } from '@/lib/plan';
 import {
   buildDrafts,
+  buildIdeaDrafts,
   checkReason,
   chooseOption,
   draftWeeks,
   foldPhrase,
+  ideaRows,
+  ideaWeekChoices,
+  isoDate,
   matchRows,
   parseIsoDate,
   planRows,
   startChoices,
+  type DraftIdea,
   type DraftMeal,
+  type ImportedIdea,
   type ImportedMeal,
   type RememberedMatch,
 } from '@/lib/plan-import';
@@ -76,6 +82,10 @@ export default function ImportPlanScreen() {
   const [memory, setMemory] = useState<RememberedMatch[]>([]);
   const [existing, setExisting] = useState(0);
   const [editKey, setEditKey] = useState<string | null>(null);
+  const [rawIdeas, setRawIdeas] = useState<ImportedIdea[]>([]);
+  const [ideas, setIdeas] = useState<DraftIdea[]>([]);
+  /** Which of the two offered weeks the ideas go to, or none. */
+  const [ideaChoice, setIdeaChoice] = useState<0 | 1 | 'none'>(0);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -157,16 +167,25 @@ export default function ImportPlanScreen() {
       setPhase('input');
       return;
     }
-    if (reply.meals.length === 0) {
+    if (reply.meals.length === 0 && reply.ideas.length === 0) {
       setError(t.nothingFound);
       setPhase('input');
       return;
     }
     const first = [...reply.meals].sort((a, b) => a.day_index - b.day_index)[0];
-    const startIso = startChoices(first.weekday, new Date())[0];
+    const startIso = first ? startChoices(first.weekday, new Date())[0] : isoDate(new Date());
     setMeals(reply.meals);
     setStart(startIso);
     rebuild(reply.meals, startIso);
+    setRawIdeas(reply.ideas);
+    setIdeaChoice(0);
+    setIdeas(
+      buildIdeaDrafts(
+        reply.ideas,
+        new Map(memory.map((m) => [m.phrase, m])),
+        new Set(recipes.map((r) => r.id))
+      )
+    );
     setPhase('preview');
   };
 
@@ -201,6 +220,14 @@ export default function ImportPlanScreen() {
     };
   }, [phase, drafts, eaterIds, householdId]);
 
+  const ideaWeeks = useMemo(
+    () => (start ? ideaWeekChoices(rawIdeas, drafts, parseIsoDate(start)) : null),
+    [rawIdeas, drafts, start]
+  );
+  const ideaWeek = ideaWeeks && ideaChoice !== 'none' ? ideaWeeks[ideaChoice] : null;
+  const ideasOn = ideaWeek ? ideas.filter((i) => i.on).length : 0;
+  const updateIdea = (next: DraftIdea) => setIdeas((all) => all.map((x) => (x.key === next.key ? next : x)));
+
   const update = (next: DraftMeal) => setDrafts((all) => all.map((x) => (x.key === next.key ? next : x)));
 
   const recipeIdFor = (title: string) => {
@@ -212,6 +239,22 @@ export default function ImportPlanScreen() {
     setSaving(true);
     try {
       const weeks = planRows(drafts, eaterIds);
+      let ideaCount = 0;
+      if (ideaWeek && ideasOn > 0) {
+        const { data: had } = await supabase
+          .from('plan_ideas')
+          .select('recipe_id, custom_title')
+          .eq('household_id', householdId)
+          .eq('week_start', ideaWeek);
+        const rows = ideaRows(ideas, ideaWeek, (had as { recipe_id: string | null; custom_title: string | null }[] | null) ?? []);
+        if (rows.length > 0) {
+          const { error: ideaError } = await supabase
+            .from('plan_ideas')
+            .insert(rows.map((r) => ({ ...r, household_id: householdId })));
+          if (ideaError) throw ideaError;
+        }
+        ideaCount = rows.length;
+      }
       for (const week of weeks) {
         const { data: found } = await supabase
           .from('meal_plans')
@@ -246,7 +289,7 @@ export default function ImportPlanScreen() {
           );
         }
       }
-      const matches = matchRows(drafts);
+      const matches = matchRows(drafts, ideaWeek ? ideas : []);
       if (matches.length > 0) {
         // Best effort: without migration 0041 this fails quietly and nothing is remembered.
         await supabase
@@ -257,8 +300,11 @@ export default function ImportPlanScreen() {
           );
       }
       const count = weeks.reduce((n, w) => n + w.cells.length, 0);
-      notify(fmt(t.saved, { n: count }));
-      router.replace({ pathname: '/plan/detail', params: { week: weeks[0]?.week ?? draftWeeks(drafts)[0] } });
+      notify(ideaCount > 0 ? fmt(t.savedWithIdeas, { n: count, m: ideaCount }) : fmt(t.saved, { n: count }));
+      router.replace({
+        pathname: '/plan/detail',
+        params: { week: weeks[0]?.week ?? (ideaCount > 0 ? ideaWeek : null) ?? draftWeeks(drafts)[0] },
+      });
     } catch {
       notify(t.saveFailed);
     } finally {
@@ -586,6 +632,146 @@ export default function ImportPlanScreen() {
   };
 
   const firstWeek = drafts[0]?.week;
+  const weekShort = (iso: string) => parseIsoDate(iso).toLocaleDateString(locale, { day: 'numeric', month: 'short' });
+  const ideasNext = rawIdeas.some((i) => i.when === 'next_week');
+  const allOn = ideas.every((i) => i.on);
+  const ideaRecipes = ideas.filter((i) => i.dish.recipeId).length;
+
+  const checkBox = (on: boolean) => (
+    <View
+      style={{
+        width: 22,
+        height: 22,
+        borderRadius: 6,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: on ? colors.text : 'transparent',
+        borderWidth: on ? 0 : 2,
+        borderColor: colors.textMuted,
+      }}
+    >
+      {on ? <Ionicons name="checkmark" size={15} color={colors.bg} /> : null}
+    </View>
+  );
+
+  const ideasSection =
+    ideas.length > 0 && ideaWeeks ? (
+      <View style={{ marginTop: 18, marginHorizontal: -8, backgroundColor: colors.bgGrouped, paddingHorizontal: 20, paddingVertical: 18, gap: 14 }}>
+        <View style={{ gap: 4 }}>
+          {ideas[0].heading ? <Eyebrow>{`“${ideas[0].heading}”`.toUpperCase()}</Eyebrow> : null}
+          <Text style={{ color: colors.text, fontFamily: fonts.display, fontSize: fontSize.dayName }}>
+            {ideasNext
+              ? ideas.length === 1
+                ? t.ideasTitleOne
+                : fmt(t.ideasTitle, { n: ideas.length })
+              : ideas.length === 1
+                ? t.ideasTitleLaterOne
+                : fmt(t.ideasTitleLater, { n: ideas.length })}
+          </Text>
+          <Muted>{t.ideasSub}</Muted>
+        </View>
+
+        <View style={{ gap: 8 }}>
+          <Text style={{ color: colors.text, fontFamily: fonts.uiSemi, fontSize: fontSize.meta }}>{t.saveTo}</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            <Pill
+              label={
+                ideasNext ? fmt(t.ideaNextWeek, { date: weekShort(ideaWeeks[0]) }) : fmt(t.ideaWeek, { date: weekShort(ideaWeeks[0]) })
+              }
+              selected={ideaChoice === 0}
+              onPress={() => setIdeaChoice(0)}
+            />
+            <Pill
+              label={fmt(t.ideaWeekAfter, { date: weekShort(ideaWeeks[1]) })}
+              selected={ideaChoice === 1}
+              onPress={() => setIdeaChoice(1)}
+            />
+            <Pill label={t.dontImport} selected={ideaChoice === 'none'} onPress={() => setIdeaChoice('none')} />
+          </View>
+        </View>
+
+        {ideaChoice !== 'none' ? (
+          <>
+            <View style={{ backgroundColor: colors.bg, borderRadius: 16, overflow: 'hidden' }}>
+              <Pressable
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: allOn }}
+                onPress={() => setIdeas((all) => all.map((x) => ({ ...x, on: !allOn })))}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 12,
+                  minHeight: 48,
+                  paddingHorizontal: 14,
+                  borderBottomWidth: 1,
+                  borderColor: colors.border,
+                }}
+              >
+                {checkBox(allOn)}
+                <Text style={{ flex: 1, color: colors.text, fontFamily: fonts.uiSemi, fontSize: fontSize.small }}>
+                  {fmt(t.allIdeas, { n: ideas.length })}
+                </Text>
+                {ideaRecipes > 0 ? <Muted>{fmt(t.inYourRecipes, { n: ideaRecipes })}</Muted> : null}
+              </Pressable>
+              {ideas.map((idea, i) => (
+                <View
+                  key={idea.key}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'flex-start',
+                    borderBottomWidth: i === ideas.length - 1 ? 0 : 1,
+                    borderColor: colors.border,
+                  }}
+                >
+                  <Pressable
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: idea.on }}
+                    accessibilityLabel={dishTitle(idea.dish)}
+                    onPress={() => updateIdea({ ...idea, on: !idea.on })}
+                    style={{ paddingLeft: 14, paddingRight: 6, paddingVertical: 11, minHeight: minTapTarget }}
+                  >
+                    {checkBox(idea.on)}
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={fmt(t.editIdeaA11y, { title: dishTitle(idea.dish) })}
+                    onPress={() => setEditKey(idea.key)}
+                    style={({ pressed }) => ({
+                      flex: 1,
+                      minWidth: 0,
+                      gap: 4,
+                      paddingVertical: 11,
+                      paddingLeft: 6,
+                      paddingRight: 14,
+                      backgroundColor: pressed ? colors.cardPressed : 'transparent',
+                      opacity: idea.on ? 1 : 0.5,
+                    })}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Text style={{ flex: 1, color: colors.text, fontFamily: fonts.uiSemi, fontSize: fontSize.base, lineHeight: 20 }}>
+                        {dishTitle(idea.dish)}
+                      </Text>
+                      {idea.dish.fromMemory
+                        ? tag(t.remembered, 'recipe', 'm')
+                        : idea.dish.recipeId
+                          ? tag(t.inRecipes, 'recipe', 'r')
+                          : tag(t.quick, 'quick', 'q')}
+                    </View>
+                    {idea.source ? (
+                      <Text style={{ color: colors.textMuted, fontFamily: fonts.ui, fontSize: fontSize.eyebrow, fontStyle: 'italic' }}>
+                        “{idea.source}”
+                      </Text>
+                    ) : null}
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+            <Muted>{t.ideasHint}</Muted>
+          </>
+        ) : null}
+      </View>
+    ) : null;
+
   const previewView = (
     <ScrollView contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: insets.bottom + 160, gap: 4 }}>
       <View style={{ paddingHorizontal: 12, gap: 10, paddingBottom: 6 }}>
@@ -650,6 +836,7 @@ export default function ImportPlanScreen() {
           </View>
         );
       })}
+      {ideasSection}
       <View style={{ paddingHorizontal: 12, paddingTop: 12 }}>
         <Muted>{t.rememberNote}</Muted>
       </View>
@@ -657,6 +844,7 @@ export default function ImportPlanScreen() {
   );
 
   const editing = drafts.find((x) => x.key === editKey) ?? null;
+  const editingIdea = ideas.find((x) => x.key === editKey) ?? null;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
@@ -707,13 +895,27 @@ export default function ImportPlanScreen() {
           {phase === 'preview' ? (
             <>
               <Button
-                label={counted.length === 1 ? t.saveOne : fmt(t.save, { n: counted.length })}
+                label={
+                  ideasOn > 0
+                    ? counted.length === 1
+                      ? fmt(t.saveWithIdeasOne, { m: ideasOn })
+                      : fmt(t.saveWithIdeas, { n: counted.length, m: ideasOn })
+                    : counted.length === 1
+                      ? t.saveOne
+                      : fmt(t.save, { n: counted.length })
+                }
                 onPress={() => void save()}
                 loading={saving}
-                disabled={counted.length === 0}
+                disabled={counted.length === 0 && ideasOn === 0}
               />
               <Text style={{ textAlign: 'center', color: colors.textMuted, fontFamily: fonts.ui, fontSize: fontSize.eyebrow }}>
-                {existing > 0 ? fmt(t.replaces, { n: existing }) : checks > 0 ? t.saveHint : ''}
+                {existing > 0
+                  ? fmt(t.replaces, { n: existing })
+                  : checks > 0
+                    ? t.saveHint
+                    : ideaWeek && ideasOn > 0
+                      ? fmt(t.ideasTo, { date: weekShort(ideaWeek) })
+                      : ''}
               </Text>
             </>
           ) : (
@@ -737,15 +939,54 @@ export default function ImportPlanScreen() {
           }}
         />
       ) : null}
+      {editingIdea ? (
+        <FixMealSheet
+          key={editingIdea.key}
+          ideaOnly
+          draft={ideaAsDraft(editingIdea)}
+          title={dishTitle(editingIdea.dish)}
+          recipes={recipes}
+          eaters={eaters}
+          employee={null}
+          onClose={() => setEditKey(null)}
+          onDone={(next) => {
+            updateIdea({ ...editingIdea, on: Boolean(next.main), dish: next.main ?? editingIdea.dish });
+            setEditKey(null);
+          }}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
 
 // ---- Fix one meal --------------------------------------------------------------
 
+/** An idea dressed as a meal so the same sheet can fix its recipe or name. */
+function ideaAsDraft(idea: DraftIdea): DraftMeal {
+  return {
+    key: idea.key,
+    date: '',
+    week: '',
+    day: 0,
+    slot: 'lunch',
+    source: idea.source,
+    kind: 'dish',
+    main: idea.dish,
+    sides: [],
+    extras: [],
+    awayIds: [],
+    employeePart: null,
+    employeeWhole: false,
+    options: [],
+    note: null,
+    missing: false,
+  };
+}
+
 type Choice = 'recipe' | 'quick' | 'out' | 'empty';
 
 function FixMealSheet({
+  ideaOnly = false,
   draft,
   title,
   recipes,
@@ -754,6 +995,8 @@ function FixMealSheet({
   onClose,
   onDone,
 }: {
+  /** Fixing an idea: only recipe or name, no who/out/employee. */
+  ideaOnly?: boolean;
   draft: DraftMeal;
   title: string;
   recipes: RecipeLite[];
@@ -928,11 +1171,11 @@ function FixMealSheet({
         ) : null}
         {radio('quick', t.quickMeal, choice === 'quick' ? undefined : quickTitle || undefined)}
         {choice === 'quick' ? input(quickTitle, setQuickTitle, t.quickName) : null}
-        {radio('out', t.out)}
-        {radio('empty', t.empty)}
+        {ideaOnly ? null : radio('out', t.out)}
+        {ideaOnly ? null : radio('empty', t.empty)}
       </View>
 
-      {choice === 'recipe' || choice === 'quick' ? (
+      {!ideaOnly && (choice === 'recipe' || choice === 'quick') ? (
         <>
           <View style={{ gap: 8 }}>
             {label(t.whoEats)}

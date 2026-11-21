@@ -4,7 +4,7 @@
 // Everything here is pure so it is testable. The screen is
 // app/(tabs)/plan/import.tsx.
 
-import { effectivePersonIds, weekStart, type CookType, type MealSlot } from '@/lib/plan';
+import { addWeeks, effectivePersonIds, weekStart, type CookType, type MealSlot } from '@/lib/plan';
 import { foldForSearch } from '@/lib/search-text';
 
 // ---- What the worker sends back -------------------------------------------
@@ -31,6 +31,15 @@ export interface ImportedMeal {
   undecided: boolean;
   options: string[];
   note: string | null;
+}
+
+/** A dish listed under a heading that is not a day ("Setmana que ve:"). */
+export interface ImportedIdea {
+  heading: string;
+  /** next_week when the heading says next week, else later. */
+  when: 'next_week' | 'later';
+  source: string;
+  dish: ImportDish;
 }
 
 /** A phrase matched in an earlier import (table plan_import_matches, migration 0041). */
@@ -151,7 +160,7 @@ export function dayDates(meals: readonly ImportedMeal[], start: Date): Map<numbe
   return dates;
 }
 
-function draftDish(
+export function draftDish(
   dish: ImportDish,
   memory: ReadonlyMap<string, RememberedMatch>,
   recipeIds: ReadonlySet<string>
@@ -386,7 +395,7 @@ export function planRows(drafts: readonly DraftMeal[], eaterIds: readonly string
 }
 
 /** Phrase → recipe or title, to remember for the next import. Last one wins. */
-export function matchRows(drafts: readonly DraftMeal[]): RememberedMatch[] {
+export function matchRows(drafts: readonly DraftMeal[], ideas: readonly DraftIdea[] = []): RememberedMatch[] {
   const out = new Map<string, RememberedMatch>();
   const add = (dish: DraftDish | null) => {
     if (!dish) return;
@@ -405,10 +414,84 @@ export function matchRows(drafts: readonly DraftMeal[]): RememberedMatch[] {
     draft.sides.forEach(add);
     draft.extras.forEach((x) => add(x.dish));
   }
+  for (const idea of ideas) if (idea.on) add(idea.dish);
   return [...out.values()];
 }
 
 /** Monday of each week the drafts touch, e.g. a Thursday → Monday plan touches two. */
 export function draftWeeks(drafts: readonly DraftMeal[]): string[] {
   return [...new Set(drafts.map((d) => d.week))].sort();
+}
+
+// ---- Ideas (a list under a heading that is not a day) ------------------------
+
+export interface DraftIdea {
+  key: string;
+  heading: string;
+  source: string;
+  dish: DraftDish;
+  /** Ticked to import. */
+  on: boolean;
+}
+
+export function buildIdeaDrafts(
+  ideas: readonly ImportedIdea[],
+  memory: ReadonlyMap<string, RememberedMatch>,
+  recipeIds: ReadonlySet<string>
+): DraftIdea[] {
+  return ideas.map((idea, i) => ({
+    key: `idea-${i}`,
+    heading: idea.heading,
+    source: idea.source,
+    dish: draftDish(idea.dish, memory, recipeIds),
+    on: true,
+  }));
+}
+
+/**
+ * The two weeks the ideas can go to. "Next week" ideas go to the week after
+ * the one the plan starts in; any other heading to the week after the last
+ * planned day. The second choice is the week after that.
+ */
+export function ideaWeekChoices(
+  ideas: readonly ImportedIdea[],
+  drafts: readonly DraftMeal[],
+  start: Date
+): [string, string] {
+  const startWeek = weekStart(start);
+  const lastWeek = drafts.length > 0 ? draftWeeks(drafts).at(-1)! : startWeek;
+  const nextWeek = ideas.some((i) => i.when === 'next_week');
+  const first = addWeeks(nextWeek ? startWeek : lastWeek, 1);
+  return [first, addWeeks(first, 1)];
+}
+
+export interface IdeaRow {
+  week_start: string;
+  recipe_id: string | null;
+  custom_title: string | null;
+}
+
+/** plan_ideas rows for the ticked ideas, skipping ones that week already has. */
+export function ideaRows(
+  ideas: readonly DraftIdea[],
+  week: string,
+  existing: readonly { recipe_id: string | null; custom_title: string | null }[]
+): IdeaRow[] {
+  const seen = new Set(
+    existing.map((e) => (e.recipe_id ? `r:${e.recipe_id}` : `t:${foldPhrase(e.custom_title ?? '')}`))
+  );
+  const out: IdeaRow[] = [];
+  for (const idea of ideas) {
+    if (!idea.on) continue;
+    const title = (idea.dish.title || idea.dish.phrase).trim();
+    const key = idea.dish.recipeId ? `r:${idea.dish.recipeId}` : `t:${foldPhrase(title)}`;
+    if (key === 't:' || seen.has(key)) continue;
+    seen.add(key);
+    out.push(
+      idea.dish.recipeId
+        ? { week_start: week, recipe_id: idea.dish.recipeId, custom_title: null }
+        : { week_start: week, recipe_id: null, custom_title: title }
+    );
+  }
+  return out;
 }
