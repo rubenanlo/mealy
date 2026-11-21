@@ -334,6 +334,16 @@ export function movePerson(draft: DraftMeal, personId: string, index: number): D
   };
 }
 
+/** Change the dish of extras[index], or drop that extra when `dish` is null. */
+export function setExtraDish(draft: DraftMeal, index: number, dish: DraftDish | null): DraftMeal {
+  return {
+    ...draft,
+    extras: dish
+      ? draft.extras.map((x, i) => (i === index ? { ...x, dish } : x))
+      : draft.extras.filter((_, i) => i !== index),
+  };
+}
+
 // ---- Saving ------------------------------------------------------------------
 
 export interface ImportEntryRow {

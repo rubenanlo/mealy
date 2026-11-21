@@ -9,6 +9,7 @@ import {
   dishPeople,
   keepOnly,
   movePerson,
+  setExtraDish,
   splitByPerson,
   foldPhrase,
   isoDate,
@@ -310,5 +311,13 @@ describe('different dishes for different people', () => {
     expect(checkReason(moved)).toBeNull();
     expect(dishPeople(moved, eaterIds)).toEqual([['r', 'p'], ['m']]);
     expect(dishPeople(movePerson(moved, 'm', 0), eaterIds)).toEqual([['r', 'p', 'm'], []]);
+  });
+
+  it('fixes the second dish without touching the main', () => {
+    const draft = splitByPerson(slash([]));
+    const omelette = { phrase: 'llenguado', title: 'Truita de patates', recipeId: 'r-tacos', fromMemory: false };
+    const fixed = setExtraDish(draft, 0, omelette);
+    expect([fixed.main?.title, fixed.extras[0].dish.title]).toEqual(['Bacallà en papillot', 'Truita de patates']);
+    expect(setExtraDish(draft, 0, null).extras).toEqual([]);
   });
 });
