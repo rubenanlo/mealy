@@ -35,6 +35,7 @@ import {
   keepOnly,
   matchRows,
   movePerson,
+  setExtraDish,
   parseIsoDate,
   planRows,
   splitByPerson,
@@ -118,6 +119,8 @@ export default function ImportPlanScreen() {
   const [memory, setMemory] = useState<RememberedMatch[]>([]);
   const [existing, setExisting] = useState(0);
   const [editKey, setEditKey] = useState<string | null>(null);
+  /** The second, third… dish of a split meal being fixed (extras index). */
+  const [editExtra, setEditExtra] = useState<{ key: string; index: number } | null>(null);
   const [rawIdeas, setRawIdeas] = useState<ImportedIdea[]>([]);
   const [ideas, setIdeas] = useState<DraftIdea[]>([]);
   /** Which of the two offered weeks the ideas go to, or none. */
@@ -635,7 +638,7 @@ export default function ImportPlanScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={fmt(t.editA11y, { slot: slotLabel(draft.slot), day: dayLabel(draft.date) })}
-          onPress={() => setEditKey(draft.key)}
+          onPress={() => (index === 0 ? setEditKey(draft.key) : setEditExtra({ key: draft.key, index: index - 1 }))}
         >
           <RecipeImage path={coverOf(dish)} style={{ width: '100%', height: 72 }} iconSize={20} />
           <View style={{ position: 'absolute', top: 6, right: 6 }}>{pencil}</View>
@@ -1020,6 +1023,8 @@ export default function ImportPlanScreen() {
 
   const editing = drafts.find((x) => x.key === editKey) ?? null;
   const editingIdea = ideas.find((x) => x.key === editKey) ?? null;
+  const extraOwner = editExtra ? (drafts.find((x) => x.key === editExtra.key) ?? null) : null;
+  const editingExtra = extraOwner && editExtra ? (extraOwner.extras[editExtra.index] ?? null) : null;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
@@ -1112,6 +1117,22 @@ export default function ImportPlanScreen() {
           onDone={(next) => {
             update(next);
             setEditKey(null);
+          }}
+        />
+      ) : null}
+      {extraOwner && editExtra && editingExtra ? (
+        <FixMealSheet
+          key={`${extraOwner.key}-extra-${editExtra.index}`}
+          ideaOnly
+          draft={{ ...ideaAsDraft({ key: extraOwner.key, heading: '', source: extraOwner.source, dish: editingExtra.dish, on: true }) }}
+          title={`${dayLabel(extraOwner.date)} · ${slotLabel(extraOwner.slot)}`}
+          recipes={recipes}
+          eaters={eaters}
+          employee={null}
+          onClose={() => setEditExtra(null)}
+          onDone={(next) => {
+            update(setExtraDish(extraOwner, editExtra.index, next.main));
+            setEditExtra(null);
           }}
         />
       ) : null}
