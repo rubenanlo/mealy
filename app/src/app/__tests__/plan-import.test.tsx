@@ -31,6 +31,7 @@ jest.mock('@/lib/supabase', () => {
     recipes: [{ id: 'r-tacos', title: 'Tacos de pollo', recipe_translations: [] }],
     plan_import_matches: [{ phrase: 'arros chaufa', recipe_id: null, custom_title: 'Arroz chaufa' }],
     meal_plans: [],
+    plan_ideas: [{ recipe_id: null, custom_title: 'Tonyina' }],
   };
   const builder = (table: string) => {
     const q: Record<string, unknown> = {};
@@ -92,6 +93,12 @@ describe('Import a plan', () => {
         meal({ day_word: 'Diumenge', day_index: 1, weekday: 6, slot: 'lunch', source: 'fora', eating_out: true }),
         meal({ day_word: 'Diumenge', day_index: 1, weekday: 6, slot: 'dinner', source: 'arros chaufa', main: dish('arros chaufa', 'Arròs chaufa') }),
       ],
+      ideas: [
+        ['chana masala', 'Chana masala', null],
+        ['tacos', 'Tacos', 'r-tacos'],
+        ['tonyina', 'Tonyina', null],
+        ['porc bolets', 'Porc amb bolets', null],
+      ].map(([phrase, title, id]) => ({ heading: 'Setmana que ve', when: 'next_week', source: phrase, dish: dish(phrase as string, title as string, id) })),
     });
   });
   afterEach(() => jest.useRealTimers());
@@ -110,7 +117,8 @@ describe('Import a plan', () => {
     expect(body.remembered).toEqual([{ phrase: 'arros chaufa', recipe_id: null, title: 'Arroz chaufa' }]);
 
     await waitFor(() => expect(screen.getByText('Check the plan')).toBeTruthy());
-    expect(screen.getByText('Tacos de pollo')).toBeTruthy();
+    // Once as Thursday dinner, once as an idea.
+    expect(screen.getAllByText('Tacos de pollo')).toHaveLength(2);
     expect(screen.getByText('Sindy: patates')).toBeTruthy();
     expect(screen.getByText('Marc away')).toBeTruthy();
     expect(screen.getByText('Everyone out')).toBeTruthy();
@@ -123,7 +131,11 @@ describe('Import a plan', () => {
     fireEvent.press(screen.getByText('Fora'));
     expect(screen.queryByText('1 to check')).toBeNull();
 
-    fireEvent.press(screen.getByText('Add 4 meals as a draft'));
+    // Ideas: last section, for the week after the plan starts.
+    expect(screen.getByText('4 ideas for next week')).toBeTruthy();
+    expect(screen.getByText('Next week · Nov 30')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Porc amb bolets'));
+    fireEvent.press(screen.getByText('Add 4 meals and 3 ideas'));
     await waitFor(() => expect(mockReplace).toHaveBeenCalled());
     expect(mockReplace).toHaveBeenCalledWith({ pathname: '/plan/detail', params: { week: '2026-11-23' } });
 
@@ -139,6 +151,15 @@ describe('Import a plan', () => {
     expect(matches.map((m) => [m.phrase, m.recipe_id ?? m.custom_title])).toEqual([
       ['tacos pollastre', 'r-tacos'],
       ['arros chaufa', 'Arroz chaufa'],
+      ['chana masala', 'Chana masala'],
+      ['tacos', 'r-tacos'],
+      ['tonyina', 'Tonyina'],
+    ]);
+    // Tonyina is already in that week's ideas; the unticked one is skipped.
+    const ideas = mockWrites.find((w) => w.table === 'plan_ideas')?.rows as Record<string, unknown>[];
+    expect(ideas.map((i) => [i.week_start, i.recipe_id ?? i.custom_title])).toEqual([
+      ['2026-11-30', 'Chana masala'],
+      ['2026-11-30', 'r-tacos'],
     ]);
   });
 });

@@ -1,5 +1,8 @@
 import {
   buildDrafts,
+  buildIdeaDrafts,
+  ideaRows,
+  ideaWeekChoices,
   checkReason,
   chooseOption,
   dayDates,
@@ -10,6 +13,7 @@ import {
   planRows,
   startChoices,
   type DraftMeal,
+  type ImportedIdea,
   type ImportedMeal,
   type RememberedMatch,
 } from '../plan-import';
@@ -223,5 +227,50 @@ describe('matchRows', () => {
       { phrase: 'tacos pollastre', recipe_id: 'r-tacos', custom_title: null },
       { phrase: 'festeta', recipe_id: null, custom_title: 'Festeta' },
     ]);
+  });
+});
+
+describe('ideas', () => {
+  const idea = (phrase: string, recipe_id: string | null = null, when: ImportedIdea['when'] = 'next_week'): ImportedIdea => ({
+    heading: 'Setmana que ve',
+    when,
+    source: phrase,
+    dish: { phrase, title: phrase[0].toUpperCase() + phrase.slice(1), recipe_id },
+  });
+
+  it('matches like meals, memory first', () => {
+    const drafts = buildIdeaDrafts(
+      [idea('chana masala', 'r-tacos'), idea('amanida centre'), idea('caldo', 'made-up')],
+      new Map([['amanida centre', { phrase: 'amanida centre', recipe_id: 'r-chaufa', custom_title: null }]]),
+      new Set(['r-tacos', 'r-chaufa'])
+    );
+    expect(drafts.map((x) => [x.dish.recipeId, x.dish.fromMemory, x.on])).toEqual([
+      ['r-tacos', false, true],
+      ['r-chaufa', true, true],
+      [null, false, true],
+    ]);
+  });
+
+  it('picks next week from the start, else the week after the last day', () => {
+    // Thursday 26 Nov → Monday 30 Nov plan.
+    const meals = [meal({}), meal({ day_word: 'Dilluns', day_index: 1, weekday: 0 })];
+    const drafts = buildDrafts(meals, ctx());
+    expect(ideaWeekChoices([idea('a')], drafts, thursday)).toEqual(['2026-11-30', '2026-12-07']);
+    expect(ideaWeekChoices([idea('a', null, 'later')], drafts, thursday)).toEqual(['2026-12-07', '2026-12-14']);
+  });
+
+  it('skips unticked ideas and ones the week already has', () => {
+    const drafts = buildIdeaDrafts(
+      [idea('chana masala', 'r-tacos'), idea('caldo'), idea('Caldo'), idea('tonyina'), idea('porc')],
+      new Map(),
+      new Set(['r-tacos'])
+    );
+    drafts[4].on = false;
+    const rows = ideaRows(drafts, '2026-11-30', [{ recipe_id: null, custom_title: 'Tonyina' }]);
+    expect(rows).toEqual([
+      { week_start: '2026-11-30', recipe_id: 'r-tacos', custom_title: null },
+      { week_start: '2026-11-30', recipe_id: null, custom_title: 'Caldo' },
+    ]);
+    expect(matchRows([], drafts).map((m) => m.phrase)).toEqual(['chana masala', 'caldo', 'tonyina']);
   });
 });

@@ -125,3 +125,24 @@ async def test_transcribe_sends_images_in_order(monkeypatch):
     content = fake.calls[0]["messages"][0]["content"]
     assert [c["type"] for c in content] == ["image", "image", "text"]
     assert content[1]["source"]["media_type"] == "image/jpeg"
+
+
+async def test_ideas_are_cleaned_and_deduplicated(monkeypatch):
+    fake = FakeClient(
+        {
+            "meals": [_meal("Dijous", 3, "lunch", {"phrase": "a", "title": "A"})],
+            "ideas": [
+                {"heading": " Setmana que ve ", "when": "next_week", "source": "chana masala", "dish": {"phrase": "chana masala", "title": "Chana masala", "recipe_id": "r-tacos"}},
+                {"heading": "Setmana que ve", "when": "next_week", "source": "x", "dish": {"phrase": "Chana Masala", "title": "Chana", "recipe_id": None}},
+                {"heading": "Setmana que ve", "when": "next_week", "source": "caldo", "dish": {"phrase": "caldo", "title": "Caldo", "recipe_id": "made-up"}},
+                {"heading": "Setmana que ve", "when": "next_week", "source": "", "dish": {"phrase": " ", "title": ""}},
+            ],
+        }
+    )
+    monkeypatch.setattr(structure, "get_anthropic_client", lambda: fake)
+    reply = await plan_import.import_plan(_request())
+    assert [(i.heading, i.dish.title, i.dish.recipe_id) for i in reply.ideas] == [
+        ("Setmana que ve", "Chana masala", "r-tacos"),
+        ("Setmana que ve", "Caldo", None),
+    ]
+    assert "starts a list of ideas" in fake.calls[0]["system"]
