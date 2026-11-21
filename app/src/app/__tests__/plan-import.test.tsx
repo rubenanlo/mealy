@@ -164,4 +164,38 @@ describe('Import a plan', () => {
       ['2026-11-30', 'r-tacos'],
     ]);
   });
+
+  it('splits "X / Y" by person, or keeps one dish', async () => {
+    mockImport.mockResolvedValueOnce({
+      meals: [
+        meal({ day_word: 'Dilluns', weekday: 0, slot: 'lunch', source: 'ceviche gambes/ truita', main: dish('ceviche gambes', 'Ceviche'), extra_dishes: [{ dish: dish('truita', 'Truita'), for_names: [], for_label: null }] }),
+        meal({ day_word: 'Dilluns', weekday: 0, slot: 'dinner', source: 'bacalla/ Marc llenguado', main: dish('bacalla', 'Bacallà'), extra_dishes: [{ dish: dish('llenguado', 'Llenguado'), for_names: ['Marc'], for_label: null }] }),
+      ],
+      ideas: [],
+    });
+    const screen = wrap();
+    fireEvent.press(screen.getByText('Paste from clipboard'));
+    await waitFor(() => expect(screen.getByText('Paste again')).toBeTruthy());
+    await waitFor(() => {
+      fireEvent.press(screen.getByText('Read the plan'));
+      expect(mockImport).toHaveBeenCalled();
+    });
+    await waitFor(() => expect(screen.getByText('Check the plan')).toBeTruthy());
+    // No name: ask first. With a name: two dish cards straight away.
+    expect(screen.getByText('Ceviche / Truita')).toBeTruthy();
+    expect(screen.getByText('Split by person')).toBeTruthy();
+    expect(screen.getByText('Llenguado')).toBeTruthy();
+    fireEvent.press(screen.getByText('Only Truita'));
+    expect(screen.queryByText('Split by person')).toBeNull();
+
+    fireEvent.press(screen.getByText('Add 2 meals as a draft'));
+    await waitFor(() => expect(mockReplace).toHaveBeenCalled());
+    const entries = mockWrites.find((w) => w.table === 'plan_entries')?.rows as Record<string, unknown>[];
+    expect(entries.map((e) => [e.slot, e.custom_title, e.person_ids])).toEqual([
+      // Marc is at school on Monday lunch.
+      ['lunch', 'Truita', ['r', 'p']],
+      ['dinner', 'Bacallà', ['r', 'p']],
+      ['dinner', 'Llenguado', ['m']],
+    ]);
+  });
 });

@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { PersonChip } from '@/components/person-chip';
 import { RecipeImage } from '@/components/recipe-cards';
 import { Button, Eyebrow, Field, Muted } from '@/components/ui';
 import { Pill, WeekSheet } from '@/components/week/sheet';
@@ -25,15 +26,20 @@ import {
   buildIdeaDrafts,
   checkReason,
   chooseOption,
+  dishPeople,
   draftWeeks,
   foldPhrase,
   ideaRows,
   ideaWeekChoices,
   isoDate,
+  keepOnly,
   matchRows,
+  movePerson,
   parseIsoDate,
   planRows,
+  splitByPerson,
   startChoices,
+  type DraftDish,
   type DraftIdea,
   type DraftMeal,
   type ImportedIdea,
@@ -50,6 +56,7 @@ interface Person {
   id: string;
   name: string;
   is_employee: boolean;
+  avatar_color?: string | null;
 }
 
 interface RecipeLite {
@@ -121,7 +128,7 @@ export default function ImportPlanScreen() {
     let cancelled = false;
     (async () => {
       const [{ data: personRows }, { data: recipeRows }, { data: matchRowsData }] = await Promise.all([
-        supabase.from('persons').select('id, name, is_employee').eq('household_id', householdId).order('created_at'),
+        supabase.from('persons').select('id, name, is_employee, avatar_color').eq('household_id', householdId).order('created_at'),
         supabase
           .from('recipes')
           .select('id, title, cover_image_path, prep_minutes, cook_minutes, tags, dish_type, recipe_translations(locale, title)')
@@ -587,8 +594,87 @@ export default function ImportPlanScreen() {
     </Pressable>
   );
 
+  const coverOf = (dish: DraftDish | null) =>
+    dish?.recipeId ? (recipeById.get(dish.recipeId)?.cover_image_path ?? null) : null;
+  const matchTag = (dish: DraftDish, key: string) =>
+    dish.recipeId
+      ? tag(dish.fromMemory ? t.remembered : t.inRecipes, 'recipe', key)
+      : tag(dish.fromMemory ? t.remembered : t.quick, 'quick', key);
+  const employeeTag = (draft: DraftMeal) =>
+    employee && draft.employeePart
+      ? tag(fmt(t.employeePart, { name: employee.name, part: draft.employeePart }), 'employee', 'emp')
+      : employee && draft.employeeWhole
+        ? tag(fmt(t.employeeWhole, { name: employee.name }), 'employee', 'emp')
+        : null;
+  const pencil = (
+    <View
+      style={{
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: colors.border,
+        backgroundColor: colors.bg,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Ionicons name="pencil-outline" size={15} color={colors.text} />
+    </View>
+  );
+
+  /** One dish of a split meal, as a week-page card: photo, title, faces (tap to move someone here). */
+  const dishCard = (draft: DraftMeal, dish: DraftDish, index: number, people: string[][], label: string | null) => {
+    const mine = people[index];
+    const home = eaters.filter((p) => !draft.awayIds.includes(p.id));
+    return (
+      <View
+        key={`${draft.key}-${index}`}
+        style={{ flex: 1, minWidth: 140, borderWidth: 1, borderColor: colors.border, borderRadius: 14, overflow: 'hidden' }}
+      >
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={fmt(t.editA11y, { slot: slotLabel(draft.slot), day: dayLabel(draft.date) })}
+          onPress={() => setEditKey(draft.key)}
+        >
+          <RecipeImage path={coverOf(dish)} style={{ width: '100%', height: 72 }} iconSize={20} />
+          <View style={{ position: 'absolute', top: 6, right: 6 }}>{pencil}</View>
+          <Text
+            numberOfLines={2}
+            style={{ paddingHorizontal: 10, paddingTop: 8, color: colors.text, fontFamily: fonts.uiMedium, fontSize: fontSize.small, lineHeight: 19 }}
+          >
+            {dishTitle(dish)}
+          </Text>
+        </Pressable>
+        <View style={{ padding: 10, paddingTop: 6, gap: 6 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 2, marginLeft: -6 }}>
+            {home.map((p) => (
+              <PersonChip
+                key={p.id}
+                person={p}
+                hollow={!mine.includes(p.id)}
+                onPress={() => update(movePerson(draft, p.id, index))}
+              />
+            ))}
+          </View>
+          {mine.length === 0 ? (
+            <Text style={{ color: toneColor('check'), fontFamily: fonts.uiSemi, fontSize: fontSize.eyebrow }}>
+              {label ? fmt(t.whoLabel, { label }) : t.whoEatsThis}
+            </Text>
+          ) : null}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+            {matchTag(dish, 'match')}
+            {index === 0 ? employeeTag(draft) : null}
+          </View>
+        </View>
+      </View>
+    );
+  };
+
   const mealCard = (draft: DraftMeal) => {
     const reason = checkReason(draft);
+    const split = draft.kind === 'dish' && draft.main && draft.extras.length > 0 && reason !== 'split';
+    const people = dishPeople(draft, eaterIds);
     const tags: React.ReactNode[] = [];
     let title: string;
     if (draft.kind === 'out') {
@@ -597,16 +683,13 @@ export default function ImportPlanScreen() {
     } else if (draft.kind === 'empty' || !draft.main) {
       title = draft.missing ? t.missingTitle : t.leaveEmpty;
     } else {
-      title = dishTitle(draft.main);
+      title = reason === 'split' ? [draft.main, ...draft.extras.map((x) => x.dish)].map(dishTitle).join(' / ') : dishTitle(draft.main);
       if (draft.options.length > 0) tags.push(tag(t.undecided, 'check', 'undecided'));
-      tags.push(
-        draft.main.recipeId
-          ? tag(draft.main.fromMemory ? t.remembered : t.inRecipes, 'recipe', 'match')
-          : tag(draft.main.fromMemory ? t.remembered : t.quick, 'quick', 'match')
-      );
-      if (employee && draft.employeePart)
-        tags.push(tag(fmt(t.employeePart, { name: employee.name, part: draft.employeePart }), 'employee', 'emp'));
-      else if (employee && draft.employeeWhole) tags.push(tag(fmt(t.employeeWhole, { name: employee.name }), 'employee', 'emp'));
+      if (reason !== 'split') {
+        tags.push(matchTag(draft.main, 'match'));
+        const emp = employeeTag(draft);
+        if (emp) tags.push(emp);
+      }
     }
     if (draft.kind !== 'out') {
       for (const id of draft.awayIds) tags.push(tag(fmt(t.away, { name: nameOf(id) }), 'away', `away-${id}`));
@@ -614,72 +697,102 @@ export default function ImportPlanScreen() {
     const subLines: string[] = [];
     if (draft.kind === 'dish') {
       for (const side of draft.sides) subLines.push(fmt(t.side, { title: dishTitle(side) }));
-      for (const extra of draft.extras) {
-        subLines.push(
-          extra.personIds.length > 0
-            ? fmt(t.forPeople, { title: dishTitle(extra.dish), names: extra.personIds.map(nameOf).join(', ') })
-            : fmt(t.forWho, { title: dishTitle(extra.dish) })
-        );
-      }
       if (draft.note) subLines.push(draft.note);
     }
-    const whoExtra = draft.extras.find((x) => x.personIds.length === 0);
+    const quote = draft.source ? (
+      <Text style={{ color: colors.textMuted, fontFamily: fonts.ui, fontSize: fontSize.eyebrow, fontStyle: 'italic' }}>
+        “{draft.source}”
+      </Text>
+    ) : null;
+    const slotText = (
+      <Text
+        style={{
+          width: 62,
+          color: colors.textMuted,
+          fontFamily: fonts.uiSemi,
+          fontSize: fontSize.eyebrow,
+          letterSpacing: 0.8,
+          textTransform: 'uppercase',
+          paddingTop: split ? 6 : 16,
+        }}
+      >
+        {slotLabel(draft.slot)}
+      </Text>
+    );
+
+    if (split && draft.main) {
+      return (
+        <View key={draft.key} style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingVertical: 10 }}>
+          {slotText}
+          <View style={{ flex: 1, gap: 8, minWidth: 0 }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {dishCard(draft, draft.main, 0, people, null)}
+              {draft.extras.map((x, i) => dishCard(draft, x.dish, i + 1, people, x.label))}
+            </View>
+            {subLines.length > 0 ? <Muted>{subLines.join('\n')}</Muted> : null}
+            {draft.awayIds.length > 0 ? (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {draft.awayIds.map((id) => tag(fmt(t.away, { name: nameOf(id) }), 'away', `away-${id}`))}
+              </View>
+            ) : null}
+            {quote}
+          </View>
+        </View>
+      );
+    }
 
     return (
-      <Pressable
+      <View
         key={draft.key}
-        accessibilityRole="button"
-        accessibilityLabel={fmt(t.editA11y, { slot: slotLabel(draft.slot), day: dayLabel(draft.date) })}
-        onPress={() => setEditKey(draft.key)}
-        style={({ pressed }) => ({
+        style={{
           flexDirection: 'row',
-          gap: 12,
-          padding: 12,
+          gap: 8,
+          marginHorizontal: 4,
+          paddingHorizontal: 8,
+          paddingVertical: 10,
           borderRadius: 14,
-          backgroundColor: pressed ? colors.cardPressed : reason ? colors.bgGrouped : 'transparent',
-        })}
+          backgroundColor: reason ? colors.bgGrouped : 'transparent',
+        }}
       >
-        <Text style={{ width: 54, color: colors.textMuted, fontFamily: fonts.ui, fontSize: fontSize.meta, paddingTop: 2 }}>
-          {slotLabel(draft.slot)}
-        </Text>
-        <View style={{ flex: 1, gap: 6, minWidth: 0 }}>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Text style={{ flex: 1, color: colors.text, fontFamily: fonts.uiSemi, fontSize: fontSize.base, lineHeight: 21 }}>
-              {title}
-            </Text>
-            <Ionicons name="pencil-outline" size={16} color={colors.textMuted} />
-          </View>
-          {subLines.length > 0 ? (
-            <Text style={{ color: colors.text, opacity: 0.8, fontFamily: fonts.ui, fontSize: fontSize.small, lineHeight: 20 }}>
-              {subLines.join('\n')}
-            </Text>
-          ) : null}
+        {slotText}
+        <View style={{ flex: 1, gap: 8, minWidth: 0 }}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={fmt(t.editA11y, { slot: slotLabel(draft.slot), day: dayLabel(draft.date) })}
+            onPress={() => setEditKey(draft.key)}
+            style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, opacity: pressed ? 0.7 : 1 })}
+          >
+            {draft.kind === 'dish' && draft.main && reason !== 'split' ? (
+              <RecipeImage path={coverOf(draft.main)} style={{ width: 48, height: 48, borderRadius: radius.thumb }} iconSize={18} />
+            ) : null}
+            <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
+              <Text style={{ color: colors.text, fontFamily: fonts.uiMedium, fontSize: fontSize.base, lineHeight: 21 }}>{title}</Text>
+              {subLines.length > 0 ? <Muted>{subLines.join('\n')}</Muted> : null}
+            </View>
+            {pencil}
+          </Pressable>
           {tags.length > 0 ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{tags}</View> : null}
 
+          {reason === 'split' && draft.main ? (
+            <View style={{ gap: 8 }}>
+              <Text style={{ color: colors.text, fontFamily: fonts.uiMedium, fontSize: fontSize.small }}>{t.splitAsk}</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {answerButton(t.splitByPerson, () => update(splitByPerson(draft)), 'split')}
+                {[draft.main, ...draft.extras.map((x) => x.dish)].map((dish, i) =>
+                  answerButton(fmt(t.onlyDish, { title: dishTitle(dish) }), () => update(keepOnly(draft, i)), `only-${i}`)
+                )}
+              </View>
+            </View>
+          ) : null}
           {reason === 'undecided' ? (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingTop: 2 }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {draft.options.map((option, i) =>
                 answerButton(option, () => update(chooseOption(draft, option, recipeIdFor)), `opt-${i}`)
               )}
             </View>
           ) : null}
-          {reason === 'who' && whoExtra ? (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingTop: 2 }}>
-              {eaters.map((p) =>
-                answerButton(
-                  p.name,
-                  () =>
-                    update({
-                      ...draft,
-                      extras: draft.extras.map((x) => (x === whoExtra ? { ...x, personIds: [p.id] } : x)),
-                    }),
-                  `who-${p.id}`
-                )
-              )}
-            </View>
-          ) : null}
           {reason === 'missing' ? (
-            <View style={{ gap: 8, paddingTop: 2 }}>
+            <View style={{ gap: 8 }}>
               <Text style={{ color: colors.text, fontFamily: fonts.uiMedium, fontSize: fontSize.small }}>{t.missingAsk}</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 {answerButton(t.leaveEmpty, () => update({ ...draft, missing: false }), 'leave')}
@@ -687,14 +800,9 @@ export default function ImportPlanScreen() {
               </View>
             </View>
           ) : null}
-
-          {draft.source ? (
-            <Text style={{ color: colors.textMuted, fontFamily: fonts.ui, fontSize: fontSize.eyebrow, fontStyle: 'italic' }}>
-              “{draft.source}”
-            </Text>
-          ) : null}
+          {quote}
         </View>
-      </Pressable>
+      </View>
     );
   };
 

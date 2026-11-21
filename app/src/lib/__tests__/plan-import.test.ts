@@ -6,6 +6,10 @@ import {
   checkReason,
   chooseOption,
   dayDates,
+  dishPeople,
+  keepOnly,
+  movePerson,
+  splitByPerson,
   foldPhrase,
   isoDate,
   matchRows,
@@ -272,5 +276,39 @@ describe('ideas', () => {
       { week_start: '2026-11-30', recipe_id: null, custom_title: 'Caldo' },
     ]);
     expect(matchRows([], drafts).map((m) => m.phrase)).toEqual(['chana masala', 'caldo', 'tonyina']);
+  });
+});
+
+describe('different dishes for different people', () => {
+  const slash = (forNames: string[]) =>
+    buildDrafts(
+      [
+        meal({
+          slot: 'dinner',
+          main: { phrase: 'bacalla papillote', title: 'Bacallà en papillot', recipe_id: null },
+          extra_dishes: [{ dish: { phrase: 'llenguado', title: 'Llenguado', recipe_id: null }, for_names: forNames, for_label: null }],
+        }),
+      ],
+      ctx()
+    ).find((d) => d.slot === 'dinner')!;
+
+  it('splits straight away when a name is given', () => {
+    const draft = slash(['Marc']);
+    expect(draft.splitAsk).toBe(false);
+    expect(checkReason(draft)).toBeNull();
+    expect(dishPeople(draft, eaterIds)).toEqual([['r', 'p'], ['m']]);
+  });
+
+  it('asks first without a name, then keeps one or splits', () => {
+    const draft = slash([]);
+    expect(checkReason(draft)).toBe('split');
+    const only = keepOnly(draft, 1);
+    expect([only.main?.title, only.extras.length, checkReason(only)]).toEqual(['Llenguado', 0, null]);
+    const split = splitByPerson(draft);
+    expect(checkReason(split)).toBe('who');
+    const moved = movePerson(split, 'm', 1);
+    expect(checkReason(moved)).toBeNull();
+    expect(dishPeople(moved, eaterIds)).toEqual([['r', 'p'], ['m']]);
+    expect(dishPeople(movePerson(moved, 'm', 0), eaterIds)).toEqual([['r', 'p', 'm'], []]);
   });
 });
