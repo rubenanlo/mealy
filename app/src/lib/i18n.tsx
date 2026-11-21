@@ -20,6 +20,7 @@ import { recipe } from '@/lib/i18n/recipe';
 import { search } from '@/lib/i18n/search';
 import { settings } from '@/lib/i18n/settings';
 import { planHome } from '@/lib/i18n/planHome';
+import { planImport } from '@/lib/i18n/planImport';
 import { weekPage } from '@/lib/i18n/weekPage';
 import { routine } from '@/lib/i18n/routine';
 import { supabase } from '@/lib/supabase';
@@ -60,6 +61,7 @@ export const dictionaries = {
     weekPage: weekPage.en,
     routine: routine.en,
     planHome: planHome.en,
+    planImport: planImport.en,
   },
   es: {
     common: common.es,
@@ -83,6 +85,7 @@ export const dictionaries = {
     weekPage: weekPage.es,
     routine: routine.es,
     planHome: planHome.es,
+    planImport: planImport.es,
   },
   fr: {
     common: common.fr,
@@ -106,6 +109,7 @@ export const dictionaries = {
     weekPage: weekPage.fr,
     routine: routine.fr,
     planHome: planHome.fr,
+    planImport: planImport.fr,
   },
   it: {
     common: common.it,
@@ -129,6 +133,7 @@ export const dictionaries = {
     weekPage: weekPage.it,
     routine: routine.it,
     planHome: planHome.it,
+    planImport: planImport.it,
   },
 } as const;
 

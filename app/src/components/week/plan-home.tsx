@@ -455,6 +455,33 @@ export function PlanHome() {
               onPlanMore={() => openWeek(upcoming.at(-1)?.weekIso ?? currentWeek)}
             />
 
+            {/* Import a plan someone sent as a message */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${d.planImport.entry}. ${d.planImport.entrySub}`}
+              onPress={() => router.push('/plan/import')}
+              style={({ pressed }) => ({
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 12,
+                minHeight: 56,
+                paddingHorizontal: 14,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: radius.card * 1.5,
+                backgroundColor: pressed ? colors.cardPressed : 'transparent',
+              })}
+            >
+              <Ionicons name="clipboard-outline" size={22} color={colors.text} />
+              <View style={{ flex: 1 }}>
+                {rowTitle(d.planImport.entry)}
+                <Text style={{ color: colors.textMuted, fontFamily: fonts.ui, fontSize: fontSize.meta }}>
+                  {d.planImport.entrySub}
+                </Text>
+              </View>
+              {chevron}
+            </Pressable>
+
             {/* Weeks */}
             <View style={{ gap: 8 }}>
               <SectionHeader title={t.weeks} linkLabel={t.newWeek} onLinkPress={() => newWeek()} />

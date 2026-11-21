@@ -1,4 +1,7 @@
+import { Platform } from 'react-native';
+
 import { supabase } from '@/lib/supabase';
+import type { ImportedMeal } from '@/lib/plan-import';
 import { queueRecipeTranslation } from '@/lib/translations';
 import { workerUrl } from '@/lib/worker-url';
 
@@ -757,4 +760,49 @@ export async function fodmapAlternatives(body: AiRecipeContext & {
   const reply = await postAi<FodmapAlternativesResult>('/fodmap/alternatives', body);
   if (!reply || typeof reply.message !== 'string' || !Array.isArray(reply.alternatives)) return null;
   return reply;
+}
+
+// ---------------------------------------------------------------------------
+// Import a plan sent as a message (/ai/plan-import, /ai/plan-import/images)
+// ---------------------------------------------------------------------------
+
+/** Read a week plan written as a message into meals. Null on failure. */
+export async function aiImportPlan(body: {
+  text: string;
+  language: string;
+  people: { id: string; name: string; employee: boolean }[];
+  recipes: { id: string; title: string }[];
+  remembered: { phrase: string; recipe_id: string | null; title: string | null }[];
+}): Promise<{ meals: ImportedMeal[] } | null> {
+  const reply = await postAi<{ meals: ImportedMeal[] }>('/ai/plan-import', body);
+  if (!reply || !Array.isArray(reply.meals)) return null;
+  return reply;
+}
+
+/** Transcribe screenshots of a plan message, in order. Null on failure. */
+export async function aiPlanText(assets: MediaAsset[]): Promise<string | null> {
+  if (!WORKER_URL) return null;
+  try {
+    const token = await accessToken();
+    const form = new FormData();
+    for (const [i, asset] of assets.entries()) {
+      if (Platform.OS === 'web') {
+        // react-native-web's FormData needs a real Blob, not a {uri} part.
+        const blob = await fetch(asset.uri).then((r) => r.blob());
+        form.append('files', blob, asset.fileName ?? `screenshot-${i}.${blob.type.split('/')[1] || 'png'}`);
+      } else {
+        form.append('files', assetFormPart(asset, i) as unknown as Blob);
+      }
+    }
+    const response = await fetch(`${WORKER_URL}/ai/plan-import/images`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    });
+    if (!response.ok) return null;
+    const json = (await response.json()) as { text?: unknown };
+    return typeof json.text === 'string' ? json.text : null;
+  } catch {
+    return null;
+  }
 }
