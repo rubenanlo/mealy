@@ -40,6 +40,13 @@ from .ingest.social import ingest_social
 from .ingest.url import ingest_url
 from .jobs import run_capture_job
 from .matching import IngredientMatch, match_ingredients
+from .plan_import import (
+    PlanImportRequest,
+    PlanImportResponse,
+    PlanTextResponse,
+    import_plan,
+    transcribe_plan,
+)
 from .plan_ai import (
     PlanChangeRequest,
     PlanChangeResponse,
@@ -261,3 +268,23 @@ async def ai_routine_rule_route(
 ) -> RoutineRuleCard:
     """Turn a household rule written in plain words into a rule card."""
     return await routine_rule(body)
+
+
+@app.post("/ai/plan-import", response_model=PlanImportResponse)
+async def ai_plan_import_route(
+    body: PlanImportRequest, _claims: dict = Depends(verify_token)
+) -> PlanImportResponse:
+    """Read a week plan written as a message into meals (proposal only)."""
+    return await import_plan(body)
+
+
+@app.post("/ai/plan-import/images", response_model=PlanTextResponse)
+async def ai_plan_import_images_route(
+    files: list[UploadFile] = File(...), _claims: dict = Depends(verify_token)
+) -> PlanTextResponse:
+    """Transcribe screenshots of a week-plan message, in order, without repeats."""
+    if not files or len(files) > 8:
+        raise HTTPException(status_code=422, detail="Send 1 to 8 screenshots.")
+    images = [await f.read() for f in files]
+    media_types = [f.content_type or "image/jpeg" for f in files]
+    return await transcribe_plan(images, media_types)

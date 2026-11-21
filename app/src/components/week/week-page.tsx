@@ -1286,6 +1286,11 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
               </Text>
             </Pressable>
           ) : null}
+          {!isPastWeek
+            ? iconButton('clipboard-outline', d.planImport.entry, () =>
+                router.push({ pathname: '/plan/import', params: { week: weekIso } })
+              )
+            : null}
           {iconButton('bulb-outline', t.saveIdeaA11y, () => setIdeaSheetOpen(true))}
         </View>
 
