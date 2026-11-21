@@ -94,6 +94,11 @@ export interface DraftMeal {
   note: string | null;
   /** The message had this day but not this meal. */
   missing: boolean;
+  /**
+   * "X / Y" with no name: different dishes for different people, or only one?
+   * Cleared by splitByPerson or keepOnly.
+   */
+  splitAsk?: boolean;
 }
 
 export interface PersonLite {
@@ -249,6 +254,8 @@ export function buildDrafts(meals: readonly ImportedMeal[], ctx: DraftContext): 
       options: meal.undecided ? meal.options : [],
       note: meal.note,
       missing: false,
+      splitAsk:
+        !meal.eating_out && !meal.undecided && meal.extra_dishes.some((x) => x.for_names.length === 0 && !x.for_label),
     });
   }
   // Slots the message left out on a day it did cover.
@@ -263,11 +270,12 @@ export function buildDrafts(meals: readonly ImportedMeal[], ctx: DraftContext): 
   return drafts.sort((a, b) => a.date.localeCompare(b.date) || (a.slot === 'lunch' ? -1 : 1));
 }
 
-export type CheckReason = 'undecided' | 'who' | 'missing';
+export type CheckReason = 'undecided' | 'split' | 'who' | 'missing';
 
 /** Why a draft needs the family before saving, or null when it is ready. */
 export function checkReason(draft: DraftMeal): CheckReason | null {
   if (draft.options.length > 0) return 'undecided';
+  if (draft.splitAsk && draft.extras.length > 0) return 'split';
   if (draft.extras.some((x) => x.personIds.length === 0)) return 'who';
   if (draft.missing) return 'missing';
   return null;
@@ -289,6 +297,41 @@ export function chooseOption(draft: DraftMeal, option: string, recipeIdFor?: (ti
     ? (draft.main as DraftDish)
     : { phrase: option, title: option, recipeId: recipeIdFor?.(option) ?? null, fromMemory: false };
   return { ...draft, options: [], kind: 'dish', main, missing: false };
+}
+
+// ---- Different dishes for different people ("X / Y") -------------------------
+
+/** Keep every dish; each person then eats one of them. */
+export function splitByPerson(draft: DraftMeal): DraftMeal {
+  return { ...draft, splitAsk: false };
+}
+
+/** Keep one dish for everyone: 0 = the main, n = extras[n - 1]. */
+export function keepOnly(draft: DraftMeal, index: number): DraftMeal {
+  const dish = index === 0 ? draft.main : draft.extras[index - 1]?.dish ?? draft.main;
+  return { ...draft, main: dish, extras: [], splitAsk: false };
+}
+
+/** Who eats each dish: [main, ...extras]. The main is everyone not away and not on an extra. */
+export function dishPeople(draft: DraftMeal, eaterIds: readonly string[]): string[][] {
+  const away = new Set(draft.kind === 'out' ? eaterIds : draft.awayIds);
+  const onExtra = new Set(draft.extras.flatMap((x) => x.personIds));
+  return [
+    eaterIds.filter((id) => !away.has(id) && !onExtra.has(id)),
+    ...draft.extras.map((x) => x.personIds.filter((id) => !away.has(id))),
+  ];
+}
+
+/** Move someone to dish `index` (0 = the main) and off the others; it brings them home if away. */
+export function movePerson(draft: DraftMeal, personId: string, index: number): DraftMeal {
+  return {
+    ...draft,
+    awayIds: draft.awayIds.filter((id) => id !== personId),
+    extras: draft.extras.map((x, i) => {
+      const without = x.personIds.filter((id) => id !== personId);
+      return { ...x, personIds: i === index - 1 ? [...without, personId] : without };
+    }),
+  };
 }
 
 // ---- Saving ------------------------------------------------------------------
