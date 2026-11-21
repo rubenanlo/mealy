@@ -4,6 +4,7 @@
 // Pure logic lives in lib/plan-import.ts.
 
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
@@ -40,7 +41,7 @@ import {
 } from '@/lib/plan-import';
 import { scoreRecipes, buildSearchIndex } from '@/lib/search-text';
 import { supabase } from '@/lib/supabase';
-import { fonts, fontSize, minTapTarget, radius, screenPadding, useTheme } from '@/lib/theme';
+import { floatingActionOffset, fonts, fontSize, minTapTarget, radius, screenPadding, useTheme } from '@/lib/theme';
 import { localizedTitle } from '@/lib/translations';
 import { aiImportPlan, aiPlanText, type MediaAsset } from '@/lib/worker';
 
@@ -60,6 +61,8 @@ type Phase = 'input' | 'reading' | 'preview';
 type Tone = 'recipe' | 'quick' | 'out' | 'employee' | 'away' | 'check';
 
 const MAX_SHOTS = 8;
+/** The footer sits just above the floating tab bar (8 gap + 64 bar). */
+const TAB_BAR_CLEARANCE = floatingActionOffset - 12;
 
 export default function ImportPlanScreen() {
   const { colors } = useTheme();
@@ -312,6 +315,18 @@ export default function ImportPlanScreen() {
     }
   };
 
+  const pasteFromClipboard = async () => {
+    try {
+      const clip = await Clipboard.getStringAsync();
+      if (clip.trim()) {
+        setText(clip);
+        setError(null);
+      } else setError(t.clipboardEmpty);
+    } catch {
+      setError(t.clipboardEmpty);
+    }
+  };
+
   const pickShots = async () => {
     const picked = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: 'images',
@@ -369,8 +384,9 @@ export default function ImportPlanScreen() {
 
   const inputView = (
     <ScrollView
-      contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: insets.bottom + 120, gap: 16 }}
+      contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: insets.bottom + TAB_BAR_CLEARANCE + 120, gap: 16 }}
       keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
     >
       <View style={{ flexDirection: 'row', gap: 4, backgroundColor: colors.bgGrouped, borderRadius: 12, padding: 4 }}>
         {(['paste', 'shots'] as const).map((key) => {
@@ -401,6 +417,26 @@ export default function ImportPlanScreen() {
       {tab === 'paste' ? (
         <View style={{ gap: 8 }}>
           <Muted>{t.pasteHint}</Muted>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => void pasteFromClipboard()}
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              minHeight: minTapTarget,
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: colors.text,
+              backgroundColor: pressed ? colors.cardPressed : 'transparent',
+            })}
+          >
+            <Ionicons name="clipboard-outline" size={18} color={colors.text} />
+            <Text style={{ color: colors.text, fontFamily: fonts.uiSemi, fontSize: fontSize.small }}>
+              {text.trim() ? t.pasteAgain : t.pasteButton}
+            </Text>
+          </Pressable>
           <TextInput
             value={text}
             onChangeText={setText}
@@ -773,7 +809,7 @@ export default function ImportPlanScreen() {
     ) : null;
 
   const previewView = (
-    <ScrollView contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: insets.bottom + 160, gap: 4 }}>
+    <ScrollView contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: insets.bottom + TAB_BAR_CLEARANCE + 160, gap: 4 }}>
       <View style={{ paddingHorizontal: 12, gap: 10, paddingBottom: 6 }}>
         <Muted>
           {fmt(t.fromRange, {
@@ -882,13 +918,14 @@ export default function ImportPlanScreen() {
             position: 'absolute',
             left: 0,
             right: 0,
-            bottom: 0,
+            // Above the floating tab bar, which this tab screen keeps showing.
+            bottom: insets.bottom + TAB_BAR_CLEARANCE,
             backgroundColor: colors.bg,
             borderTopWidth: 1,
             borderColor: colors.border,
             paddingHorizontal: screenPadding,
             paddingTop: 12,
-            paddingBottom: Math.max(insets.bottom, 16),
+            paddingBottom: 10,
             gap: 6,
           }}
         >

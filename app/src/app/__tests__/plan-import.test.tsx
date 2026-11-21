@@ -12,6 +12,7 @@ const mockImport = jest.fn();
 jest.mock('@/lib/auth', () => ({ useHousehold: () => ({ householdId: 'hh-1' }) }));
 jest.mock('@/lib/confirm', () => ({ notify: jest.fn() }));
 jest.mock('expo-image-picker', () => ({ launchImageLibraryAsync: jest.fn() }));
+jest.mock('expo-clipboard', () => ({ getStringAsync: () => Promise.resolve('Dijous:\n• amanida…') }));
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: jest.fn(), replace: mockReplace, back: jest.fn() }),
   useLocalSearchParams: () => ({}),
@@ -105,7 +106,8 @@ describe('Import a plan', () => {
 
   it('reads a pasted plan, lets you settle questions and saves it', async () => {
     const screen = wrap();
-    fireEvent.changeText(screen.getByLabelText('Paste text'), 'Dijous:\n• amanida…');
+    fireEvent.press(screen.getByText('Paste from clipboard'));
+    await waitFor(() => expect(screen.getByText('Paste again')).toBeTruthy());
     await waitFor(() => expect(screen.getByText('Read the plan')).toBeTruthy());
     // Persons load asynchronously; wait until the button is enabled.
     await waitFor(() => {
