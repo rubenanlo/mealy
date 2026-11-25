@@ -42,7 +42,7 @@ describe('WeekPage', () => {
   afterEach(() => jest.useRealTimers());
 
   it('renders chips, progress and empty meals for an empty week', async () => {
-    const { getByText, getAllByText } = render(
+    const { getByText, getAllByText, getByLabelText } = render(
       <SafeAreaProvider initialMetrics={metrics}>
         <ThemeProvider>
           <WeekPage />
@@ -52,7 +52,8 @@ describe('WeekPage', () => {
     // The header names the week being planned.
     expect(getByText('THIS WEEK')).toBeTruthy();
     expect(getAllByText('Nov 9 – 15').length).toBeGreaterThan(0);
-    expect(getByText('Eating out')).toBeTruthy();
+    // Eating out, ideas, copy, import and delete live in the week's ··· menu.
+    expect(getByLabelText('More for this week')).toBeTruthy();
     await waitFor(() => expect(getByText('0 of 14')).toBeTruthy());
     expect(getByText('This week')).toBeTruthy();
     expect(getByText('Last week')).toBeTruthy();
