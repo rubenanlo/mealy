@@ -20,7 +20,7 @@ import { useHousehold } from '@/lib/auth';
 import { notify } from '@/lib/confirm';
 import { fmt, useI18n } from '@/lib/i18n';
 import { backOr } from '@/lib/nav';
-import type { MealSlot } from '@/lib/plan';
+import { plannedEvents, type MealSlot } from '@/lib/plan';
 import {
   buildDrafts,
   buildIdeaDrafts,
@@ -125,7 +125,7 @@ export default function ImportPlanScreen() {
   const [ideas, setIdeas] = useState<DraftIdea[]>([]);
   /** Which of the two offered weeks the ideas go to, or none. */
   const [ideaChoice, setIdeaChoice] = useState<0 | 1 | 'none'>(0);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState<'approve' | 'draft' | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -279,8 +279,9 @@ export default function ImportPlanScreen() {
     return recipes.find((r) => foldPhrase(r.title) === want || foldPhrase(r.original) === want)?.id ?? null;
   };
 
-  const save = async () => {
-    setSaving(true);
+  /** Write the plan; 'approve' also approves each week (like Approve week), 'draft' leaves it to approve later. */
+  const save = async (mode: 'approve' | 'draft') => {
+    setSaving(mode);
     try {
       const weeks = planRows(drafts, eaterIds);
       let ideaCount = 0;
@@ -302,7 +303,7 @@ export default function ImportPlanScreen() {
       for (const week of weeks) {
         const { data: found } = await supabase
           .from('meal_plans')
-          .select('id')
+          .select('id, status')
           .eq('household_id', householdId)
           .eq('week_start', week.week)
           .maybeSingle();
@@ -332,6 +333,17 @@ export default function ImportPlanScreen() {
             { onConflict: 'meal_plan_id,day,slot,person_id', ignoreDuplicates: true }
           );
         }
+        // Approve like the week page does: status + one "planned" event per eater and meal.
+        if (mode === 'approve' && (found?.status as string | undefined) !== 'approved') {
+          const { error: approveError } = await supabase.from('meal_plans').update({ status: 'approved' }).eq('id', planId);
+          if (approveError) throw approveError;
+          const { data: all } = await supabase
+            .from('plan_entries')
+            .select('recipe_id, custom_title, person_ids, day, slot')
+            .eq('meal_plan_id', planId);
+          const events = plannedEvents((all as Parameters<typeof plannedEvents>[0] | null) ?? [], householdId, eaterIds, week.week);
+          if (events.length > 0) await supabase.from('events').insert(events);
+        }
       }
       const matches = matchRows(drafts, ideaWeek ? ideas : []);
       if (matches.length > 0) {
@@ -344,7 +356,8 @@ export default function ImportPlanScreen() {
           );
       }
       const count = weeks.reduce((n, w) => n + w.cells.length, 0);
-      notify(ideaCount > 0 ? fmt(t.savedWithIdeas, { n: count, m: ideaCount }) : fmt(t.saved, { n: count }));
+      const done = ideaCount > 0 ? fmt(t.savedWithIdeas, { n: count, m: ideaCount }) : fmt(t.saved, { n: count });
+      notify(mode === 'approve' ? `${done} ${t.approvedNote}` : `${done} ${t.draftNote}`);
       router.replace({
         pathname: '/plan/detail',
         params: { week: weeks[0]?.week ?? (ideaCount > 0 ? ideaWeek : null) ?? draftWeeks(drafts)[0] },
@@ -352,7 +365,7 @@ export default function ImportPlanScreen() {
     } catch {
       notify(t.saveFailed);
     } finally {
-      setSaving(false);
+      setSaving(null);
     }
   };
 
@@ -951,7 +964,7 @@ export default function ImportPlanScreen() {
     ) : null;
 
   const previewView = (
-    <ScrollView contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: insets.bottom + TAB_BAR_CLEARANCE + 160, gap: 4 }}>
+    <ScrollView contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: insets.bottom + TAB_BAR_CLEARANCE + 220, gap: 4 }}>
       <View style={{ paddingHorizontal: 12, gap: 10, paddingBottom: 6 }}>
         <Muted>
           {fmt(t.fromRange, {
@@ -1079,24 +1092,29 @@ export default function ImportPlanScreen() {
                 label={
                   ideasOn > 0
                     ? counted.length === 1
-                      ? fmt(t.saveWithIdeasOne, { m: ideasOn })
-                      : fmt(t.saveWithIdeas, { n: counted.length, m: ideasOn })
+                      ? fmt(t.approveWithIdeasOne, { m: ideasOn })
+                      : fmt(t.approveWithIdeas, { n: counted.length, m: ideasOn })
                     : counted.length === 1
-                      ? t.saveOne
-                      : fmt(t.save, { n: counted.length })
+                      ? t.approveOne
+                      : fmt(t.approve, { n: counted.length })
                 }
-                onPress={() => void save()}
-                loading={saving}
-                disabled={counted.length === 0 && ideasOn === 0}
+                onPress={() => void save('approve')}
+                loading={saving === 'approve'}
+                disabled={saving !== null || (counted.length === 0 && ideasOn === 0)}
+              />
+              <Button
+                kind="secondary"
+                label={t.saveDraft}
+                onPress={() => void save('draft')}
+                loading={saving === 'draft'}
+                disabled={saving !== null || (counted.length === 0 && ideasOn === 0)}
               />
               <Text style={{ textAlign: 'center', color: colors.textMuted, fontFamily: fonts.ui, fontSize: fontSize.eyebrow }}>
                 {existing > 0
                   ? fmt(t.replaces, { n: existing })
                   : checks > 0
                     ? t.saveHint
-                    : ideaWeek && ideasOn > 0
-                      ? fmt(t.ideasTo, { date: weekShort(ideaWeek) })
-                      : ''}
+                    : t.draftHint}
               </Text>
             </>
           ) : (
