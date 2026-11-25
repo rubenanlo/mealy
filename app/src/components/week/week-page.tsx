@@ -6,7 +6,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { Modal, Platform, Pressable, ScrollView, Text, View, type GestureResponderEvent } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AddToWeekSheet } from '@/components/add-to-week';
@@ -22,6 +22,7 @@ import { DayRows } from '@/components/week/day-rows';
 import { PersonDayRows } from '@/components/week/person-day-rows';
 import { HomeSheet, type AwayChange } from '@/components/week/home-sheet';
 import { MealSheet, type DishActions, type MealPatch, type SheetDish } from '@/components/week/meal-sheet';
+import { DeleteWeekSheet } from '@/components/week/delete-week-sheet';
 import { ReviewSheet, type ReviewItem } from '@/components/week/review-sheet';
 import { Badge, Pill } from '@/components/week/sheet';
 import { findSchoolChild, isSalad, sideSuggestions } from '@/lib/ai-week';
@@ -36,7 +37,7 @@ import { computeRecipeFodmap, recipeFodmapTier } from '@/lib/fodmap';
 import { fmt, useI18n } from '@/lib/i18n';
 import { invalidateLists } from '@/lib/list-refresh';
 import { backOr } from '@/lib/nav';
-import { pickOption } from '@/lib/options';
+import { anchorFromEvent, pickOption } from '@/lib/options';
 import {
   addWeeks,
   awayIds,
@@ -65,6 +66,7 @@ import {
 } from '@/lib/theme';
 import { localizedTitle } from '@/lib/translations';
 import { useCanonicalIndex } from '@/lib/use-canonical';
+import { weekDeleteSummary } from '@/lib/week-delete';
 import { parseRoutine } from '@/lib/plan-routine';
 import {
   addSuggestions,
@@ -162,6 +164,7 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
   const [reviewOpen, setReviewOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [ideaSheetOpen, setIdeaSheetOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [ideaToPlan, setIdeaToPlan] = useState<PlanIdea | null>(null);
   /** The dish being swapped in the change-meal panel (same panel as the ✦ planner). */
   const [swapEntry, setSwapEntry] = useState<PlanEntry | null>(null);
@@ -927,14 +930,16 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
     }
   };
 
-  /** Copy this (past) week's meals to this week or next week, like the past-week sheet on Meal plans. */
+  /** Copy this week's meals to this week or next week, like the past-week sheet on Meal plans. */
   const copyToWeek = () => {
     const source = entries;
     if (source.length === 0) return;
     pickOption({
       title: d.planHome.copyWhich,
       cancelLabel: d.common.cancel,
-      options: [currentWeek, addWeeks(currentWeek, 1)].map((week) => ({
+      options: [currentWeek, addWeeks(currentWeek, 1)]
+        .filter((week) => week !== weekIso)
+        .map((week) => ({
         label: `${chipLabel(week)} · ${shortDate(week)}`,
         onPress: () => {
           void (async () => {
@@ -970,25 +975,29 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
     });
   };
 
-  const deleteWeek = () => {
+  /** Delete this week's plan (any week, design A+1). Meals and who's out go with it (cascade). */
+  const deleteWeek = async (removeIdeas: boolean) => {
     if (!plan) return;
-    confirmDestructive({
-      title: d.plan.deletePlanTitle,
-      message: fmt(d.plan.deletePlanBody, { week: fmt(d.plan.weekOf, { date: shortDate(weekIso) }) }),
-      confirmLabel: d.common.delete,
-      cancelLabel: d.common.cancel,
-      onConfirm: () => {
-        void (async () => {
-          const { error } = await supabase.from('meal_plans').delete().eq('id', plan.id);
-          if (error) {
-            notify(d.plan.deletePlanFailTitle, d.common.genericError);
-            return;
-          }
-          setOlderWeeks((prev) => prev.filter((w) => w !== weekIso));
-          await reload();
-        })();
-      },
-    });
+    setBusy(true);
+    try {
+      const { error } = await supabase.from('meal_plans').delete().eq('id', plan.id);
+      if (error) {
+        notify(d.plan.deletePlanFailTitle, d.common.genericError);
+        return;
+      }
+      if (removeIdeas) {
+        await supabase.from('plan_ideas').delete().eq('household_id', householdId).eq('week_start', weekIso);
+        setLaterWeeks((prev) => prev.filter((w) => w !== weekIso));
+      } else if (ideas.length === 0) {
+        setLaterWeeks((prev) => prev.filter((w) => w !== weekIso));
+      }
+      setOlderWeeks((prev) => prev.filter((w) => w !== weekIso));
+      setDeleteOpen(false);
+      setLiveSummary(null);
+      await reload();
+    } finally {
+      setBusy(false);
+    }
   };
 
   const openOlder = () =>
@@ -1156,6 +1165,34 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
   /** One primary action: AI while several meals are open, then the review. */
   const fillPrimary = showFill && (open.length >= 3 || !showReview);
   const outPeople = new Set(absences.map((a) => a.person_id).filter((id) => eaterIds.includes(id))).size;
+  /** The week's ··· menu (design A, 2026-11-25): eating out, ideas, copy, import, delete. */
+  const openMenu = (e?: GestureResponderEvent) =>
+    pickOption({
+      title: weekRange,
+      cancelLabel: d.common.cancel,
+      anchor: anchorFromEvent(e),
+      options: [
+        ...(!isPastWeek
+          ? [
+              {
+                label: outPeople > 0 ? `${t.eatingOut} (${outPeople})` : t.eatingOut,
+                onPress: () => setHomeOpen(true),
+              },
+            ]
+          : []),
+        { label: t.menuSaveIdea, onPress: () => setIdeaSheetOpen(true) },
+        ...(entries.length > 0 ? [{ label: t.menuCopy, onPress: copyToWeek }] : []),
+        ...(!isPastWeek
+          ? [
+              {
+                label: d.planImport.entry,
+                onPress: () => router.push({ pathname: '/plan/import', params: { week: weekIso } }),
+              },
+            ]
+          : []),
+        ...(plan ? [{ label: t.menuDelete, destructive: true, onPress: () => setDeleteOpen(true) }] : []),
+      ],
+    });
   const openIdeas = () => {
     if (recipeIdeas.length === 1) {
       setIdeaToPlan(recipeIdeas[0]!);
@@ -1211,24 +1248,6 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
   };
   const recipeIdeas = ideas.filter((i) => i.recipe_id || i.custom_title);
 
-  const iconButton = (icon: keyof typeof Ionicons.glyphMap, label: string, onPress: () => void) => (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onPress={onPress}
-      style={({ pressed }) => ({
-        width: minTapTarget,
-        height: minTapTarget,
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderRadius: minTapTarget / 2,
-        backgroundColor: pressed ? colors.cardPressed : 'transparent',
-      })}
-    >
-      <Ionicons name={icon} size={22} color={colors.text} />
-    </Pressable>
-  );
-
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
       <ScrollView
@@ -1262,36 +1281,21 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
               {weekRange}
             </Text>
           </View>
-          {!isPastWeek ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={outPeople > 0 ? `${t.homeTitle}, ${fmt(t.outCount, { n: outPeople })}` : t.homeTitle}
-              onPress={() => setHomeOpen(true)}
-              hitSlop={4}
-              style={({ pressed }) => ({
-                minHeight: 40,
-                paddingHorizontal: 12,
-                borderRadius: 999,
-                borderWidth: 1,
-                borderColor: colors.border,
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 6,
-                backgroundColor: pressed ? colors.cardPressed : 'transparent',
-              })}
-            >
-              <Ionicons name="people-outline" size={18} color={colors.text} />
-              <Text style={{ color: colors.text, fontFamily: fonts.uiMedium, fontSize: fontSize.meta }}>
-                {outPeople > 0 ? fmt(t.outCount, { n: outPeople }) : t.eatingOut}
-              </Text>
-            </Pressable>
-          ) : null}
-          {!isPastWeek
-            ? iconButton('clipboard-outline', d.planImport.entry, () =>
-                router.push({ pathname: '/plan/import', params: { week: weekIso } })
-              )
-            : null}
-          {iconButton('bulb-outline', t.saveIdeaA11y, () => setIdeaSheetOpen(true))}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t.weekMoreA11y}
+            onPress={openMenu}
+            style={({ pressed }) => ({
+              width: minTapTarget,
+              height: minTapTarget,
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: minTapTarget / 2,
+              backgroundColor: pressed ? colors.cardPressed : 'transparent',
+            })}
+          >
+            <Ionicons name="ellipsis-horizontal" size={22} color={colors.text} />
+          </Pressable>
         </View>
 
         {/* Week chips */}
@@ -1378,6 +1382,17 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
                   />
                 ))}
                 {plan ? <Badge label={approved ? t.approved : t.draft} /> : null}
+                {!isPastWeek && outPeople > 0 ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`${t.homeTitle}, ${fmt(t.outCount, { n: outPeople })}`}
+                    onPress={() => setHomeOpen(true)}
+                    hitSlop={10}
+                    style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+                  >
+                    <Badge label={fmt(t.outCount, { n: outPeople })} />
+                  </Pressable>
+                ) : null}
               </View>
               {!isPastWeek && recipeIdeas.length > 0 ? (
                 <Pressable
@@ -1421,7 +1436,6 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
                   loading={busy}
                   style={{ flex: 1 }}
                 />
-                <Button label={t.deleteWeek} kind="danger" onPress={deleteWeek} />
               </View>
             ) : null}
 
@@ -1729,6 +1743,23 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
         dishActions={viewPerson ? undefined : dishActions}
       />
 
+      <DeleteWeekSheet
+        visible={deleteOpen}
+        weekLabel={weekRange}
+        summary={weekDeleteSummary({
+          entries,
+          absences,
+          eaterIds,
+          employeeNotes: Array.isArray(plan?.employee_notes) ? plan.employee_notes : [],
+          approved,
+          employeeHasLink: !!employee?.share_token,
+          ideas: ideas.length,
+        })}
+        employeeName={employee?.name ?? null}
+        busy={busy}
+        onConfirm={(removeIdeas) => void deleteWeek(removeIdeas)}
+        onClose={() => setDeleteOpen(false)}
+      />
       <HomeSheet
         visible={homeOpen}
         weekIso={weekIso}
