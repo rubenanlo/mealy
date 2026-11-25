@@ -1161,7 +1161,9 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
   const approved = plan?.status === 'approved';
   const showFill = !isPastWeek && loaded && open.length > 0;
   const showReview = loaded && entries.length > 0 && !isPastWeek;
-  const showBar = showFill || showReview;
+  // Once approved, the review step is done: the header badge opens the
+  // approved sheet, so the bar only stays for filling open slots.
+  const showBar = showFill || (showReview && !approved);
   /** One primary action: AI while several meals are open, then the review. */
   const fillPrimary = showFill && (open.length >= 3 || !showReview);
   const outPeople = new Set(absences.map((a) => a.person_id).filter((id) => eaterIds.includes(id))).size;
@@ -1381,7 +1383,19 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
                     accent={!isPastWeek && q.planned < q.target}
                   />
                 ))}
-                {plan ? <Badge label={approved ? t.approved : t.draft} /> : null}
+                {plan && approved ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={t.approvedTitle}
+                    onPress={() => setReviewOpen(true)}
+                    hitSlop={10}
+                    style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+                  >
+                    <Badge label={t.approved} />
+                  </Pressable>
+                ) : plan ? (
+                  <Badge label={t.draft} />
+                ) : null}
                 {!isPastWeek && outPeople > 0 ? (
                   <Pressable
                     accessibilityRole="button"
@@ -1574,12 +1588,7 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
           }}
         >
           {approved ? (
-            <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', gap: 10 }}>
-              {barButton({ label: t.approved, icon: 'checkmark-circle', tone: 'quiet', onPress: () => setReviewOpen(true) })}
-              {showFill
-                ? barButton({ icon: 'sparkles-outline', tone: 'quiet', a11y: fmt(t.fillWithAi, { n: open.length }), onPress: () => setAiOpen(true) })
-                : null}
-            </View>
+            barButton({ label: fmt(t.fillWithAi, { n: open.length }), icon: 'sparkles-outline', tone: 'quiet', wide: true, onPress: () => setAiOpen(true) })
           ) : fillPrimary ? (
             <>
               {barButton({ label: fmt(t.fillWithAi, { n: open.length }), icon: 'sparkles-outline', tone: 'dark', wide: true, onPress: () => setAiOpen(true) })}
