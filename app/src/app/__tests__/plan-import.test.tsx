@@ -33,11 +33,13 @@ jest.mock('@/lib/supabase', () => {
     plan_import_matches: [{ phrase: 'arros chaufa', recipe_id: null, custom_title: 'Arroz chaufa' }],
     meal_plans: [],
     plan_ideas: [{ recipe_id: null, custom_title: 'Tonyina' }],
+    // What the plan holds after the import, read back to log planned events on approve.
+    plan_entries: [{ recipe_id: 'r-tacos', custom_title: null, person_ids: [], day: 3, slot: 'dinner' }],
   };
   const builder = (table: string) => {
     const q: Record<string, unknown> = {};
     for (const m of ['select', 'eq', 'in', 'order', 'delete']) q[m] = () => q;
-    for (const op of ['insert', 'upsert']) {
+    for (const op of ['insert', 'upsert', 'update']) {
       q[op] = (rows: unknown) => {
         mockWrites.push({ table, op, rows });
         return q;
@@ -137,7 +139,8 @@ describe('Import a plan', () => {
     expect(screen.getByText('4 ideas for next week')).toBeTruthy();
     expect(screen.getByText('Next week · Nov 30')).toBeTruthy();
     fireEvent.press(screen.getByLabelText('Porc amb bolets'));
-    fireEvent.press(screen.getByText('Add 4 meals and 3 ideas'));
+    expect(screen.getByText('Save as draft')).toBeTruthy();
+    fireEvent.press(screen.getByText('Approve 4 meals and 3 ideas'));
     await waitFor(() => expect(mockReplace).toHaveBeenCalled());
     expect(mockReplace).toHaveBeenCalledWith({ pathname: '/plan/detail', params: { week: '2026-11-23' } });
 
@@ -157,6 +160,9 @@ describe('Import a plan', () => {
       ['tacos', 'r-tacos'],
       ['tonyina', 'Tonyina'],
     ]);
+    // Approved like the week page: status plus planned events.
+    expect(mockWrites.find((w) => w.table === 'meal_plans' && w.op === 'update')?.rows).toEqual({ status: 'approved' });
+    expect(mockWrites.some((w) => w.table === 'events')).toBe(true);
     // Tonyina is already in that week's ideas; the unticked one is skipped.
     const ideas = mockWrites.find((w) => w.table === 'plan_ideas')?.rows as Record<string, unknown>[];
     expect(ideas.map((i) => [i.week_start, i.recipe_id ?? i.custom_title])).toEqual([
@@ -188,7 +194,7 @@ describe('Import a plan', () => {
     fireEvent.press(screen.getByText('Only Truita'));
     expect(screen.queryByText('Split by person')).toBeNull();
 
-    fireEvent.press(screen.getByText('Add 2 meals as a draft'));
+    fireEvent.press(screen.getByText('Save as draft'));
     await waitFor(() => expect(mockReplace).toHaveBeenCalled());
     const entries = mockWrites.find((w) => w.table === 'plan_entries')?.rows as Record<string, unknown>[];
     expect(entries.map((e) => [e.slot, e.custom_title, e.person_ids])).toEqual([
@@ -197,5 +203,7 @@ describe('Import a plan', () => {
       ['dinner', 'Bacallà', ['r', 'p']],
       ['dinner', 'Llenguado', ['m']],
     ]);
+    // A draft is not approved.
+    expect(mockWrites.some((w) => w.table === 'meal_plans' && w.op === 'update')).toBe(false);
   });
 });
