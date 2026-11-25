@@ -1175,7 +1175,7 @@ export function WeekPage({ showBack = false }: { showBack?: boolean }) {
         ...(!isPastWeek
           ? [
               {
-                label: outPeople > 0 ? `${t.eatingOut} · ${fmt(t.outCount, { n: outPeople })}` : t.eatingOut,
+                label: outPeople > 0 ? `${t.eatingOut} (${outPeople})` : t.eatingOut,
                 onPress: () => setHomeOpen(true),
               },
             ]

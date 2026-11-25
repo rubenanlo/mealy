@@ -10,6 +10,8 @@ export interface WeekDeleteSummary {
   meals: number;
   /** Meals at which at least one household member eats out. */
   eatingOut: number;
+  /** Household members eating out at least once (the "N out" badge). */
+  eatingOutPeople: number;
   /** Meals the employee cooks (whole dish or part of it). */
   employeeMeals: number;
   /** The employee's other tasks that week (ironing, sewing…). */
@@ -36,13 +38,14 @@ export function weekDeleteSummary(input: {
     input.entries.filter((e) => e.assigned_cook === 'employee').map((e) => slotKey(e.day, e.slot))
   );
   const eaters = new Set(input.eaterIds);
-  const eatingOut = new Set(
-    input.absences.filter((a) => eaters.has(a.person_id)).map((a) => slotKey(a.day, a.slot))
-  );
+  const away = input.absences.filter((a) => eaters.has(a.person_id));
+  const eatingOut = new Set(away.map((a) => slotKey(a.day, a.slot)));
+  const eatingOutPeople = new Set(away.map((a) => a.person_id));
   const tasks = (input.employeeNotes ?? []).filter((n) => n.trim().length > 0).length;
   return {
     meals: meals.size,
     eatingOut: eatingOut.size,
+    eatingOutPeople: eatingOutPeople.size,
     employeeMeals: employeeMeals.size,
     tasks,
     warnEmployee: input.approved && input.employeeHasLink && (employeeMeals.size > 0 || tasks > 0),

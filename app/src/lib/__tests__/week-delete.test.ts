@@ -26,6 +26,7 @@ describe('weekDeleteSummary', () => {
     expect(summary).toEqual({
       meals: 3,
       eatingOut: 2,
+      eatingOutPeople: 3,
       employeeMeals: 2,
       tasks: 1,
       warnEmployee: true,

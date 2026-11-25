@@ -43,7 +43,13 @@ export function DeleteWeekSheet({
   const rows: { icon: keyof typeof Ionicons.glyphMap; label: string }[] = [];
   if (summary.meals > 0) rows.push({ icon: 'calendar-outline', label: count(summary.meals, t.delMealOne, t.delMealMany) });
   if (summary.eatingOut > 0)
-    rows.push({ icon: 'people-outline', label: count(summary.eatingOut, t.delOutOne, t.delOutMany) });
+    rows.push({
+      icon: 'people-outline',
+      label: fmt(summary.eatingOutPeople === 1 ? t.delOutOne : t.delOutMany, {
+        n: summary.eatingOutPeople,
+        meals: count(summary.eatingOut, t.delMealOne, t.delMealMany),
+      }),
+    });
   if (employeeName && (summary.employeeMeals > 0 || summary.tasks > 0)) {
     const parts = [
       summary.employeeMeals > 0 ? count(summary.employeeMeals, t.delEmployeeMealOne, t.delEmployeeMealMany) : null,
